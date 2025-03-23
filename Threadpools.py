@@ -79,6 +79,7 @@ class FetchDataWorker(QRunnable):
                 # iptv_info_resp.raise_for_status()
                 iptv_info_data = iptv_info_resp.json()
             except Exception as e:
+                iptv_info_data = {}
                 print(f"failed fetching IPTV data: {e}")
 
             #Load cached data
@@ -89,19 +90,41 @@ class FetchDataWorker(QRunnable):
             #Check if cache file exists
             if path.isfile(cache_path):
                 print("cache file is there")
-                with open("all_cached_data.json", 'r') as cache_file:
-                    cached_data = json.load(cache_file)
+                try:
+                    # with open(cache_path, 'r') as cache_file:
+                    with open(cache_path) as cache_file:
+                        #Check if file is empty
+                        if not cache_file.read():
+                            print("is empty")
+                            cached_data = {}
+
+                        else:
+                            print("not empty")
+
+
+
+                            ###TODO Check why this fails!!
+
+
+
+                            cached_data = json.load(cache_file)
+                            print("Loaded cached data")
+                except Exception as e:
+                    print(e)
+                    # os.remove(cache_path)
 
             config = configparser.ConfigParser()
             config.read(self.parent.user_data_file)
 
             if 'Debug' in config and config['Debug']['load_with_cache'] == 'True':   #For testing purposes only
-                categories_per_stream_type['LIVE'] = cached_data['LIVE categories']
-                categories_per_stream_type['Movies'] = cached_data['Movies categories']
-                categories_per_stream_type['Series'] = cached_data['Series categories']
-                entries_per_stream_type['LIVE'] = cached_data['LIVE']
-                entries_per_stream_type['Movies'] = cached_data['Movies']
-                entries_per_stream_type['Series'] = cached_data['Series']
+                print("loading from cache in debug mode!")
+                categories_per_stream_type['LIVE']      = cached_data.get('LIVE categories', [])
+                categories_per_stream_type['Movies']    = cached_data.get('Movies categories', [])
+                categories_per_stream_type['Series']    = cached_data.get('Series categories', [])
+                entries_per_stream_type['LIVE']         = cached_data.get('LIVE', [])
+                entries_per_stream_type['Movies']       = cached_data.get('Movies', [])
+                entries_per_stream_type['Series']       = cached_data.get('Series', [])
+
             else:
                 #Get all category data
                 print("Fetching categories")

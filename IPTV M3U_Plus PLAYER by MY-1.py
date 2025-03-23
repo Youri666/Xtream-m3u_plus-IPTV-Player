@@ -7,6 +7,7 @@ import subprocess
 import configparser
 import re
 import json
+import qdarkstyle
 import html
 from lxml import etree, html
 from datetime import datetime
@@ -23,7 +24,7 @@ from PyQt5.QtWidgets import (
     QListWidget, QWidget, QFileDialog, QCheckBox, QSizePolicy, QHBoxLayout,
     QDialog, QFormLayout, QDialogButtonBox, QTabWidget, QListWidgetItem,
     QSpinBox, QMenu, QAction, QTextEdit, QGridLayout, QMessageBox, QListView,
-    QTreeWidget, QTreeWidgetItem, QTreeView
+    QTreeWidget, QTreeWidgetItem, QTreeView, QComboBox
 )
 
 from AccountManager import AccountManager
@@ -157,7 +158,7 @@ class IPTVPlayerApp(QMainWindow):
         #Create tab icons
         self.home_icon      = self.style().standardIcon(QtWidgets.QStyle.SP_DesktopIcon)
         self.live_icon      = self.style().standardIcon(QtWidgets.QStyle.SP_MediaVolume)
-        self.movies_icon    = self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay)
+        self.movies_icon    = self.style().standardIcon(QtWidgets.QStyle.SP_ComputerIcon)
         self.series_icon    = self.style().standardIcon(QtWidgets.QStyle.SP_DirIcon)
         self.favorites_icon = self.style().standardIcon(QtWidgets.QStyle.SP_DialogApplyButton)
         self.info_icon      = self.style().standardIcon(QtWidgets.QStyle.SP_MessageBoxInformation)
@@ -165,7 +166,7 @@ class IPTVPlayerApp(QMainWindow):
 
         #Create list entry icons
         self.live_channel_icon      = self.style().standardIcon(QtWidgets.QStyle.SP_MediaVolume)
-        self.movies_channel_icon    = self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay)
+        self.movies_channel_icon    = self.style().standardIcon(QtWidgets.QStyle.SP_ComputerIcon)
         self.series_channel_icon    = self.style().standardIcon(QtWidgets.QStyle.SP_DirIcon)
 
         #Create misc icons
@@ -424,6 +425,12 @@ class IPTVPlayerApp(QMainWindow):
         self.keep_on_top_checkbox.setToolTip("Keep the application on top of all windows")
         self.keep_on_top_checkbox.stateChanged.connect(self.toggle_keep_on_top)
 
+        self.theme_label = QLabel("Theme: ")
+
+        self.theme_checkbox = QComboBox()
+        self.theme_checkbox.addItems(["Default", "Dark"])
+        self.theme_checkbox.currentTextChanged.connect(self.change_theme)
+
         self.cache_on_startup_checkbox = QCheckBox("Startup with cached data")
         self.cache_on_startup_checkbox.setToolTip("Loads the cached IPTV data on startup to reduce startup time.\nNote that the cached data only changes if you manually reload it once in a while.")
         self.cache_on_startup_checkbox.stateChanged.connect(self.toggle_cache_on_startup)
@@ -436,6 +443,8 @@ class IPTVPlayerApp(QMainWindow):
         self.settings_layout.addWidget(self.address_book_button,        0, 0)
         self.settings_layout.addWidget(self.choose_player_button,       0, 1)
         self.settings_layout.addWidget(self.keep_on_top_checkbox,       1, 0)
+        self.settings_layout.addWidget(self.theme_label,                2, 0)
+        self.settings_layout.addWidget(self.theme_checkbox,             2, 1)
         # self.settings_layout.addWidget(self.cache_on_startup_checkbox,  2, 0)
         # self.settings_layout.addWidget(self.reload_data_btn,            3, 0)
 
@@ -484,11 +493,69 @@ class IPTVPlayerApp(QMainWindow):
                         self.login()
 
     def toggle_keep_on_top(self, state):
+        #Get current window flags
+        flags = self.windowFlags()
+
+        #Change flags
         if state == Qt.Checked:
-            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+            flags |= Qt.WindowStaysOnTopHint
         else:
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
+            flags &= ~Qt.WindowStaysOnTopHint
+
+        #Set window flags
+        self.setWindowFlags(flags)
+
         self.show()
+
+    def change_theme(self, state):
+        #Check which theme is selected
+        if state == "Default":
+            print(state)
+            QApplication.instance().setStyleSheet("")
+            self.save_theme_preference(state)
+
+        elif state == "Dark":
+            print(state)
+            QApplication.instance().setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+            self.save_theme_preference(state)
+
+    def load_theme_preference(self):
+        #Load the saved theme preference from user data file and apply it.
+        config = configparser.ConfigParser()
+        config.read(self.user_data_file)
+
+        #Get theme from userdata
+        theme = ""
+        if 'Theme' in config:
+            theme = config['Theme']['Theme']
+
+        #Check which theme
+        match theme:
+            #Dark theme is selected
+            case "Dark":
+                self.theme_checkbox.setCurrentText("Dark")
+                QApplication.instance().setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+
+            #If not there or default is selected
+            case _:
+                self.theme_checkbox.setCurrentText("Default")
+                QApplication.instance().setStyleSheet("")
+
+    def save_theme_preference(self, theme):
+        #Save the theme preference to user data file
+        config = configparser.ConfigParser()
+        config.read(self.user_data_file)
+
+        #Create Theme setting if not there
+        if 'Theme' not in config:
+            config['Theme'] = {}
+
+        #Set theme in config
+        config['Theme']['Theme'] = theme
+
+        #Write user data file
+        with open(self.user_data_file, 'w') as config_file:
+            config.write(config_file)
 
     def toggle_cache_on_startup(self, state):
         if state == Qt.Checked:
@@ -613,7 +680,7 @@ class IPTVPlayerApp(QMainWindow):
         max_connections     = user_info.get("max_connections", "Unknown")
         active_connections  = user_info.get("active_cons", "Unknown")
         status              = user_info.get("status", "Unknown")
-        expire_timestamp    = user_info.get("exp_date", "Unknown")
+        expire_timestamp    = user_info.get("exp_date", 0)
         expiry = (
             datetime.fromtimestamp(int(expire_timestamp)).strftime("%B %d, %Y")
             if expire_timestamp else "Unknown"
@@ -909,7 +976,11 @@ class IPTVPlayerApp(QMainWindow):
                     self.currently_loaded_streams[stream_type].append(entry)
                     self.streaming_list_widgets[stream_type].addItem(item)
 
-            self.animate_progress(0, 100, "Loading finished")
+            #Check if list is empty
+            if not self.streaming_list_widgets[stream_type].count():
+                self.set_progress_bar(0, "No streaming data available for category...")
+            else:
+                self.animate_progress(0, 100, "Loading finished")
 
         except Exception as e:
             print(f"Failed: {e}")
@@ -1402,7 +1473,11 @@ def main():
     player.show()
     # player.showMaximized()
     QtWidgets.qApp.processEvents()
+
+    #Load from user data
+    player.load_theme_preference()
     player.load_data_startup()
+
     sys.exit(app.exec_())
 
 if __name__ == "__main__":
