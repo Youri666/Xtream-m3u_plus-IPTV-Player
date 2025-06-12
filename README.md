@@ -1,14 +1,14 @@
 
-# **FREE OPENSOURCE M3U/XTREME IPTV PLAYER**
+# FREE OPENSOURCE M3U/XTREME IPTV PLAYER
 
 This IPTV player, built with Python and PyQt5, supports M3U_plus playlists and Xtream Codes API, allowing users to manage and play IPTV channels, movies, and series.
 
 > Feel free to report issues when encountering any problems: [Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues)
 
-## **Download**
+# Download
 Download the latest version here: [Latest releases](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases)
 
-## **Features**
+# Features
 - **Supports Windows, Linux and Mac OS**
 - **M3U_plus Support:** Load and play live TV, movies, and series.
 - **Xtream Codes API:** Log in with Xtream credentials and dynamically load content.
@@ -25,13 +25,13 @@ Download the latest version here: [Latest releases](https://github.com/Youri666/
 - **Recommended Player:** For optimal performance, use VLC media player. Download it at: https://www.videolan.org/vlc/
 - **Recommended Player:** For optimal performance, use SMPlayer. Download it at: https://www.smplayer.info
 
-## **Future plans**
+# Future plans
 - **Home tab:** Home tab with previously watched and popular movies and series.
 - **TMDB support:** Much more information about movies and series with the TMDB API.
 - **Improve startup loading time:** Improve loading time at startup by optionally loading the IPTV data from cache.
 - **Dark theme**
 
-## **Screenshots**
+# Screenshots
 **Live TV showing EPG data**
 ![Image](https://github.com/user-attachments/assets/c82f0759-29d8-4b3e-a462-59581523e1d8)
 
@@ -49,3 +49,67 @@ Download the latest version here: [Latest releases](https://github.com/Youri666/
 
 **Save your IPTV account and optionally auto-select at startup**
 ![Image](https://github.com/user-attachments/assets/678582bc-8af9-499b-b601-38b7786b57bf)
+
+# How To compile the source code
+
+## Windows Project Setup Instructions
+
+### 1. Install latest Python 3
+- Run the [latest Python 3 installer](https://www.python.org/downloads/).
+- During installation, make sure to:
+  - **Use administrator privileges** when installing Python
+  - **Add `python.exe` to the system PATH**
+  - Select any other appropriate options as prompted
+
+### 2. Open a Windows Command Prompt and install all dependencies
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install --upgrade setuptools
+python -m pip install --upgrade pyinstaller
+python -m pip install --upgrade requests lxml python-dateutil PyQt5
+```
+
+### 3. Verify that PyInstaller is installed correctly
+
+```bash
+pyinstaller --version
+# Example of expected output: 6.14.0
+```
+
+### 4. Final Setup
+- Run the [build_iptv_player.bat](build_iptv_player.bat) file to start the process.
+
+## Rocky9/RHEL9 Project Setup Instructions
+
+### 1. Install latest Python 3
+- To compile Python yourself, download the [source code](https://www.python.org/downloads/source/)
+- Tested with Python 3.13.4\
+ _Note:_  The following dependencies must be installed:\
+`dnf install python3-dev python-dev`\
+If you are building Python by yourself, rebuild with `--enable-shared` (or, `--enable-framework` on macOS).\
+
+### 2. Open a Terminal and install all dependencies
+
+```bash
+python3 -m pip install --upgrade pip
+python3 -m pip install --upgrade setuptools
+python3 -m pip install --upgrade pyinstaller
+python3 -m pip install --upgrade requests lxml python-dateutil PyQt5
+```
+_Note:_ If you are not logged in as root (which is recommended), you need to ensure that `pyInstaller` is included in your PATH environment variable:
+```bash
+export PATH=$PATH:$HOME/.local/bin
+```
+
+### 3. Verify that PyInstaller is installed correctly
+
+```bash
+pyinstaller --version
+# Example of expected output: 6.14.0
+```
+
+### 4. Final Setup
+- Make the SH script executable with the command:\
+`chmod +x build_iptv_player.sh`
+- Run the [./build_iptv_player.sh](build_iptv_player.sh) file to start the process.
