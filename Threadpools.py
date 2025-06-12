@@ -50,13 +50,16 @@ class FetchDataWorkerSignals(QObject):
     show_info_msg   = pyqtSignal(str, str)
 
 class FetchDataWorker(QRunnable):
-    def __init__(self, server, username, password, parent=None):
+    def __init__(self, server, username, password, live_url_format, movie_url_format, series_url_format, parent=None):
         super().__init__()
-        self.server     = server
-        self.username   = username
-        self.password   = password
-        self.parent     = parent
-        self.signals    = FetchDataWorkerSignals()
+        self.server            = server
+        self.username          = username
+        self.password          = password
+        self.live_url_format   = live_url_format
+        self.movie_url_format  = movie_url_format
+        self.series_url_format = series_url_format
+        self.parent            = parent
+        self.signals           = FetchDataWorkerSignals()
 
     @pyqtSlot()
     def run(self):
@@ -347,7 +350,7 @@ class FetchDataWorker(QRunnable):
 
                     #Check if stream_id is valid
                     if stream_id:
-                        entries_per_stream_type[tab_name][idx]["url"] = f"{self.server}/{stream_type}/{self.username}/{self.password}/{stream_id}.{container_extension}"
+                        entries_per_stream_type[tab_name][idx]["url"] = self.generate_url(stream_type, stream_id, container_extension)
 
                         #Check if stream id is in favorites list in userdata.ini
                         if stream_id in fav_data.get('stream_ids', []):
@@ -380,6 +383,30 @@ class FetchDataWorker(QRunnable):
         except Exception as e:
             print(f"Exception! {e}")
             self.signals.error.emit(str(e))
+
+    def generate_url(self, stream_type, stream_id, container_extension):
+        # Select the appropriate format string
+        if stream_type == 'live':
+            fmt = self.live_url_format
+        elif stream_type == 'movie':
+            fmt = self.movie_url_format
+        else:
+            # Fallback format if unknown type
+            fmt = "{server}/{stream_type}/{username}/{password}/{stream_id}.{container_extension}"
+    
+        # Remove extension if not included in the format string
+        if ".{container_extension}" not in fmt:
+            container_extension = ""
+    
+        # Format and return the URL
+        return fmt.format(
+            server=self.server,
+            username=self.username,
+            password=self.password,
+            stream_type=stream_type,
+            stream_id=stream_id,
+            container_extension=container_extension
+        )
 
 class MovieInfoFetcherSignals(QObject):
     finished    = pyqtSignal(dict, dict)
