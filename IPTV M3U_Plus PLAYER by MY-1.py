@@ -29,9 +29,9 @@ from PyQt5.QtWidgets import (
 from AccountManager import AccountManager
 from CustomPyQtWidgets import LiveInfoBox, MovieInfoBox, SeriesInfoBox
 import Threadpools
-from Threadpools import FetchDataWorker, SearchWorker, EPGWorker, MovieInfoFetcher, SeriesInfoFetcher, ImageFetcher
+from Threadpools import FetchDataWorker, SearchWorker, OnlineWorker, EPGWorker, MovieInfoFetcher, SeriesInfoFetcher, ImageFetcher
 
-CURRENT_VERSION = "V1.02.02"
+CURRENT_VERSION = "V1.03.00"
 
 is_windows  = sys.platform.startswith('win')
 is_mac      = sys.platform.startswith('darwin')
@@ -46,7 +46,10 @@ class IPTVPlayerApp(QMainWindow):
         self.resize(1300, 900)
 
         self.user_agents = [
-            "Mozilla/5.0", "AppleWebKit/537.36", "Chrome/123.0.0.0", "Safari/537.36", "okhttp/5.0.0-alpha.2", "Lavf53.32.100"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36", #chrome
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0", #firefox
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15", #safari
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.3351.83", #edge
         ]
         self.current_user_agent = ""
 
@@ -77,6 +80,10 @@ class IPTVPlayerApp(QMainWindow):
         self.path_to_series_icon    = path.abspath(path.join(path.dirname(__file__), 'Images/series_tab_icon.ico'))
         self.path_to_favorites_icon = path.abspath(path.join(path.dirname(__file__), 'Images/favorite_tab_icon.ico'))
         self.path_to_fav_colour_icon = path.abspath(path.join(path.dirname(__file__), 'Images/favorite_tab_icon_colour.ico'))
+        self.path_to_online_status_icon = path.abspath(path.join(path.dirname(__file__), 'Images/online_status.png'))
+        self.path_to_offline_status_icon = path.abspath(path.join(path.dirname(__file__), 'Images/offline_status.png'))
+        self.path_to_maybe_status_icon = path.abspath(path.join(path.dirname(__file__), 'Images/maybe_status.png'))
+        self.path_to_unknown_status_icon = path.abspath(path.join(path.dirname(__file__), 'Images/unknown_status.png'))
         self.path_to_info_icon      = path.abspath(path.join(path.dirname(__file__), 'Images/info_tab_icon.ico'))
         self.path_to_settings_icon  = path.abspath(path.join(path.dirname(__file__), 'Images/settings_tab_icon.ico'))
 
@@ -137,6 +144,9 @@ class IPTVPlayerApp(QMainWindow):
             'Seasons': [],
             'Episodes': []
         }
+
+        # Whether to request the VODs or not
+        self.vods_enabled = True
 
         #Create search bar dicts
         self.category_search_bars   = {}
@@ -663,6 +673,10 @@ class IPTVPlayerApp(QMainWindow):
         self.choose_player_button.setToolTip("Set the Media Player used for watching content, use e.g. VLC or SMPlayer")
         self.choose_player_button.clicked.connect(self.choose_external_player)
 
+        self.vods_enabled_checkbox = QCheckBox("VODs enabled")
+        self.vods_enabled_checkbox.setToolTip("Load the Movies/Series tabs for the IPTV account")
+        self.vods_enabled_checkbox.stateChanged.connect(self.toggleVODs)
+
         self.keep_on_top_checkbox = QCheckBox("Keep on top")
         self.keep_on_top_checkbox.setToolTip("Keep the application on top of all windows")
         self.keep_on_top_checkbox.stateChanged.connect(self.toggleKeepOnTop)
@@ -693,13 +707,14 @@ class IPTVPlayerApp(QMainWindow):
         #Add widgets to settings tab layout
         self.settings_layout.addWidget(self.address_book_button,                            0, 0)
         self.settings_layout.addWidget(self.choose_player_button,                           0, 1)
-        self.settings_layout.addWidget(self.keep_on_top_checkbox,                           1, 0)
-        self.settings_layout.addWidget(QLabel("Default sorting order: "),                   2, 0)
-        self.settings_layout.addWidget(self.default_sorting_order_box,                      2, 1)
-        self.settings_layout.addWidget(QLabel("Select User-Agent (Advanced option): "),     3, 0)
-        self.settings_layout.addWidget(self.select_user_agent_box,                          3, 1)
-        self.settings_layout.addWidget(self.update_checker,                                 4, 0)
-        self.settings_layout.addWidget(self.auto_update_checkbox,                           4, 1)
+        self.settings_layout.addWidget(self.vods_enabled_checkbox,                          1, 0)
+        self.settings_layout.addWidget(self.keep_on_top_checkbox,                           2, 0)
+        self.settings_layout.addWidget(QLabel("Default sorting order: "),                   3, 0)
+        self.settings_layout.addWidget(self.default_sorting_order_box,                      3, 1)
+        self.settings_layout.addWidget(QLabel("Select User-Agent (Advanced option): "),     4, 0)
+        self.settings_layout.addWidget(self.select_user_agent_box,                          4, 1)
+        self.settings_layout.addWidget(self.update_checker,                                 5, 0)
+        self.settings_layout.addWidget(self.auto_update_checkbox,                           5, 1)
         # self.settings_layout.addWidget(self.cache_on_startup_checkbox,  2, 0)
         # self.settings_layout.addWidget(self.reload_data_btn,            3, 0)
 
@@ -732,6 +747,27 @@ class IPTVPlayerApp(QMainWindow):
 
         #Update combobox to selection
         self.select_user_agent_box.setCurrentText(self.current_user_agent)
+
+    def loadDefaultVODs(self):
+        #Read userdata config file
+        config = configparser.ConfigParser()
+        config.read(self.user_data_file)
+
+        #Check if defined in config. Otherwise set to default
+        if 'VOD' in config:
+            self.vods_enabled = (config['VOD']['enabled'] == 'True')
+        else:
+            self.vods_enabled = True
+
+        #Update tabs to match config
+        self.tab_widget.setTabEnabled(1, self.vods_enabled)
+        self.tab_widget.setTabEnabled(2, self.vods_enabled)
+
+        #Update checkbox to match config
+        if self.vods_enabled:
+            self.vods_enabled_checkbox.setCheckState(Qt.Checked)
+        else:
+            self.vods_enabled_checkbox.setCheckState(Qt.Unchecked)
 
     def checkForUpdates(self, enable_update_msg):
         try:
@@ -839,6 +875,9 @@ class IPTVPlayerApp(QMainWindow):
         #Load default user agent
         self.loadDefaultUserAgent()
 
+        #Load if VODs enabled
+        self.loadDefaultVODs()
+
         #Load default auto update checker
         self.loadDefaultAutoUpdate()
 
@@ -890,6 +929,19 @@ class IPTVPlayerApp(QMainWindow):
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
         self.show()
 
+    def toggleVODs(self, state):
+        checked = bool(state)
+
+        self.vods_enabled = checked
+        self.tab_widget.setTabEnabled(1, checked)
+        self.tab_widget.setTabEnabled(2, checked)
+
+        config = configparser.ConfigParser()
+        config.read(self.user_data_file)
+        config['VOD'] = {'enabled': checked}
+        with open(self.user_data_file, 'w') as config_file:
+            config.write(config_file)
+    
     def toggle_cache_on_startup(self, state):
         if state == Qt.Checked:
             print("checked")
@@ -985,7 +1037,7 @@ class IPTVPlayerApp(QMainWindow):
         self.set_progress_bar(0, "Going to fetch data...")
 
     def fetch_data_thread(self):
-        dataWorker = FetchDataWorker(self.server, self.username, self.password, self.live_url_format, self.movie_url_format, self.series_url_format, self)
+        dataWorker = FetchDataWorker(self.server, self.username, self.password, self.live_url_format, self.movie_url_format, self.series_url_format, self, self.vods_enabled)
         dataWorker.signals.finished.connect(self.process_data)
         dataWorker.signals.error.connect(self.on_fetch_data_error)
         dataWorker.signals.progress_bar.connect(self.animate_progress)
@@ -1063,6 +1115,10 @@ class IPTVPlayerApp(QMainWindow):
             #Clear category and streaming list
             self.category_list_widgets[stream_type].clear()
             self.streaming_list_widgets[stream_type].clear()
+
+            #Skip VODs if option enabled
+            if self.vods_enabled is False and (stream_type == 'Movies' or stream_type == 'Series'):
+                continue
 
             #Fill currently loaded streams with current stream data
             for entry in self.entries_per_stream_type[stream_type]:
@@ -1503,6 +1559,20 @@ class IPTVPlayerApp(QMainWindow):
         except Exception as e:
             print(f"Failed: {e}")
 
+    def startOnlineWorker(self, url):
+        #Create Stream Status thread worker that will determine if stream looks online or not
+        online_worker = OnlineWorker(url, self)
+        online_worker.signals.finished.connect(self.ProcessStreamStatus)
+        self.threadpool.start(online_worker)
+
+    def ProcessStreamStatus(self, stream_status):
+        if (stream_status == "True"):
+            self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_online_status_icon).scaledToWidth(25))
+        elif (stream_status == "Maybe"):
+            self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_maybe_status_icon).scaledToWidth(25))
+        else:
+            self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_offline_status_icon).scaledToWidth(25))
+
     def startEPGWorker(self, stream_id):
         #Create EPG thread worker that will fetch EPG data
         epg_worker = EPGWorker(self.server, self.username, self.password, stream_id, self)
@@ -1632,6 +1702,9 @@ class IPTVPlayerApp(QMainWindow):
                 #Set TV channel name in info window
                 self.live_info_box.EPG_box_label.setText(f"{clicked_item_data['name']}")
 
+                #Clear Stream Status indicator
+                self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_unknown_status_icon).scaledToWidth(25))
+
                 #Clear EPG data
                 self.live_info_box.live_EPG_info.clear()
                 item = QTreeWidgetItem(["...", "...", "...", "Loading EPG Data..."])
@@ -1639,6 +1712,9 @@ class IPTVPlayerApp(QMainWindow):
 
                 #Fetch cover image
                 self.fetch_image(clicked_item_data['stream_icon'], 'Live')
+
+                # Fetch stream status
+                self.startOnlineWorker(clicked_item_data['url'])
 
                 #Fetch EPG data
                 self.startEPGWorker(clicked_item_data['stream_id'])
@@ -1894,17 +1970,30 @@ class IPTVPlayerApp(QMainWindow):
                 print(f"Going to play: {url}")
                 self.animate_progress(0, 100, "Loading player for streaming")
 
-                user_agent_argument = f":http-user-agent=Lavf53.32.100"
-                # command = [self.external_player_command, stream_url, user_agent_argument]
+                user_agent_argument = f":http-user-agent={self.current_user_agent}"
  
                 if is_linux:
                     # Ensure the external player command is executable
                     if not os.access(self.external_player_command, os.X_OK):
                         self.animate_progress(0, 100, "Selected player is not executable")
                         return
-
+                    
+                if is_windows:
+                    # Support PotPlayer with the proper command line
+                    if "PotPlayerMini64.exe" in self.external_player_command:
+                        user_agent_argument = f"/user_agent=\"{self.current_user_agent}\""
+                        pot_player = f"{self.external_player_command} \"{url}\" {user_agent_argument}"
+                        subprocess.Popen(pot_player)
+                        return
+                    
+                    # Support MPV with the proper command line
+                    if ("mpv.exe" in self.external_player_command) or ("mpv.com" in self.external_player_command):
+                        user_agent_argument = f"--user-agent=\"{self.current_user_agent}\""
+                        mpv_player = f"{self.external_player_command} {user_agent_argument} \"{url}\""
+                        subprocess.Popen(mpv_player)
+                        return
+                
                 subprocess.Popen([self.external_player_command, url, user_agent_argument])
-                # subprocess.Popen([self.external_player_command, url])
             except Exception as e:
                 self.animate_progress(0, 100, "Failed playing stream")
                 print(f"Failed playing stream [{url}]: {e}")
@@ -1927,7 +2016,7 @@ class IPTVPlayerApp(QMainWindow):
         file_dialog.setFileMode(QFileDialog.ExistingFile)
 
         if sys.platform.startswith('win'):
-            file_dialog.setNameFilter("Executable files (*.exe *.bat)")
+            file_dialog.setNameFilter("Executable files (*.exe *.bat, *.com)")
         else:
             file_dialog.setNameFilter("Executable files (*)")
 

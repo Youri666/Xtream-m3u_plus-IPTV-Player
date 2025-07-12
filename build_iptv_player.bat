@@ -85,6 +85,10 @@ REM Run PyInstaller directly with all necessary options and added data files
   --add-data "Images/film_camera_icon.ico;Images" ^
   --add-data "Images/primary_full-TMDB.svg;Images" ^
   --add-data "Images/yt_icon_rgb.png;Images" ^
+  --add-data "Images/unknown_status.png;Images" ^
+  --add-data "Images/online_status.png;Images" ^
+  --add-data "Images/maybe_status.png;Images" ^
+  --add-data "Images/offline_status.png;Images" ^
   --add-data "Threadpools.py;." ^
   --add-data "CustomPyQtWidgets.py;." ^
   --add-data "AccountManager.py;." ^
@@ -121,6 +125,10 @@ REM Create executable with debug console
   --add-data "Images/film_camera_icon.ico;Images" ^
   --add-data "Images/primary_full-TMDB.svg;Images" ^
   --add-data "Images/yt_icon_rgb.png;Images" ^
+  --add-data "Images/unknown_status.png;Images" ^
+  --add-data "Images/online_status.png;Images" ^
+  --add-data "Images/maybe_status.png;Images" ^
+  --add-data "Images/offline_status.png;Images" ^
   --add-data "Threadpools.py;." ^
   --add-data "CustomPyQtWidgets.py;." ^
   --add-data "AccountManager.py;." ^
