@@ -51,6 +51,12 @@ class LiveInfoBox(QWidget):
         self.live_EPG_info.setColumnWidth(1, 50)
         self.live_EPG_info.setColumnWidth(2, 50)
 
+        #Create stream status indicator
+        self.stream_status = QLabel()
+        self.stream_status_img = QPixmap(self.parent.path_to_unknown_status_icon)
+        self.stream_status.setPixmap(self.stream_status_img.scaledToWidth(24))
+        self.stream_status.setFixedWidth(25)
+
         #Create favorites button
         self.fav_button = QPushButton("")
         self.fav_button.setStyleSheet("text-align: left")
@@ -62,6 +68,7 @@ class LiveInfoBox(QWidget):
         #Create title layout with favorites button
         self.title_layout = QHBoxLayout()
         self.title_layout.addWidget(self.fav_button)
+        self.title_layout.addWidget(self.stream_status)
         self.title_layout.addWidget(self.EPG_box_label)
 
         #Add TV channel label and EPG data to info box

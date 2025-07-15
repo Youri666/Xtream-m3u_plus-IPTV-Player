@@ -35,12 +35,13 @@ import base64
 
 CONNECTION_HEADER           = "Keep-Alive"
 CONTENT_HEADER              = "gzip, deflate"
-DEFAULT_USER_AGENT_HEADER   = "Chrome/123.0.0.0"
+DEFAULT_USER_AGENT_HEADER   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
 
 # CUSTOM_USER_AGENT = "Connection: Keep-Alive Accept-Encoding: gzip, deflate "
 
 CONNECTION_TIMEOUT  = 3
 READ_TIMEOUT        = 10
+LIVE_STATUS_TIMEOUT = 7
 
 class FetchDataWorkerSignals(QObject):
     finished        = pyqtSignal(dict, dict, dict)
@@ -50,7 +51,7 @@ class FetchDataWorkerSignals(QObject):
     show_info_msg   = pyqtSignal(str, str)
 
 class FetchDataWorker(QRunnable):
-    def __init__(self, server, username, password, live_url_format, movie_url_format, series_url_format, parent=None):
+    def __init__(self, server, username, password, live_url_format, movie_url_format, series_url_format, parent=None, fetch_vods=True):
         super().__init__()
         self.server            = server
         self.username          = username
@@ -58,6 +59,7 @@ class FetchDataWorker(QRunnable):
         self.live_url_format   = live_url_format
         self.movie_url_format  = movie_url_format
         self.series_url_format = series_url_format
+        self.fetch_vods        = fetch_vods
         self.parent            = parent
         self.signals           = FetchDataWorkerSignals()
 
@@ -163,61 +165,63 @@ class FetchDataWorker(QRunnable):
                         #     "Please check your internet connection or if IPTV server is still online.")
                         print("Failed fetching Live TV categories")
 
-                print("Fetching Movies categories")
-                self.signals.progress_bar.emit(10, 20, "Fetching VOD Categories")
-                try:
-                    params['action'] = 'get_vod_categories'
-                    movies_category_resp = requests.get(host_url, params=params, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
-                    movies_category_resp.raise_for_status()  #Raises HTTP error is status is 4xx or 5xx
+                if self.fetch_vods:
+                    print("Fetching Movies categories")
+                    self.signals.progress_bar.emit(10, 20, "Fetching VOD Categories")
+                    try:
+                        params['action'] = 'get_vod_categories'
+                        movies_category_resp = requests.get(host_url, params=params, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
+                        movies_category_resp.raise_for_status()  #Raises HTTP error is status is 4xx or 5xx
 
-                    categories_per_stream_type['Movies'] = movies_category_resp.json()
-                except Exception as e:
-                    print(f"failed fetching VOD categories: {e}")
+                        categories_per_stream_type['Movies'] = movies_category_resp.json()
+                    except Exception as e:
+                        print(f"failed fetching VOD categories: {e}")
 
-                    if cached_data.get('Movies categories', 0):
-                        print("Getting Movies categories from cache")
-                        categories_per_stream_type['Movies'] = cached_data['Movies categories']
+                        if cached_data.get('Movies categories', 0):
+                            print("Getting Movies categories from cache")
+                            categories_per_stream_type['Movies'] = cached_data['Movies categories']
 
-                        #Notify user that data is fetched from cache file
-                        # self.signals.show_info_msg.emit('Getting IPTV data from cache', 
-                        #     "Couldn't get Movies categories from IPTV provider.\n"
-                        #     "Please check your internet connection or if IPTV server is still online.\n"
-                        #     "Fortunately, Movies categories could be loaded from cache.")
-                        print("Failed fetching Movies categories. Got them from cache.")
-                    else:
-                        #Display error msg that data fetching failed
-                        # self.signals.show_error_msg.emit('Failed fetching data from IPTV provider', 
-                        #     "Couldn't get Movies categories from IPTV provider.\n"
-                        #     "Please check your internet connection or if IPTV server is still online.")
-                        print("Failed fetching Movies categories")
+                            #Notify user that data is fetched from cache file
+                            # self.signals.show_info_msg.emit('Getting IPTV data from cache', 
+                            #     "Couldn't get Movies categories from IPTV provider.\n"
+                            #     "Please check your internet connection or if IPTV server is still online.\n"
+                            #     "Fortunately, Movies categories could be loaded from cache.")
+                            print("Failed fetching Movies categories. Got them from cache.")
+                        else:
+                            #Display error msg that data fetching failed
+                            # self.signals.show_error_msg.emit('Failed fetching data from IPTV provider', 
+                            #     "Couldn't get Movies categories from IPTV provider.\n"
+                            #     "Please check your internet connection or if IPTV server is still online.")
+                            print("Failed fetching Movies categories")
 
-                print("Fetching Series categories")
-                self.signals.progress_bar.emit(20, 30, "Fetching Series Categories")
-                try:
-                    params['action'] = 'get_series_categories'
-                    series_category_resp = requests.get(host_url, params=params, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
-                    series_category_resp.raise_for_status()  #Raises HTTP error is status is 4xx or 5xx
+                if self.fetch_vods:
+                    print("Fetching Series categories")
+                    self.signals.progress_bar.emit(20, 30, "Fetching Series Categories")
+                    try:
+                        params['action'] = 'get_series_categories'
+                        series_category_resp = requests.get(host_url, params=params, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
+                        series_category_resp.raise_for_status()  #Raises HTTP error is status is 4xx or 5xx
 
-                    categories_per_stream_type['Series'] = series_category_resp.json()
-                except Exception as e:
-                    print(f"failed fetching Series categories: {e}")
+                        categories_per_stream_type['Series'] = series_category_resp.json()
+                    except Exception as e:
+                        print(f"failed fetching Series categories: {e}")
 
-                    if cached_data.get('Series categories', 0):
-                        print("Getting Series categories from cache")
-                        categories_per_stream_type['Series'] = cached_data['Series categories']
+                        if cached_data.get('Series categories', 0):
+                            print("Getting Series categories from cache")
+                            categories_per_stream_type['Series'] = cached_data['Series categories']
 
-                        #Notify user that data is fetched from cache file
-                        # self.signals.show_info_msg.emit('Getting IPTV data from cache', 
-                        #     "Couldn't get Series categories from IPTV provider.\n"
-                        #     "Please check your internet connection or if IPTV server is still online.\n"
-                        #     "Fortunately, Series categories could be loaded from cache.")
-                        print("Failed fetching Series categories. Got them from cache.")
-                    else:
-                        #Display error msg that data fetching failed
-                        # self.signals.show_error_msg.emit('Failed fetching data from IPTV provider', 
-                        #     "Couldn't get Series categories from IPTV provider.\n"
-                        #     "Please check your internet connection or if IPTV server is still online.")
-                        print("Failed fetching Series categories")
+                            #Notify user that data is fetched from cache file
+                            # self.signals.show_info_msg.emit('Getting IPTV data from cache', 
+                            #     "Couldn't get Series categories from IPTV provider.\n"
+                            #     "Please check your internet connection or if IPTV server is still online.\n"
+                            #     "Fortunately, Series categories could be loaded from cache.")
+                            print("Failed fetching Series categories. Got them from cache.")
+                        else:
+                            #Display error msg that data fetching failed
+                            # self.signals.show_error_msg.emit('Failed fetching data from IPTV provider', 
+                            #     "Couldn't get Series categories from IPTV provider.\n"
+                            #     "Please check your internet connection or if IPTV server is still online.")
+                            print("Failed fetching Series categories")
 
                 print("Fetching Live TV streaming data")
                 #Get all streaming data
@@ -248,61 +252,63 @@ class FetchDataWorker(QRunnable):
                         #     "Please check your internet connection or if IPTV server is still online.")
                         print("Failed fetching Live TV streams")
 
-                print("Fetching Movies streaming data")
-                self.signals.progress_bar.emit(40, 60, "Fetching VOD Streaming data")
-                try:
-                    params['action'] = 'get_vod_streams'
-                    movies_streams_resp = requests.get(host_url, params=params, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
-                    movies_streams_resp.raise_for_status()  #Raises HTTP error is status is 4xx or 5xx
+                if self.fetch_vods:
+                    print("Fetching Movies streaming data")
+                    self.signals.progress_bar.emit(40, 60, "Fetching VOD Streaming data")
+                    try:
+                        params['action'] = 'get_vod_streams'
+                        movies_streams_resp = requests.get(host_url, params=params, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
+                        movies_streams_resp.raise_for_status()  #Raises HTTP error is status is 4xx or 5xx
 
-                    entries_per_stream_type['Movies'] = movies_streams_resp.json()
-                except Exception as e:
-                    print(f"failed fetching VOD streams: {e}")
+                        entries_per_stream_type['Movies'] = movies_streams_resp.json()
+                    except Exception as e:
+                        print(f"failed fetching VOD streams: {e}")
 
-                    if cached_data.get('Movies', 0):
-                        print("Getting Movies streams from cache")
-                        entries_per_stream_type['Movies'] = cached_data['Movies']
+                        if cached_data.get('Movies', 0):
+                            print("Getting Movies streams from cache")
+                            entries_per_stream_type['Movies'] = cached_data['Movies']
 
-                        #Notify user that data is fetched from cache file
-                        # self.signals.show_info_msg.emit('Getting IPTV data from cache', 
-                        #     "Couldn't get Movies streams from IPTV provider.\n"
-                        #     "Please check your internet connection or if IPTV server is still online.\n"
-                        #     "Fortunately, Movies streams could be loaded from cache.")
-                        print("Failed fetching Movies streams. Got them from cache.")
-                    else:
-                        #Display error msg that data fetching failed
-                        # self.signals.show_error_msg.emit('Failed fetching data from IPTV provider', 
-                        #     "Couldn't get Movies streams from IPTV provider.\n"
-                        #     "Please check your internet connection or if IPTV server is still online.")
-                        print("Failed fetching Live TV streams")
+                            #Notify user that data is fetched from cache file
+                            # self.signals.show_info_msg.emit('Getting IPTV data from cache', 
+                            #     "Couldn't get Movies streams from IPTV provider.\n"
+                            #     "Please check your internet connection or if IPTV server is still online.\n"
+                            #     "Fortunately, Movies streams could be loaded from cache.")
+                            print("Failed fetching Movies streams. Got them from cache.")
+                        else:
+                            #Display error msg that data fetching failed
+                            # self.signals.show_error_msg.emit('Failed fetching data from IPTV provider', 
+                            #     "Couldn't get Movies streams from IPTV provider.\n"
+                            #     "Please check your internet connection or if IPTV server is still online.")
+                            print("Failed fetching Live TV streams")
 
-                print("Fetching Series streaming data")
-                self.signals.progress_bar.emit(60, 80, "Fetching Series Streaming data")
-                try:
-                    params['action'] = 'get_series'
-                    series_streams_resp = requests.get(host_url, params=params, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
-                    series_streams_resp.raise_for_status()  #Raises HTTP error is status is 4xx or 5xx
+                if self.fetch_vods:
+                    print("Fetching Series streaming data")
+                    self.signals.progress_bar.emit(60, 80, "Fetching Series Streaming data")
+                    try:
+                        params['action'] = 'get_series'
+                        series_streams_resp = requests.get(host_url, params=params, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
+                        series_streams_resp.raise_for_status()  #Raises HTTP error is status is 4xx or 5xx
 
-                    entries_per_stream_type['Series'] = series_streams_resp.json()
-                except Exception as e:
-                    print(f"failed fetching Series streams: {e}")
+                        entries_per_stream_type['Series'] = series_streams_resp.json()
+                    except Exception as e:
+                        print(f"failed fetching Series streams: {e}")
 
-                    if cached_data.get('Series', 0):
-                        print("Getting Series streams from cache")
-                        entries_per_stream_type['Series'] = cached_data['Series']
+                        if cached_data.get('Series', 0):
+                            print("Getting Series streams from cache")
+                            entries_per_stream_type['Series'] = cached_data['Series']
 
-                        #Notify user that data is fetched from cache file
-                        # self.signals.show_info_msg.emit('Getting IPTV data from cache', 
-                        #     "Couldn't get Series streams from IPTV provider.\n"
-                        #     "Please check your internet connection or if IPTV server is still online.\n"
-                        #     "Fortunately, Series streams could be loaded from cache.")
-                        print("Failed fetching Series streams. Got them from cache.")
-                    else:
-                        #Display error msg that data fetching failed
-                        # self.signals.show_error_msg.emit('Failed fetching data from IPTV provider', 
-                        #     "Couldn't get Series streams from IPTV provider.\n"
-                        #     "Please check your internet connection or if IPTV server is still online.")
-                        print("Failed fetching Series streams")
+                            #Notify user that data is fetched from cache file
+                            # self.signals.show_info_msg.emit('Getting IPTV data from cache', 
+                            #     "Couldn't get Series streams from IPTV provider.\n"
+                            #     "Please check your internet connection or if IPTV server is still online.\n"
+                            #     "Fortunately, Series streams could be loaded from cache.")
+                            print("Failed fetching Series streams. Got them from cache.")
+                        else:
+                            #Display error msg that data fetching failed
+                            # self.signals.show_error_msg.emit('Failed fetching data from IPTV provider', 
+                            #     "Couldn't get Series streams from IPTV provider.\n"
+                            #     "Please check your internet connection or if IPTV server is still online.")
+                            print("Failed fetching Series streams")
 
                 print("going to create cached data")
 
@@ -671,3 +677,51 @@ class EPGWorker(QRunnable):
         except Exception as e:
             print(f"failed decrypting: {e}")
 
+class OnlineWorkerSignals(QObject):
+    finished = pyqtSignal(int, str)
+
+class OnlineWorker(QRunnable):
+    def __init__(self, stream_id, url, parent=None):
+        super().__init__()
+        self.stream_id  = int(stream_id)
+        self.url        = url
+        self.parent     = parent
+        self.signals    = OnlineWorkerSignals()
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            #Create header
+            headers = {
+                "Connection": CONNECTION_HEADER,
+                "Accept-Encoding": CONTENT_HEADER,
+                "User-Agent": self.parent.current_user_agent
+            }
+
+            #Requesting stream playlist data
+            response = requests.get(self.url, headers=headers, timeout=(CONNECTION_TIMEOUT, LIVE_STATUS_TIMEOUT))
+            response_code = response.status_code
+            url_data = response.text
+
+            #Determine if stream looks offline or not
+            stream_offline = self.checkStatus(response_code, url_data)
+
+            self.signals.finished.emit(self.stream_id, str(stream_offline))
+        except Exception as e:
+            self.signals.finished.emit(self.stream_id, str(False))
+
+    def checkStatus(self, response_code, url_data):
+        if response_code != 200:  # need HTTP OK status
+            return False
+
+        if "offline" in url_data: #some providers use offline.m3u8 as a dummy video file
+            return False
+        
+        if "EXT-X-ENDLIST" in url_data: #m3u file is saying stream is over
+            return False
+        
+        if "#EXT-X-MEDIA-SEQUENCE:0" in url_data:                 #some providers respond with a fresh "Stream starting soon" stream
+            if "_0.ts" in url_data and "_1.ts" not in url_data:   #this technically just means a stream is freshly started, hence the "Maybe" online
+                return "Maybe"                                    #officially, see https://datatracker.ietf.org/doc/html/rfc8216#section-4.3.3.2   
+
+        return True
