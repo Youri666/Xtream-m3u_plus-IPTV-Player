@@ -1,3 +1,4 @@
+from string import Template
 import sys
 import os
 from os import path
@@ -8,8 +9,9 @@ import configparser
 import re
 import json
 import html
+import math
 from lxml import etree, html
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from dateutil import parser, tz
 import xml.etree.ElementTree as ET
 from PyQt5.QtGui import QIcon, QFont, QImage, QPixmap, QColor
@@ -35,7 +37,7 @@ import base64
 
 CONNECTION_HEADER           = "Keep-Alive"
 CONTENT_HEADER              = "gzip, deflate"
-DEFAULT_USER_AGENT_HEADER   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+DEFAULT_USER_AGENT_HEADER   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36" #chrome
 
 # CUSTOM_USER_AGENT = "Connection: Keep-Alive Accept-Encoding: gzip, deflate "
 
@@ -678,7 +680,7 @@ class EPGWorker(QRunnable):
             print(f"failed decrypting: {e}")
 
 class OnlineWorkerSignals(QObject):
-    finished = pyqtSignal(int, str)
+    finished = pyqtSignal(int, str, str)
 
 class OnlineWorker(QRunnable):
     def __init__(self, stream_id, url, parent=None):
@@ -704,11 +706,25 @@ class OnlineWorker(QRunnable):
             url_data = response.text
 
             #Determine if stream looks offline or not
-            stream_offline = self.checkStatus(response_code, url_data)
+            stream_online = self.checkStatus(response_code, url_data)
 
-            self.signals.finished.emit(self.stream_id, str(stream_offline))
+            # Calculate an estimate of how long the channel has been live for
+            channel_uptime_str = "Unknown"
+            if (stream_online == True):
+                x_target_duration_regexp = re.search(r"EXT-X-TARGETDURATION:([0-9]+)", url_data)
+                if (x_target_duration_regexp != None):
+                    x_target_duration = x_target_duration_regexp.group(1)
+                    x_media_seq_regexp = re.search(r"EXT-X-MEDIA-SEQUENCE:([0-9]+)", url_data)
+                    if (x_media_seq_regexp != None):
+                        x_media_seq = x_media_seq_regexp.group(1)
+                        channel_secs = math.ceil((int(x_target_duration) * int(x_media_seq)))
+                        channel_uptime = timedelta(seconds=channel_secs)
+                        channel_uptime_str = self.strfdelta(channel_uptime)
+                            
+
+            self.signals.finished.emit(self.stream_id, str(stream_online), channel_uptime_str)
         except Exception as e:
-            self.signals.finished.emit(self.stream_id, str(False))
+            self.signals.finished.emit(self.stream_id, str(False), "Offline")
 
     def checkStatus(self, response_code, url_data):
         if response_code != 200:  # need HTTP OK status
@@ -725,3 +741,19 @@ class OnlineWorker(QRunnable):
                 return "Maybe"                                    #officially, see https://datatracker.ietf.org/doc/html/rfc8216#section-4.3.3.2   
 
         return True
+    
+    def strfdelta(self, tdelta :timedelta):
+        format_string = ""
+        if (tdelta.days > 0):
+            format_string = str(tdelta.days) + " days "
+
+        hours, rem = divmod(tdelta.seconds, 3600)
+        minutes = math.ceil(rem / 60)
+        if hours > 0:
+            format_string += str(hours) + " hours "
+        if minutes > 0:
+            format_string += str(minutes) + " minutes"
+        elif minutes == 0:
+            format_string += "Less than a minute"
+        
+        return format_string
