@@ -57,6 +57,13 @@ class LiveInfoBox(QWidget):
         self.stream_status.setPixmap(self.stream_status_img.scaledToWidth(24))
         self.stream_status.setFixedWidth(25)
 
+        # Create stream status x_media_seq label (Used for channel uptime)
+        self.media_seq_lbl = QLabel("Channel uptime: ")
+        self.media_seq_lbl.setFont(QFont('Arial', 8))
+
+        self.x_media_seq = QLabel()
+        self.x_media_seq.setFont(QFont('Arial', 8))
+
         #Create favorites button
         self.fav_button = QPushButton("")
         self.fav_button.setStyleSheet("text-align: left")
@@ -71,8 +78,19 @@ class LiveInfoBox(QWidget):
         self.title_layout.addWidget(self.stream_status)
         self.title_layout.addWidget(self.EPG_box_label)
 
+        # Create stream status label (Media sequence)
+        self.stream_sequence = QGridLayout()
+        self.stream_sequence.addWidget(self.media_seq_lbl, 0, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+        self.stream_sequence.addWidget(self.x_media_seq, 0 , 1, alignment=Qt.AlignmentFlag.AlignLeft)
+
+        # Create a horizontal layout to left align the stream sequence
+        self.stream_sequence_layout = QHBoxLayout()
+        self.stream_sequence_layout.addLayout(self.stream_sequence)
+        self.stream_sequence_layout.addStretch()
+
         #Add TV channel label and EPG data to info box
         self.live_EPG_info_box_layout.addLayout(self.title_layout)
+        self.live_EPG_info_box_layout.addLayout(self.stream_sequence_layout)
         self.live_EPG_info_box_layout.addWidget(self.cover)
         self.live_EPG_info_box_layout.addWidget(self.live_EPG_info)
 
