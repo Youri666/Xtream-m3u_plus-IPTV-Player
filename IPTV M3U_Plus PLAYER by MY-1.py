@@ -49,9 +49,14 @@ class IPTVPlayerApp(QMainWindow):
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36", #chrome
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0", #firefox
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15", #safari
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.3351.83", #edge
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.3351.83", #edge,
+            "otg/1.5.1 (AppleTv Apple TV 4; tvOS16.2; appletv.client) libcurl/7.58.0 OpenSSL/1.0.2o zlib/1.2.11 clib/1.8.56", #appleTV
+            "Lavf/62.1.97" #ffmpeg
         ]
         self.current_user_agent = ""
+
+        self.output_formats = ['m3u8', 'ts']
+        self.current_output_format = ""
 
         self.user_data_file = "userdata.ini"
         self.favorites_file = "favorites.json"
@@ -817,9 +822,16 @@ class IPTVPlayerApp(QMainWindow):
         # self.reload_data_btn.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_BrowserReload))
         # self.reload_data_btn.setToolTip("Click this to manually reload the IPTV data.\nNote that this only has effect if \'Startup with cached data\' is checked.")
 
+        self.advanced_settings_label = QLabel("Advanced Settings")
+        self.advanced_settings_label.setFont(QFont('Arial', 12, QFont.Bold))
+
         self.select_user_agent_box = QComboBox()
         self.select_user_agent_box.addItems(self.user_agents)
         self.select_user_agent_box.currentTextChanged.connect(lambda e: self.userAgentSelected(e, self.select_user_agent_box))
+
+        self.pref_output_format_box = QComboBox()
+        self.pref_output_format_box.addItems(self.output_formats)
+        self.pref_output_format_box.currentTextChanged.connect(lambda e: self.outputFormatSelected(e, self.pref_output_format_box))
 
         self.update_checker = QPushButton("Check for updates")
         self.update_checker.clicked.connect(lambda: self.checkForUpdates(True))
@@ -829,16 +841,19 @@ class IPTVPlayerApp(QMainWindow):
         self.auto_update_checkbox.stateChanged.connect(self.toggleAutoUpdate)
 
         #Add widgets to settings tab layout
-        self.settings_layout.addWidget(self.address_book_button,                            0, 0)
-        self.settings_layout.addWidget(self.choose_player_button,                           0, 1)
-        self.settings_layout.addWidget(self.vods_enabled_checkbox,                          1, 0)
-        self.settings_layout.addWidget(self.keep_on_top_checkbox,                           2, 0)
-        self.settings_layout.addWidget(QLabel("Default sorting order: "),                   3, 0)
-        self.settings_layout.addWidget(self.default_sorting_order_box,                      3, 1)
-        self.settings_layout.addWidget(QLabel("Select User-Agent (Advanced option): "),     4, 0)
-        self.settings_layout.addWidget(self.select_user_agent_box,                          4, 1)
-        self.settings_layout.addWidget(self.update_checker,                                 5, 0)
-        self.settings_layout.addWidget(self.auto_update_checkbox,                           5, 1)
+        self.settings_layout.addWidget(self.address_book_button,                  0, 0)
+        self.settings_layout.addWidget(self.choose_player_button,                 0, 1)
+        self.settings_layout.addWidget(self.vods_enabled_checkbox,                1, 0)
+        self.settings_layout.addWidget(self.keep_on_top_checkbox,                 2, 0)
+        self.settings_layout.addWidget(QLabel("Default sorting order: "),         3, 0)
+        self.settings_layout.addWidget(self.default_sorting_order_box,            3, 1)
+        self.settings_layout.addWidget(self.auto_update_checkbox,                 4, 0)
+        self.settings_layout.addWidget(self.update_checker,                       5, 0)
+        self.settings_layout.addWidget(self.advanced_settings_label,              6, 0)   
+        self.settings_layout.addWidget(QLabel("Select HTTP User-agent: "),        7, 0)
+        self.settings_layout.addWidget(self.select_user_agent_box,                7, 1)
+        self.settings_layout.addWidget(QLabel("Select live channel format: "),    8, 0)
+        self.settings_layout.addWidget(self.pref_output_format_box,               8, 1)
         # self.settings_layout.addWidget(self.cache_on_startup_checkbox,  2, 0)
         # self.settings_layout.addWidget(self.reload_data_btn,            3, 0)
 
@@ -871,6 +886,36 @@ class IPTVPlayerApp(QMainWindow):
 
         #Update combobox to selection
         self.select_user_agent_box.setCurrentText(self.current_user_agent)
+
+    def outputFormatSelected(self, e, combobox):
+        #Get selected text
+        output_format = combobox.currentText()
+
+        #Set current output format
+        self.current_output_format = output_format
+
+        #Save selected output format to userdata
+        config = configparser.ConfigParser()
+        config.read(self.user_data_file)
+
+        config['ExternalPlayer']['output-format'] = output_format
+
+        with open(self.user_data_file, 'w') as config_file:
+            config.write(config_file)
+
+    def loadDefaultOutputFormat(self):
+        #Read userdata config file
+        config = configparser.ConfigParser()
+        config.read(self.user_data_file)
+
+        #Check if defined in config. Otherwise set to default
+        if 'ExternalPlayer' in config and 'output-format' in config['ExternalPlayer']:
+            self.current_output_format = config['ExternalPlayer']['output-format']
+        else:
+            self.current_output_format = "m3u8"
+
+        #Update combobox to selection
+        self.pref_output_format_box.setCurrentText(self.current_output_format)
 
     def loadDefaultVODs(self):
         #Read userdata config file
@@ -998,6 +1043,9 @@ class IPTVPlayerApp(QMainWindow):
 
         #Load default user agent
         self.loadDefaultUserAgent()
+
+        #Load default output format
+        self.loadDefaultOutputFormat()
 
         #Load if VODs enabled
         self.loadDefaultVODs()
@@ -1195,6 +1243,7 @@ class IPTVPlayerApp(QMainWindow):
         status                  = user_info.get("status", "Unknown")
         expire_timestamp        = user_info.get("exp_date", 0)
         created_at_timestamp    = user_info.get("created_at", 0)
+        allowed_formats         = user_info.get("allowed_output_formats", [])
 
         #If a value is given
         if expire_timestamp:
@@ -1223,6 +1272,7 @@ class IPTVPlayerApp(QMainWindow):
             f"Password: {password}\n"
             f"Max Connections: {max_connections}\n"
             f"Active Connections: {active_connections}\n"
+            f"Allowed Formats: {allowed_formats}\n"
             f"Timezone: {timezone}\n"
             f"Trial: {trial}\n"
             f"Status: {status}\n"
@@ -1689,7 +1739,7 @@ class IPTVPlayerApp(QMainWindow):
         online_worker.signals.finished.connect(self.ProcessStreamStatus)
         self.threadpool.start(online_worker)
 
-    def ProcessStreamStatus(self, stream_id, stream_status):
+    def ProcessStreamStatus(self, stream_id, stream_status, x_media_seq):
         #Ensure user hasn't changed live channel before request came through
         last_clicked_item = self.prev_clicked_streaming_item.data(Qt.UserRole)
         if (stream_id != last_clicked_item['stream_id']):
@@ -1701,6 +1751,8 @@ class IPTVPlayerApp(QMainWindow):
             self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_maybe_status_icon).scaledToWidth(24))
         else:
             self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_offline_status_icon).scaledToWidth(24))
+
+        self.live_info_box.x_media_seq.setText(x_media_seq)
 
     def startEPGWorker(self, stream_id):
         #Create EPG thread worker that will fetch EPG data
@@ -2096,6 +2148,10 @@ class IPTVPlayerApp(QMainWindow):
 
         if self.external_player_command:
             try:
+                # Swap output format to the one specified in settings
+                if self.current_output_format == 'ts':
+                    url = url.replace(".m3u8", ".ts")
+
                 print(f"Going to play: {url}")
                 self.animate_progress(0, 100, "Loading player for streaming")
 
