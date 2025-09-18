@@ -2128,7 +2128,7 @@ class IPTVPlayerApp(QMainWindow):
                     else:
                         player_cmd = f"{self.external_player_command} \"{url}\""
 
-                subprocess.Popen(player_cmd)
+                subprocess.Popen(player_cmd, shell=True)
             except Exception as e:
                 self.animate_progress(0, 100, "Failed playing stream")
                 print(f"Failed playing stream [{url}]: {e}")
