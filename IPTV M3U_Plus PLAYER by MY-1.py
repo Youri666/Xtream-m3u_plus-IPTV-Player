@@ -862,11 +862,12 @@ class IPTVPlayerApp(QMainWindow):
         self.settings_layout.addWidget(self.keep_on_top_checkbox,                           2, 0)
         self.settings_layout.addWidget(QLabel("Default sorting order: "),                   3, 0)
         self.settings_layout.addWidget(self.default_sorting_order_box,                      3, 1)
-        self.settings_layout.addWidget(QLabel("Select User-Agent (Advanced option): "),     4, 0)
-        self.settings_layout.addWidget(self.select_user_agent_box,                          4, 1)
-        self.settings_layout.addWidget(self.update_checker,                                 5, 0)
-        self.settings_layout.addWidget(self.auto_update_checkbox,                           5, 1)
+        self.settings_layout.addWidget(self.update_checker,                                 4, 0)
+        self.settings_layout.addWidget(self.auto_update_checkbox,                           4, 1)
 
+        #Advanced options
+        self.settings_layout.addWidget(QLabel("Select User-Agent (Advanced option): "),         5, 0)
+        self.settings_layout.addWidget(self.select_user_agent_box,                              5, 1)
         self.settings_layout.addWidget(QLabel("Set connection timeout (Advanced option): "),    6, 0)
         self.settings_layout.addWidget(self.set_connection_timeout,                             6, 1)
         self.settings_layout.addWidget(QLabel("Set read timeout (Advanced option): "),          7, 0)
@@ -2235,6 +2236,8 @@ class IPTVPlayerApp(QMainWindow):
 
                     #Default support, run without user agent argument
                     player_cmd = f"{self.external_player_command} \"{url}\""
+
+                    subprocess.Popen(player_cmd, shell=True)
                 
                 if is_windows:
                     #Support PotPlayer with the proper command line
@@ -2256,7 +2259,8 @@ class IPTVPlayerApp(QMainWindow):
                     else:
                         player_cmd = f"{self.external_player_command} \"{url}\""
 
-                subprocess.Popen(player_cmd)
+                    subprocess.Popen(player_cmd)
+                    
             except Exception as e:
                 self.animate_progress(0, 100, "Failed playing stream")
                 print(f"Failed playing stream [{url}]: {e}")
