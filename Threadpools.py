@@ -89,7 +89,7 @@ class FetchDataWorker(QRunnable):
                 'password': self.password,
                 'action': ''
             }
-
+            
             host_url = f"{self.server}/player_api.php"
 
             print("Going to fetch IPTV data")
@@ -679,6 +679,7 @@ class EPGWorker(QRunnable):
 
 class OnlineWorkerSignals(QObject):
     finished = pyqtSignal(int, str)
+    error = pyqtSignal(str)
 
 class OnlineWorker(QRunnable):
     def __init__(self, stream_id, url, parent=None):
@@ -708,7 +709,7 @@ class OnlineWorker(QRunnable):
 
             self.signals.finished.emit(self.stream_id, str(stream_offline))
         except Exception as e:
-            self.signals.finished.emit(self.stream_id, str(False))
+            self.signals.error.emit(str(e))
 
     def checkStatus(self, response_code, url_data):
         if response_code != 200:  # need HTTP OK status

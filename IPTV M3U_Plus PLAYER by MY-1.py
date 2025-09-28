@@ -1687,20 +1687,30 @@ class IPTVPlayerApp(QMainWindow):
         #Create Stream Status thread worker that will determine if stream looks online or not
         online_worker = OnlineWorker(stream_id, url, self)
         online_worker.signals.finished.connect(self.ProcessStreamStatus)
+        online_worker.signals.error.connect(self.onProcessStreamStatusError)
         self.threadpool.start(online_worker)
 
-    def ProcessStreamStatus(self, stream_id, stream_status):
-        #Ensure user hasn't changed live channel before request came through
-        last_clicked_item = self.prev_clicked_streaming_item.data(Qt.UserRole)
-        if (stream_id != last_clicked_item['stream_id']):
-            return
+    def onProcessStreamStatusError(self, error_msg):
+        print(f"Failed processing streaming status: {error_msg}")
 
-        if (stream_status == "True"):
-            self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_online_status_icon).scaledToWidth(24))
-        elif (stream_status == "Maybe"):
-            self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_maybe_status_icon).scaledToWidth(24))
-        else:
-            self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_offline_status_icon).scaledToWidth(24))
+        #Set stream status to unknown
+        self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_unknown_status_icon).scaledToWidth(24))
+
+    def ProcessStreamStatus(self, stream_id, stream_status):
+        try:
+            #Ensure user hasn't changed live channel before request came through
+            last_clicked_item = self.prev_clicked_streaming_item.data(Qt.UserRole)
+            if (stream_id != last_clicked_item['stream_id']):
+                return
+
+            if (stream_status == "True"):
+                self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_online_status_icon).scaledToWidth(24))
+            elif (stream_status == "Maybe"):
+                self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_maybe_status_icon).scaledToWidth(24))
+            else:
+                self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_offline_status_icon).scaledToWidth(24))
+        except Exception as e:
+            print(f"Failed processing streaming status: {e}")
 
     def startEPGWorker(self, stream_id):
         #Create EPG thread worker that will fetch EPG data
