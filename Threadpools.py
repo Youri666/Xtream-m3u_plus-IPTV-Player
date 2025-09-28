@@ -28,19 +28,13 @@ from PyQt5.QtWidgets import (
 
 import base64
 
-# CUSTOM_USER_AGENT = (
-#     "Connection: Keep-Alive User-Agent: okhttp/5.0.0-alpha.2 "
-#     "Accept-Encoding: gzip, deflate"
-# )
-
 CONNECTION_HEADER           = "Keep-Alive"
 CONTENT_HEADER              = "gzip, deflate"
 DEFAULT_USER_AGENT_HEADER   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
 
-# CUSTOM_USER_AGENT = "Connection: Keep-Alive Accept-Encoding: gzip, deflate "
-
+#Default timeout values
 CONNECTION_TIMEOUT  = 3
-READ_TIMEOUT        = 10
+READ_TIMEOUT        = 30
 LIVE_STATUS_TIMEOUT = 7
 
 class FetchDataWorkerSignals(QObject):
@@ -89,7 +83,7 @@ class FetchDataWorker(QRunnable):
                 'password': self.password,
                 'action': ''
             }
-            
+
             host_url = f"{self.server}/player_api.php"
 
             print("Going to fetch IPTV data")

@@ -12,7 +12,7 @@ from lxml import etree, html
 from datetime import datetime
 from dateutil import parser, tz
 import xml.etree.ElementTree as ET
-from PyQt5.QtGui import QIcon, QFont, QImage, QPixmap, QColor, QDesktopServices
+from PyQt5.QtGui import QIcon, QFont, QImage, QPixmap, QColor, QDesktopServices, QIntValidator
 from PyQt5.QtCore import (
     Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize, QObject, pyqtSignal, 
     QRunnable, pyqtSlot, QThreadPool, QModelIndex, QAbstractItemModel, QVariant, QUrl
@@ -837,6 +837,24 @@ class IPTVPlayerApp(QMainWindow):
         self.auto_update_checkbox.setToolTip("Automatically check for updates at startup")
         self.auto_update_checkbox.stateChanged.connect(self.toggleAutoUpdate)
 
+        #Set timeout integer validator
+        timeout_validator = QIntValidator(0, 999)
+
+        self.set_connection_timeout = QLineEdit()
+        self.set_connection_timeout.setFixedWidth(100)
+        self.set_connection_timeout.setValidator(timeout_validator)
+        self.set_connection_timeout.returnPressed.connect(lambda: self.setTimeout(self.set_connection_timeout))
+
+        self.set_read_timeout = QLineEdit()
+        self.set_read_timeout.setFixedWidth(100)
+        self.set_read_timeout.setValidator(timeout_validator)
+        self.set_read_timeout.returnPressed.connect(lambda: self.setTimeout(self.set_read_timeout))
+
+        self.set_live_status_timeout = QLineEdit()
+        self.set_live_status_timeout.setFixedWidth(100)
+        self.set_live_status_timeout.setValidator(timeout_validator)
+        self.set_live_status_timeout.returnPressed.connect(lambda: self.setTimeout(self.set_live_status_timeout))
+
         #Add widgets to settings tab layout
         self.settings_layout.addWidget(self.address_book_button,                            0, 0)
         self.settings_layout.addWidget(self.choose_player_button,                           0, 1)
@@ -848,6 +866,14 @@ class IPTVPlayerApp(QMainWindow):
         self.settings_layout.addWidget(self.select_user_agent_box,                          4, 1)
         self.settings_layout.addWidget(self.update_checker,                                 5, 0)
         self.settings_layout.addWidget(self.auto_update_checkbox,                           5, 1)
+
+        self.settings_layout.addWidget(QLabel("Set connection timeout (Advanced option): "),    6, 0)
+        self.settings_layout.addWidget(self.set_connection_timeout,                             6, 1)
+        self.settings_layout.addWidget(QLabel("Set read timeout (Advanced option): "),          7, 0)
+        self.settings_layout.addWidget(self.set_read_timeout,                                   7, 1)
+        self.settings_layout.addWidget(QLabel("Set live status timeout (Advanced option): "),   8, 0)
+        self.settings_layout.addWidget(self.set_live_status_timeout,                            8, 1)
+
         # self.settings_layout.addWidget(self.cache_on_startup_checkbox,  2, 0)
         # self.settings_layout.addWidget(self.reload_data_btn,            3, 0)
 
@@ -901,6 +927,86 @@ class IPTVPlayerApp(QMainWindow):
             self.vods_enabled_checkbox.setCheckState(Qt.Checked)
         else:
             self.vods_enabled_checkbox.setCheckState(Qt.Unchecked)
+
+    def setTimeout(self, lineedit):
+        try: 
+            #Get timeout value from lineedit
+            value = lineedit.text()
+
+            #If value is invalid
+            if not value:
+                raise Exception(f"Value entered is not valid: {value}!")
+
+            #Save selected user agent to userdata
+            config = configparser.ConfigParser()
+            config.read(self.user_data_file)
+
+            #If Timeouts section not yet exists create it
+            if "Timeouts" not in config:
+                config["Timeouts"] = {}
+
+            #Check which timeout value has been changed
+            match lineedit:
+                case self.set_connection_timeout:
+                    Threadpools.CONNECTION_TIMEOUT = int(value)
+
+                    config['Timeouts']['CONNECTION_TIMEOUT'] = value
+
+                case self.set_read_timeout:
+                    Threadpools.READ_TIMEOUT = int(value)
+
+                    config['Timeouts']['READ_TIMEOUT'] = value
+
+                case self.set_live_status_timeout:
+                    Threadpools.LIVE_STATUS_TIMEOUT = int(value)
+
+                    config['Timeouts']['LIVE_STATUS_TIMEOUT'] = value
+
+            #Write config file
+            with open(self.user_data_file, 'w') as config_file:
+                config.write(config_file)
+
+            self.animate_progress(0, 100, f"Succesfully adjusted setting")
+
+        except Exception as e:
+            # print("Failed setting timeout: ")
+            self.animate_progress(0, 100, f"Failed setting timeout: {e}")
+
+    def loadDefaultTimeout(self):
+        try:
+            #Read userdata config file
+            config = configparser.ConfigParser()
+            config.read(self.user_data_file)
+
+            #Set default values
+            tmp_connection_timeout  = str(Threadpools.CONNECTION_TIMEOUT)
+            tmp_read_timeout        = str(Threadpools.READ_TIMEOUT)
+            tmp_live_status_timeout = str(Threadpools.LIVE_STATUS_TIMEOUT)
+
+            #Check if defined in config
+            if config.has_section("Timeouts"):
+                if config.has_option("Timeouts", "CONNECTION_TIMEOUT"):
+                    #Set connection timeout if defined
+                    Threadpools.CONNECTION_TIMEOUT = int(config['Timeouts']['CONNECTION_TIMEOUT'])
+                    tmp_connection_timeout = config['Timeouts']['CONNECTION_TIMEOUT']
+
+                if config.has_option("Timeouts", "READ_TIMEOUT"):
+                    #Set read timeout if defined
+                    Threadpools.READ_TIMEOUT = int(config['Timeouts']['READ_TIMEOUT'])
+                    tmp_read_timeout = config['Timeouts']['READ_TIMEOUT']
+
+                if config.has_option("Timeouts", "LIVE_STATUS_TIMEOUT"):
+                    #Set live status timeout if defined
+                    Threadpools.LIVE_STATUS_TIMEOUT = int(config['Timeouts']['LIVE_STATUS_TIMEOUT'])
+                    tmp_live_status_timeout = config['Timeouts']['LIVE_STATUS_TIMEOUT']
+                    
+            #Set values in corresponding LineEdit widgets
+            self.set_connection_timeout.setText(tmp_connection_timeout)
+            self.set_read_timeout.setText(tmp_read_timeout)
+            self.set_live_status_timeout.setText(tmp_live_status_timeout)
+
+        except Exception as e:
+            print(f"Failed loading default timeout values: {e}")
 
     def checkForUpdates(self, enable_update_msg):
         try:
@@ -1016,6 +1122,9 @@ class IPTVPlayerApp(QMainWindow):
 
         #Load startup credentials
         self.loadStartupCredentials()
+
+        #Load default timeouts
+        self.loadDefaultTimeout()
 
     def loadStartupCredentials(self):
         # Load playlist on startup if enabled
