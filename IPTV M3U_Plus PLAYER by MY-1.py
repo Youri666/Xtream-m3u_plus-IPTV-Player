@@ -31,7 +31,7 @@ from CustomPyQtWidgets import LiveInfoBox, MovieInfoBox, SeriesInfoBox
 import Threadpools
 from Threadpools import FetchDataWorker, SearchWorker, OnlineWorker, EPGWorker, MovieInfoFetcher, SeriesInfoFetcher, ImageFetcher
 
-CURRENT_VERSION = "V1.03.02"
+CURRENT_VERSION = "V1.04.00"
 
 is_windows  = sys.platform.startswith('win')
 is_mac      = sys.platform.startswith('darwin')
@@ -2260,7 +2260,7 @@ class IPTVPlayerApp(QMainWindow):
                         player_cmd = f"{self.external_player_command} \"{url}\""
 
                     subprocess.Popen(player_cmd)
-                    
+
             except Exception as e:
                 self.animate_progress(0, 100, "Failed playing stream")
                 print(f"Failed playing stream [{url}]: {e}")
