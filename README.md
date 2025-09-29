@@ -17,6 +17,7 @@ Download the latest version here: [Latest releases](https://github.com/Youri666/
 - **Categorized Playlists:** Organized into Live TV, Movies, and Series tabs for easy navigation.
 - **Favorites:** Add items to favorite and find them in the 'Favorites' category.
 - **EPG Option:** Access and download Electronic Program Guide for live TV channels.
+- **Catch-Up:** Possibility of accessing past programs (When it is allowed by XTream API or XTream account).
 - **Movies and series information:** Additional movies and series information e.g. movie/series cover, description, cast, trailer, TMDB, etc.
 - **Series navigation:** Access series categories and specific episodes with efficient 'Go Back' functionality in series playlist.
 - **Search bar history:** By using the up and down keys you can access the previously searched texts in the search bars.

@@ -37,7 +37,7 @@ is_windows  = sys.platform.startswith('win')
 is_mac      = sys.platform.startswith('darwin')
 is_linux    = sys.platform.startswith('linux')
 
-GITHUB_REPO = "Youri666/Xtream-m3u_plus-IPTV-Player"
+GITHUB_REPO = "Youri666/Xtream-IPTV-Player"
 
 class IPTVPlayerApp(QMainWindow):
     def __init__(self):
@@ -70,7 +70,8 @@ class IPTVPlayerApp(QMainWindow):
         self.default_url_formats = {
             'live': "{server}/live/{username}/{password}/{stream_id}.{container_extension}",
             'movie': "{server}/movie/{username}/{password}/{stream_id}.{container_extension}",
-            'series': "{server}/series/{username}/{password}/{stream_id}.{container_extension}"
+            'series': "{server}/series/{username}/{password}/{stream_id}.{container_extension}",
+            'catchup': "{server}/streaming/timeshift.php?username={username}&password={password}&stream={stream_id}&start={start_time}&duration={duration}&output=mp4"
         }
 
         # Update the .ini file if needed to maintain backward compatibility.
@@ -104,6 +105,8 @@ class IPTVPlayerApp(QMainWindow):
 
         self.path_to_account_icon           = path.abspath(path.join(path.dirname(__file__), 'Images/account_manager_icon.ico'))
         self.path_to_mediaplayer_icon       = path.abspath(path.join(path.dirname(__file__), 'Images/film_camera_icon.ico'))
+        
+        self.path_to_catchup_icon           = path.abspath(path.join(path.dirname(__file__), 'Images/catchup_icon.ico')) 
 
         self.setWindowIcon(QIcon(self.path_to_window_icon))
 
@@ -117,6 +120,10 @@ class IPTVPlayerApp(QMainWindow):
         #Series has 0: Series, 1: Seasons, 2: Episodes
         self.series_navigation_level = 0
         self.finished_fetching_series_info = False
+        
+        # --- Catch-up (selected channel state) ---
+        self.current_tv_archive = 0            #1 = Supports catch-up;0 = No
+        self.current_tv_archive_duration = 0   #No. of allowed file days
 
         #Make history list index a list in order to achieve pass by reference
         self.streaming_search_history_list      = []
@@ -167,12 +174,13 @@ class IPTVPlayerApp(QMainWindow):
         self.sorting_order      = 0
 
         #Credentials
-        self.server            = ""
-        self.username          = ""
-        self.password          = ""
-        self.live_url_format   = ""
-        self.movie_url_format  = ""
-        self.series_url_format = ""
+        self.server             = ""
+        self.username           = ""
+        self.password           = ""
+        self.live_url_format    = ""
+        self.movie_url_format   = ""
+        self.series_url_format  = ""
+        self.catchup_url_format = ""
 
         #Create threadpool
         self.threadpool = QThreadPool()
@@ -378,7 +386,8 @@ class IPTVPlayerApp(QMainWindow):
                 if len(parts) < required_length:
                     parts += [self.default_url_formats['live'],
                               self.default_url_formats['movie'],
-                              self.default_url_formats['series']][:required_length - len(parts)]
+                              self.default_url_formats['series'],
+                              self.default_url_formats['catchup']][:required_length - len(parts)]
                     config['Credentials'][account_name] = "|".join(parts)
 
             # Write the updated configuration back to the file
@@ -409,6 +418,7 @@ class IPTVPlayerApp(QMainWindow):
         self.clear_btn_icon = QIcon(self.path_to_clear_btn_icon)
         self.go_back_icon   = QIcon(self.path_to_go_back_icon)
 
+        self.catchup_icon   = QIcon(self.path_to_catchup_icon)
     def initTabWidget(self):
         #Create tab widget
         self.tab_widget = QTabWidget()
@@ -667,6 +677,11 @@ class IPTVPlayerApp(QMainWindow):
         self.live_info_box   = LiveInfoBox(self)
         self.movies_info_box = MovieInfoBox(self)
         self.series_info_box = SeriesInfoBox(self)
+        
+        #Catch-Up calls on EPG
+        self.live_info_box.live_EPG_info.itemDoubleClicked.connect(self.epg_item_double_clicked)
+        self.live_info_box.live_EPG_info.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.live_info_box.live_EPG_info.customContextMenuRequested.connect(self.show_epg_context_menu)
 
     def initHomeTab(self):
         #Create lists to show previously watched content
@@ -1143,7 +1158,7 @@ class IPTVPlayerApp(QMainWindow):
                 parts = data.split('|')
 
                 if data.startswith('manual|'):
-                    server, username, password, live_url_format, movie_url_format, series_url_format = parts[1:7]
+                    server, username, password, live_url_format, movie_url_format, series_url_format, catchup_url_format = parts[1:8]
 
                     self.server            = server
                     self.username          = username
@@ -1151,15 +1166,17 @@ class IPTVPlayerApp(QMainWindow):
                     self.live_url_format   = live_url_format
                     self.movie_url_format  = movie_url_format
                     self.series_url_format = series_url_format
+                    self.catchup_url_format= catchup_url_format
 
                     self.login()
 
                 elif data.startswith('m3u_plus|'):
-                    m3u_url, live_url_format, movie_url_format, series_url_format = parts[1:5]
+                    m3u_url, live_url_format, movie_url_format, series_url_format, catchup_url_format = parts[1:5]
 
                     self.live_url_format   = live_url_format
                     self.movie_url_format  = movie_url_format
                     self.series_url_format = series_url_format
+                    self.catchup_url_format= catchup_url_format
 
                     #Get credentials from M3U plus url and check if valid
                     if self.extract_credentials_from_m3u_plus_url(m3u_url):
@@ -1850,6 +1867,49 @@ class IPTVPlayerApp(QMainWindow):
         item = QTreeWidgetItem(["??-??-????", "??:??", "??:??", "Failed loading EPG data..."])
         self.live_info_box.live_EPG_info.addTopLevelItem(item)
 
+    def _to_datetime(self, v):
+        """Converts V to Datetime: Accept Datetime, Int/Float (Epoch), or String (Epoch/ISO/HH: mm)."""
+        from datetime import datetime
+        from dateutil import parser as dtparser
+
+        if v is None:
+            return None
+
+        if isinstance(v, datetime):
+            return v
+
+        if isinstance(v, (int, float)):
+            try:
+                return datetime.fromtimestamp(int(v))
+            except Exception:
+                pass
+
+        if isinstance(v, str):
+            s = v.strip()
+            # epoch em string?
+            if s.isdigit():
+                try:
+                    return datetime.fromtimestamp(int(s))
+                except Exception:
+                    pass
+            # ISO-like? (ex.: 2025-08-28 14:30:00 or 2025-08-28:14-30)
+            try:
+                # Some panels use yyyy-mm-dd: hh-mm-the parser reads well but
+                # This exchange helps in strange cases
+                s2 = s.replace('_', ' ')
+                return dtparser.parse(s2)
+            except Exception:
+                # HH: mm without date → uses today (better than breaking)
+                try:
+                    hh, mm = s.split(':')[:2]
+                    now = datetime.now()
+                    return now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+                except Exception:
+                    return None
+
+        return None
+
+
     def ProcessEPGData(self, epg_data):
         try:
             #Clear EPG data
@@ -1868,43 +1928,85 @@ class IPTVPlayerApp(QMainWindow):
                 return
 
             #Get current time
-            current_timestamp = time.mktime(datetime.now().timetuple())
-
+            #current_timestamp = time.mktime(datetime.now().timetuple())
+            now = datetime.now()
+            now_ts = now.timestamp()
+            
             items = []
+
+            #guarantees that TV_ARCHIVE_DUROATION is int
+            try:
+                archive_days = int(self.current_tv_archive_duration or 0)
+            except Exception:
+                archive_days = 0
 
             #Loop through EPG data
             for epg_entry in epg_data:
-                #Get EPG data
-                start_timestamp = epg_entry['start_time']
-                stop_timestamp  = epg_entry['stop_time']
-                program_name    = epg_entry['program_name']
-                description     = epg_entry['description']
-                date            = epg_entry['date']
+                start_dt = self._to_datetime(epg_entry.get('start_time'))
+                stop_dt  = self._to_datetime(epg_entry.get('stop_time'))
+                if not start_dt or not stop_dt:
+                    # No valid dates → ignores entry, avoid errors
+                    continue
 
-                #Convert timestamps to string in correct format
-                start_time = start_timestamp.strftime("%H:%M")
-                stop_time = stop_timestamp.strftime("%H:%M")
+                start_ts = start_dt.timestamp()
+                stop_ts  = stop_dt.timestamp()
 
-                #Convert stop time to unix timebase so it can be used for calculating
-                unix_stop_time = time.mktime(stop_timestamp.timetuple())
+                is_past = stop_ts < now_ts
+                is_live = (start_ts <= now_ts <= stop_ts)
+                # is_future = current_timestamp < unix_start_time # not nesessary, but here for clarity
+                
+                # Filter past according to TV_Archive and TV_Archive_Duration
+                if is_past:
+                    #If the channel does not support catch-up, ignore past programs
+                    if int(self.current_tv_archive or 0) != 1:
+                        continue
+                    #checks if the program is within the TV_Archive_Duration (Dias)
+                    if archive_days > 0:
+                        days_ago = (now_ts - start_ts) / 86400.0
+                        if days_ago > archive_days:
+                            continue
 
-                #Compute time difference
-                time_diff = unix_stop_time - current_timestamp
+                #Convert hours to text
+                date_txt  = epg_entry.get('date') or start_dt.strftime("%d-%m-%Y")
+                start_txt = start_dt.strftime("%H:%M")
+                stop_txt  = stop_dt.strftime("%H:%M")
+                program_name = epg_entry.get('program_name') or "—"
+                description  = epg_entry.get('description') or ""
 
-                if time_diff >= 0:
-                    #Create EPG item
-                    item    = QTreeWidgetItem([date, start_time, stop_time, program_name])
-                    label   = QLabel(description)
-                    label.setWordWrap(True)
-                    desc    = QTreeWidgetItem()
-                    item.addChild(desc)
+                item = QTreeWidgetItem([date_txt, start_txt, stop_txt, program_name])
+                item.setData(0, Qt.UserRole, {
+                    **epg_entry,
+                    'start_time': start_dt,
+                    'stop_time':  stop_dt,
+                })
+                label   = QLabel(description)
+                label.setWordWrap(True)
+                desc    = QTreeWidgetItem()
+                item.addChild(desc)
 
-                    #Add label widget to description. This way it is word wrapped correctly
-                    self.live_info_box.live_EPG_info.setItemWidget(desc, 3, label)
+                #Add label widget to description. This way it is word wrapped correctly
+                self.live_info_box.live_EPG_info.setItemWidget(desc, 3, label)
 
-                    #Append item to list
-                    items.append(item)
+                #Visual style: Passed to gray/italics, live to bold
+                if is_past:
+                    for col in range(4):
+                        item.setForeground(col, QColor(140, 140, 140))
+                    font = item.font(0); 
+                    font.setItalic(True); 
+                    item.setFont(0, font)
+                    item.setToolTip(0, "Past Program-Double-click to Catch-Up")
+                elif is_live:
+                    for col in range(4):
+                        font = item.font(col); 
+                        font.setBold(True); 
+                        item.setFont(col, font)
+                    item.setToolTip(0, "Live")
 
+                #Append item to list
+                items.append(item)
+
+            items.sort(key=lambda it: it.data(0, Qt.UserRole)['start_time'])
+            
             #Add all items to EPG treeview
             self.live_info_box.live_EPG_info.addTopLevelItems(items)
 
@@ -1937,6 +2039,15 @@ class IPTVPlayerApp(QMainWindow):
             if not clicked_item_data:
                 return
 
+            self.current_tv_archive = 0
+            self.current_tv_archive_duration = 0
+            try:
+                self.current_tv_archive = int(clicked_item_data.get('tv_archive', 0) or 0)                 # 1=tem catch-up
+                self.current_tv_archive_duration = int(clicked_item_data.get('tv_archive_duration', 0) or 0)  # dias
+            except Exception:
+                #If there are strange values, keep 0/01
+                pass
+
             #Get if clicked item is favorite
             is_fav = clicked_item_data.get('favorite', False)
 
@@ -1959,6 +2070,10 @@ class IPTVPlayerApp(QMainWindow):
 
                 #Set TV channel name in info window
                 self.live_info_box.EPG_box_label.setText(f"{clicked_item_data['name']}")
+                
+                #Set Catch-up icon visibility
+                has_catchup = int(clicked_item_data.get('tv_archive', 0)) == 1
+                self.live_info_box.setCatchupIconVisible(has_catchup)
 
                 #Clear Stream Status indicator
                 self.live_info_box.stream_status.setPixmap(QPixmap(self.path_to_unknown_status_icon).scaledToWidth(25))
@@ -2486,6 +2601,87 @@ class IPTVPlayerApp(QMainWindow):
     def open_address_book(self):
         dialog = AccountManager(self)
         dialog.exec_()
+
+    def epg_item_double_clicked(self, item, column):
+        try:
+            epg_data = item.data(0, Qt.UserRole)
+            if not epg_data:
+                return
+
+            now_ts    = time.mktime(datetime.now().timetuple())
+            start_dt  = epg_data['start_time']
+            stop_dt   = epg_data['stop_time']
+            start_ts = start_dt.timestamp()
+            stop_ts  = stop_dt.timestamp()
+
+            is_past = stop_ts < now_ts
+
+            if is_past and self.current_tv_archive == 1:
+                #PAST → CATCH-UP
+                self.play_catchup(item)
+            else:
+                #Current/Future → Reproduce Channel Bure
+                stream_id = self.prev_clicked_streaming_item.data(Qt.UserRole)['stream_id']
+                #use the current URL already calculated in the channel item
+                live_url  = self.prev_clicked_streaming_item.data(Qt.UserRole)['url']
+                self.play_item(live_url)
+        except Exception as e:
+            print(f"ERROR TO PROCESS DOUBLE-CLIQUE IN EPG: {e}")
+    
+    def show_epg_context_menu(self, position):
+        tree = self.live_info_box.live_EPG_info
+        item = tree.itemAt(position)
+        if not item:
+            return
+
+        epg_data = item.data(0, Qt.UserRole)
+        if not epg_data:
+            return
+
+        now_ts   = time.mktime(datetime.now().timetuple())
+        # unix_stop = time.mktime(epg_data['stop_time'].timetuple())
+        stop_ts = epg_data['stop_time'].timestamp()
+        is_past = stop_ts < now_ts
+        menu = QMenu(self)
+
+        if is_past and self.current_tv_archive == 1:
+            act = QAction("See program (Catch-Up)", self)
+            act.triggered.connect(lambda: self.play_catchup(item))
+            menu.addAction(act)
+
+        menu.exec_(tree.viewport().mapToGlobal(position))
+
+    def play_catchup(self, epg_item):
+        """It builds the catch-up URL and reproduces the program already transmitted."""
+        epg_data = epg_item.data(0, Qt.UserRole)
+        if not epg_data:
+            return
+
+        start_dt = self._to_datetime(epg_data.get('start_time'))
+        stop_dt  = self._to_datetime(epg_data.get('stop_time'))
+        
+        if not start_dt or not stop_dt:
+            return
+        
+        # Formato Xtream: YYYY-MM-DD:HH-MM
+        start_str = start_dt.strftime("%Y-%m-%d:%H-%M")
+        duration_minutes = int((stop_dt - start_dt).total_seconds() // 60)
+
+        #Channel ID currently selected (obtained from the channel list item)
+        stream_id = self.prev_clicked_streaming_item.data(Qt.UserRole)['stream_id']
+
+        url = self.default_url_formats['catchup'].format(
+        server   = self.server,
+        username = self.username,
+        password = self.password,
+        stream_id= stream_id,
+        start_time = start_str,
+        duration   = duration_minutes
+    )
+
+        print(f"Catch‑up URL: {url}")
+        self.play_item(url)
+
 
 def main():
     app = QApplication(sys.argv)

@@ -65,16 +65,27 @@ class LiveInfoBox(QWidget):
         self.fav_button.setIcon(self.parent.favorites_icon)
         self.fav_button.clicked.connect(lambda: self.parent.favButtonPressed("LIVE", self))
 
+        #Create catch-up icon label
+        self.catchup_icon_label = QLabel()
+        catchup_pixmap = self.parent.catchup_icon.pixmap(QSize(24, 24))
+        self.catchup_icon_label.setPixmap(catchup_pixmap)
+        self.catchup_icon_label.setFixedWidth(25)
+        self.catchup_icon_label.setVisible(False)
+        
         #Create title layout with favorites button
         self.title_layout = QHBoxLayout()
         self.title_layout.addWidget(self.fav_button)
         self.title_layout.addWidget(self.stream_status)
         self.title_layout.addWidget(self.EPG_box_label)
+        self.title_layout.addWidget(self.catchup_icon_label)
 
         #Add TV channel label and EPG data to info box
         self.live_EPG_info_box_layout.addLayout(self.title_layout)
         self.live_EPG_info_box_layout.addWidget(self.cover)
         self.live_EPG_info_box_layout.addWidget(self.live_EPG_info)
+
+    def setCatchupIconVisible(self, visible: bool) -> None:
+        self.catchup_icon_label.setVisible(visible)
 
     def setFavorite(self, is_fav):
         if is_fav:
