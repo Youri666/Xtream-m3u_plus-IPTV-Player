@@ -1,3 +1,7 @@
+![GitHub all releases](https://img.shields.io/github/downloads/Youri666/Xtream-m3u_plus-IPTV-Player/total?color=blue&label=Total%20Downloads&logo=github)
+![GitHub release (latest by date)](https://img.shields.io/github/downloads/Youri666/Xtream-m3u_plus-IPTV-Player/V1.03.02/total?color=purple&label=Latest%20Release%20Downloads&logo=github)
+![GitHub License](https://img.shields.io/github/license/Youri666/Xtream-m3u_plus-IPTV-Player?label=License&logo=github)
+![GitHub stars](https://img.shields.io/github/stars/Youri666/Xtream-m3u_plus-IPTV-Player)
 
 # FREE OPENSOURCE M3U/XTREME IPTV PLAYER
 
