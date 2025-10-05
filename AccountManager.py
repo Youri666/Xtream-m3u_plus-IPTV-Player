@@ -181,12 +181,12 @@ class AccountManager(QtWidgets.QDialog):
 
         # Save the credentials
         if method == 'manual':
-            server, username, password, live_url_format, movie_url_format, series_url_format = credentials
-            config['Credentials'][name] = f"manual|{server}|{username}|{password}|{live_url_format}|{movie_url_format}|{series_url_format}"
+            server, username, password, live_url_format, movie_url_format, series_url_format, catchup_url_format = credentials
+            config['Credentials'][name] = f"manual|{server}|{username}|{password}|{live_url_format}|{movie_url_format}|{series_url_format}|{catchup_url_format}"
 
         elif method == 'm3u_plus':
-            m3u_url, live_url_format, movie_url_format, series_url_format = credentials
-            config['Credentials'][name] = f"m3u_plus|{m3u_url}|{live_url_format}|{movie_url_format}|{series_url_format}"
+            m3u_url, live_url_format, movie_url_format, series_url_format,catchup_url_format = credentials
+            config['Credentials'][name] = f"m3u_plus|{m3u_url}|{live_url_format}|{movie_url_format}|{series_url_format}|{catchup_url_format}"
 
         # Write the updated configuration back to the file
         with open(self.parent.user_data_file, 'w') as config_file:
@@ -205,7 +205,7 @@ class AccountManager(QtWidgets.QDialog):
                 data = config['Credentials'][name]
 
                 if data.startswith('manual|'):
-                    _, server, username, password, live_url_format, movie_url_format, series_url_format = data.split('|')
+                    _, server, username, password, live_url_format, movie_url_format, series_url_format, catchup_url_format = data.split('|')
                     
                     self.parent.server            = server
                     self.parent.username          = username
@@ -213,15 +213,17 @@ class AccountManager(QtWidgets.QDialog):
                     self.parent.live_url_format   = live_url_format
                     self.parent.movie_url_format  = movie_url_format
                     self.parent.series_url_format = series_url_format
+                    self.parent.catchup_url_format = catchup_url_format
 
                     self.parent.login()
 
                 elif data.startswith('m3u_plus|'):
-                    _, m3u_url, live_url_format, movie_url_format, series_url_format = data.split('|')
+                    _, m3u_url, live_url_format, movie_url_format, series_url_format, catchup_url_format = data.split('|')
 
                     self.parent.live_url_format   = live_url_format
                     self.parent.movie_url_format  = movie_url_format
                     self.parent.series_url_format = series_url_format
+                    self.parent.catchup_url_format = catchup_url_format
 
                     #Get credentials from M3U plus url and check if valid
                     if self.parent.extract_credentials_from_m3u_plus_url(m3u_url):
@@ -296,6 +298,7 @@ class AccountDialog(QtWidgets.QDialog):
         self.live_url_format_entry = QLineEdit(self.default_url_formats['live'])
         self.movie_url_format_entry = QLineEdit(self.default_url_formats['movie'])
         self.series_url_format_entry = QLineEdit(self.default_url_formats['series'])
+        self.catchup_url_format_entry = QLineEdit(self.default_url_formats['catchup'])
 
         manual_layout.addRow("Name:", self.name_entry_manual)
         manual_layout.addRow("Server URL:", self.server_entry)
@@ -304,6 +307,7 @@ class AccountDialog(QtWidgets.QDialog):
         manual_layout.addRow("Live URL Format:", self.live_url_format_entry)
         manual_layout.addRow("Movie URL Format:", self.movie_url_format_entry)
         manual_layout.addRow("Series URL Format:", self.series_url_format_entry)
+        manual_layout.addRow("Catch-Up URL Format:", self.catchup_url_format_entry)
 
         #Set placeholder texts for xtream credentials
         self.name_entry_manual.setPlaceholderText("Custom account name")
@@ -321,12 +325,14 @@ class AccountDialog(QtWidgets.QDialog):
         self.m3u_live_url_format_entry = QLineEdit(self.default_url_formats['live'])
         self.m3u_movie_url_format_entry = QLineEdit(self.default_url_formats['movie'])
         self.m3u_series_url_format_entry = QLineEdit(self.default_url_formats['series'])
+        self.m3u_catchup_url_format_entry = QLineEdit(self.default_url_formats['catchup'])
 
         m3u_layout.addRow("Name:", self.name_entry_m3u)
         m3u_layout.addRow("m3u_plus URL:", self.m3u_url_entry)
         m3u_layout.addRow("Live URL Format:", self.m3u_live_url_format_entry)
         m3u_layout.addRow("Movie URL Format:", self.m3u_movie_url_format_entry)
         m3u_layout.addRow("Series URL Format:", self.m3u_series_url_format_entry)
+        m3u_layout.addRow("Catch-Up URL Format:", self.m3u_catchup_url_format_entry)
 
         #Set placeholder texts for m3u credentials
         self.name_entry_m3u.setPlaceholderText("Custom account name")
@@ -357,6 +363,7 @@ class AccountDialog(QtWidgets.QDialog):
                 self.live_url_format_entry.setText(credentials[4])
                 self.movie_url_format_entry.setText(credentials[5])
                 self.series_url_format_entry.setText(credentials[6])
+                self.catchup_url_format_entry.setText(credentials[7])
             else:
                 self.method_selector.setCurrentText(self.m3u_plus_entry_name)
                 self.name_entry_m3u.setText(credentials[0])
@@ -364,6 +371,7 @@ class AccountDialog(QtWidgets.QDialog):
                 self.m3u_live_url_format_entry.setText(credentials[2])
                 self.m3u_movie_url_format_entry.setText(credentials[3])
                 self.m3u_series_url_format_entry.setText(credentials[4])
+                self.m3u_catchup_url_format_entry.setText(credentials[5])
 
         font_metrics = self.fontMetrics()
         max_width = max(
@@ -372,11 +380,13 @@ class AccountDialog(QtWidgets.QDialog):
             font_metrics.width(self.live_url_format_entry.text()),
             font_metrics.width(self.movie_url_format_entry.text()),
             font_metrics.width(self.series_url_format_entry.text()),
+            font_metrics.width(self.catchup_url_format_entry.text()),
             font_metrics.width(self.name_entry_m3u.text()),
             font_metrics.width(self.m3u_url_entry.text()),
             font_metrics.width(self.m3u_live_url_format_entry.text()),
             font_metrics.width(self.m3u_movie_url_format_entry.text()),
-            font_metrics.width(self.m3u_series_url_format_entry.text())
+            font_metrics.width(self.m3u_series_url_format_entry.text()),
+            font_metrics.width(self.m3u_catchup_url_format_entry.text())
         )
 
         self.setMinimumWidth(max_width + 150)
@@ -416,13 +426,15 @@ class AccountDialog(QtWidgets.QDialog):
             live_url_format   = self.live_url_format_entry.text().strip()
             movie_url_format  = self.movie_url_format_entry.text().strip()
             series_url_format = self.series_url_format_entry.text().strip()
+            catchup_url_format= self.catchup_url_format_entry.text().strip()
 
-            return ('manual', name, server, username, password, live_url_format, movie_url_format, series_url_format)
+            return ('manual', name, server, username, password, live_url_format, movie_url_format, series_url_format, catchup_url_format)
         else:
             name              = self.name_entry_m3u.text().strip()
             m3u_url           = self.m3u_url_entry.text().strip()
             live_url_format   = self.m3u_live_url_format_entry.text().strip()
             movie_url_format  = self.m3u_movie_url_format_entry.text().strip()
             series_url_format = self.m3u_series_url_format_entry.text().strip()
+            catchup_url_format= self.m3u_catchup_url_format_entry.text().split()
 
-            return ('m3u_plus', name, m3u_url, live_url_format, movie_url_format, series_url_format)
+            return ('m3u_plus', name, m3u_url, live_url_format, movie_url_format, series_url_format, catchup_url_format)

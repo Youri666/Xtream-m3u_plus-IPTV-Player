@@ -1,4 +1,4 @@
-requests==2.31.0
-lxml==4.9.2
+requests==2.32.3
+lxml>=5.2,<6
 python-dateutil==2.8.2
 PyQt5==5.15.9
