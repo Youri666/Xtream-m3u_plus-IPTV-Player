@@ -61,6 +61,7 @@ REM Run PyInstaller directly with all necessary options and added data files
   --onefile ^
   --noconsole ^
   --noconfirm ^
+  --hidden-import vlc ^
   --icon "Images/TV_icon.ico" ^
   --name "IPTV_Player" ^
   --workpath %BUILD_PATH% ^
@@ -101,6 +102,7 @@ REM Create executable with debug console
 %PYINSTALLER% ^
   --onefile ^
   --noconfirm ^
+  --hidden-import vlc ^
   --icon "Images/TV_icon.ico" ^
   --name "IPTV_Player_with_debug_console" ^
   --workpath %BUILD_PATH% ^

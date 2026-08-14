@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QTreeView, QScrollArea, QSlider, QFrame
 )
 
+import os
 from os import path
 import sys
 import configparser
@@ -432,6 +433,63 @@ class _ClickableSlider(QSlider):
         super().mousePressEvent(event)
 
 
+def _find_vlc_plugin_path():
+    env_plugin_path = os.environ.get("VLC_PLUGIN_PATH", "").strip()
+    if env_plugin_path and path.isdir(env_plugin_path):
+        return env_plugin_path
+
+    candidates = []
+    if sys.platform.startswith("win"):
+        for env_name in ("ProgramFiles", "ProgramFiles(x86)"):
+            base_dir = os.environ.get(env_name, "").strip()
+            if base_dir:
+                candidates.append(path.join(base_dir, "VideoLAN", "VLC", "plugins"))
+    elif sys.platform == "darwin":
+        candidates.extend([
+            "/Applications/VLC.app/Contents/MacOS/plugins",
+            path.expanduser("~/Applications/VLC.app/Contents/MacOS/plugins"),
+        ])
+    else:
+        candidates.extend([
+            "/usr/lib/vlc/plugins",
+            "/usr/lib64/vlc/plugins",
+            "/usr/local/lib/vlc/plugins",
+            "/snap/vlc/current/usr/lib/vlc/plugins",
+        ])
+
+    for candidate in candidates:
+        if candidate and path.isdir(candidate):
+            return candidate
+
+    return ""
+
+
+def _find_vlc_executable():
+    candidates = []
+    if sys.platform.startswith("win"):
+        for env_name in ("ProgramFiles", "ProgramFiles(x86)"):
+            base_dir = os.environ.get(env_name, "").strip()
+            if base_dir:
+                candidates.append(path.join(base_dir, "VideoLAN", "VLC", "vlc.exe"))
+    elif sys.platform == "darwin":
+        candidates.extend([
+            "/Applications/VLC.app/Contents/MacOS/VLC",
+            path.expanduser("~/Applications/VLC.app/Contents/MacOS/VLC"),
+        ])
+    else:
+        candidates.extend([
+            "/usr/bin/vlc",
+            "/usr/local/bin/vlc",
+            "/snap/bin/vlc",
+        ])
+
+    for candidate in candidates:
+        if candidate and path.isfile(candidate):
+            return candidate
+
+    return ""
+
+
 class EmbeddedPlayerWindow(QMainWindow):
     """Floating libvlc-backed player window with a nebula-iptv-style UX:
 
@@ -449,6 +507,8 @@ class EmbeddedPlayerWindow(QMainWindow):
     (each with at least `name` and `url`) plus a starting index.
     """
 
+    playback_failed = pyqtSignal(str, str)
+
     def __init__(self, parent=None, user_agent=""):
         super().__init__(parent)
         self.setWindowTitle("Internal Player")
@@ -458,6 +518,10 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._vlc = vlc
 
         vlc_args = ["--quiet"]
+        self._plugin_path = _find_vlc_plugin_path()
+        if self._plugin_path:
+            os.environ["VLC_PLUGIN_PATH"] = self._plugin_path
+            vlc_args.append(f"--plugin-path={self._plugin_path}")
         ua = (user_agent or "").strip()
         if ua:
             vlc_args.append(f"--http-user-agent={ua}")
@@ -465,6 +529,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.instance = vlc.Instance(vlc_args)
         self.player = self.instance.media_player_new()
         self._bound = False
+        self._current_url = ""
+        self._playback_failed_emitted = False
 
         self._playlist = []   # list of {'name': str, 'url': str, ...}
         self._current_idx = 0
@@ -703,16 +769,26 @@ class EmbeddedPlayerWindow(QMainWindow):
         QShortcut(QKeySequence(Qt.Key_Escape), self, activated=self._exit_fullscreen_if_needed)
 
         self._wake_controls()
+        self._attach_vlc_events()
 
     # ---------- public API ----------
     @staticmethod
     def is_available():
         try:
             import vlc  # noqa: F401
-            vlc.Instance()
+            vlc_args = ["--quiet"]
+            plugin_path = _find_vlc_plugin_path()
+            if plugin_path:
+                os.environ["VLC_PLUGIN_PATH"] = plugin_path
+                vlc_args.append(f"--plugin-path={plugin_path}")
+            vlc.Instance(vlc_args)
             return True
         except Exception:
             return False
+
+    @staticmethod
+    def find_vlc_executable():
+        return _find_vlc_executable()
 
     def play_url(self, url, title="", playlist=None, index=0):
         if playlist is not None:
@@ -730,11 +806,15 @@ class EmbeddedPlayerWindow(QMainWindow):
 
         media = self.instance.media_new(url)
         self.player.set_media(media)
+        self._current_url = url or ""
+        self._playback_failed_emitted = False
         self.show()
         self.raise_()
         self.activateWindow()
         self._bind_video_output()
-        self.player.play()
+        play_result = self.player.play()
+        if play_result == -1:
+            self._emit_playback_failed("libVLC rejected the stream before playback could start.")
         self.btn_play.setText("⏸")  # pause icon
         self._update_pl_pos()
         self._wake_controls()
@@ -999,6 +1079,10 @@ class EmbeddedPlayerWindow(QMainWindow):
     # ---------- VLC poll ----------
     def _poll_state(self):
         try:
+            state = self.player.get_state()
+            if state == self._vlc.State.Error:
+                self._emit_playback_failed("libVLC reported a playback error for this stream.")
+                return
             length = self.player.get_length()
             cur    = self.player.get_time()
             if length > 0 and not self._seeking:
@@ -1013,6 +1097,25 @@ class EmbeddedPlayerWindow(QMainWindow):
             self._update_subs_button()
         except Exception:
             pass
+
+    def _attach_vlc_events(self):
+        try:
+            self._event_manager = self.player.event_manager()
+            self._event_manager.event_attach(
+                self._vlc.EventType.MediaPlayerEncounteredError,
+                self._on_vlc_error,
+            )
+        except Exception:
+            self._event_manager = None
+
+    def _on_vlc_error(self, event):
+        self._emit_playback_failed("libVLC encountered an error while opening the stream.")
+
+    def _emit_playback_failed(self, message):
+        if not self._current_url or self._playback_failed_emitted:
+            return
+        self._playback_failed_emitted = True
+        self.playback_failed.emit(self._current_url, message)
 
     def _seek_pressed(self):
         # Set the seeking flag the moment the user grabs (or clicks) the slider,
