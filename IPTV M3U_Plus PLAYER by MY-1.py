@@ -2566,55 +2566,7 @@ class IPTVPlayerApp(QMainWindow):
                     self._play_embedded(url)
                     return
 
-                ua = (self.current_user_agent or "").strip()
-                exe_lower = self.external_player_command.lower()
-
-                if is_linux:
-                    #Ensure the external player command is executable
-                    if not os.access(self.external_player_command, os.X_OK):
-                        self.animate_progress(0, 100, "Selected player is not executable")
-                        return
-
-                    # Linux: list-form Popen is safe (no shell quirks); each player
-                    # parses its own argv cleanly.
-                    player_cmd = [self.external_player_command]
-                    if exe_lower.endswith("vlc") and ua:
-                        player_cmd.append(f"--http-user-agent={ua}")
-                    elif exe_lower.endswith(("mpv", "mpv.com")) and ua:
-                        player_cmd.append(f"--user-agent={ua}")
-                    player_cmd.append(url)
-                    subprocess.Popen(player_cmd)
-
-                elif is_windows:
-                    # Windows: we build a single command string so each player's
-                    # quoting expectations are met EXACTLY — list2cmdline wraps each
-                    # arg in outer quotes, which breaks PotPlayer's `/key="value"`
-                    # parser (it expects the quotes INSIDE the value, not around the
-                    # whole token). See issue #47 and the regression the user reported
-                    # after the first round of fixes.
-                    exe_q = f'"{self.external_player_command}"'
-                    url_q = f'"{url}"'
-
-                    if "potplayermini64.exe" in exe_lower or "potplayer" in exe_lower:
-                        ua_arg = f' /user_agent="{ua}"' if ua else ""
-                        player_cmd = f'{exe_q} {url_q}{ua_arg}'
-
-                    elif exe_lower.endswith(("mpv.exe", "mpv.com")) or "\\mpv\\" in exe_lower:
-                        ua_arg = f' --user-agent="{ua}"' if ua else ""
-                        player_cmd = f'{exe_q}{ua_arg} {url_q}'
-
-                    elif exe_lower.endswith("vlc.exe"):
-                        ua_arg = f' --http-user-agent="{ua}"' if ua else ""
-                        player_cmd = f'{exe_q}{ua_arg} {url_q}'
-
-                    else:
-                        # MPC-HC, MPC-BE, generic players: just exe + URL.
-                        player_cmd = f'{exe_q} {url_q}'
-
-                    subprocess.Popen(player_cmd)
-
-                else:
-                    subprocess.Popen([self.external_player_command, url])
+                self._launch_player_command(self.external_player_command, url)
 
             except Exception as e:
                 import traceback
@@ -2710,6 +2662,7 @@ class IPTVPlayerApp(QMainWindow):
         if not hasattr(self, "_embedded_player_window") or self._embedded_player_window is None:
             try:
                 self._embedded_player_window = EmbeddedPlayerWindow(self, user_agent=self.current_user_agent)
+                self._embedded_player_window.playback_failed.connect(self._on_embedded_playback_failed)
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -2734,6 +2687,75 @@ class IPTVPlayerApp(QMainWindow):
             traceback.print_exc()
             self.animate_progress(0, 100, "Failed playing stream")
             print(f"Embedded play failed [{url}]: {e}")
+
+    def _launch_player_command(self, player_command, url):
+        ua = (self.current_user_agent or "").strip()
+        exe_lower = player_command.lower()
+
+        if is_linux:
+            if not os.access(player_command, os.X_OK):
+                raise RuntimeError(f"Selected player is not executable: {player_command}")
+
+            player_cmd = [player_command]
+            if exe_lower.endswith("vlc") and ua:
+                player_cmd.append(f"--http-user-agent={ua}")
+            elif exe_lower.endswith(("mpv", "mpv.com")) and ua:
+                player_cmd.append(f"--user-agent={ua}")
+            player_cmd.append(url)
+            subprocess.Popen(player_cmd)
+            return
+
+        if is_windows:
+            exe_q = f'"{player_command}"'
+            url_q = f'"{url}"'
+
+            if "potplayermini64.exe" in exe_lower or "potplayer" in exe_lower:
+                ua_arg = f' /user_agent="{ua}"' if ua else ""
+                player_cmd = f'{exe_q} {url_q}{ua_arg}'
+            elif exe_lower.endswith(("mpv.exe", "mpv.com")) or "\\mpv\\" in exe_lower:
+                ua_arg = f' --user-agent="{ua}"' if ua else ""
+                player_cmd = f'{exe_q}{ua_arg} {url_q}'
+            elif exe_lower.endswith("vlc.exe"):
+                ua_arg = f' --http-user-agent="{ua}"' if ua else ""
+                player_cmd = f'{exe_q}{ua_arg} {url_q}'
+            else:
+                player_cmd = f'{exe_q} {url_q}'
+
+            subprocess.Popen(player_cmd)
+            return
+
+        subprocess.Popen([player_command, url])
+
+    def _on_embedded_playback_failed(self, url, reason):
+        print(f"Embedded player failed [{url}]: {reason}")
+
+        try:
+            self._embedded_player_window.hide()
+        except Exception:
+            pass
+
+        self.animate_progress(0, 100, "Embedded playback failed, opening direct stream")
+
+        try:
+            vlc_executable = EmbeddedPlayerWindow.find_vlc_executable()
+            if vlc_executable:
+                self._launch_player_command(vlc_executable, url)
+                return
+        except Exception as e:
+            print(f"Embedded fallback via VLC failed [{url}]: {e}")
+
+        if QDesktopServices.openUrl(QUrl(url)):
+            return
+
+        error_dialog = QMessageBox(self)
+        error_dialog.setIcon(QMessageBox.Warning)
+        error_dialog.setWindowTitle("Playback failed")
+        error_dialog.setText(
+            "The internal VLC player could not start this stream, "
+            "and the direct-stream fallback also failed."
+        )
+        error_dialog.setStandardButtons(QMessageBox.Ok)
+        error_dialog.exec_()
 
     def _collect_visible_playlist(self, url):
         # Build the player's sidebar list from what's CURRENTLY VISIBLE in the main
@@ -2964,24 +2986,6 @@ class IPTVPlayerApp(QMainWindow):
         if config.has_option('ExternalPlayer', 'Command'):
             return config['ExternalPlayer'].get('Command', '')
 
-        # First-run default: prefer the internal libvlc-backed player when it's
-        # actually usable on this machine. If libvlc isn't present we leave the
-        # command empty so the user is nudged toward "Choose Media Player".
-        try:
-            if EmbeddedPlayerWindow.is_available():
-                default_cmd = "<embedded-vlc>"
-                # Persist the choice so the user can see "Active player: Internal VLC"
-                # in Settings without having to click anything.
-                config['ExternalPlayer'] = {'Command': default_cmd}
-                try:
-                    with open(self.user_data_file, 'w') as config_file:
-                        config.write(config_file)
-                except OSError:
-                    pass
-                return default_cmd
-        except Exception:
-            pass
-
         return ""
 
     def save_external_player_command(self):
@@ -3085,7 +3089,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
 

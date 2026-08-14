@@ -31,6 +31,7 @@ $PYINSTALLER \
   --onefile \
   --noconsole \
   --noconfirm \
+  --hidden-import vlc \
   --icon "Images/TV_icon.ico" \
   --name "IPTV_Player" \
   --distpath "$DIST_PATH" \
