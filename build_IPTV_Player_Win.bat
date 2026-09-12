@@ -57,7 +57,7 @@ IF ERRORLEVEL 1 (
 echo Application dependencies are available.
 
 REM Main Python script to package
-SET MAIN_SCRIPT="IPTV M3U_Plus PLAYER by MY-1.py"
+SET MAIN_SCRIPT="IPTVPlayer.py"
 
 REM Set build and dist folders separately
 SET BUILD_PATH=build

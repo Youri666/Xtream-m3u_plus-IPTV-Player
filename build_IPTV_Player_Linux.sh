@@ -36,7 +36,7 @@ fi
 echo "Application dependencies are available."
 
 # Set variables
-MAIN_SCRIPT="IPTV M3U_Plus PLAYER by MY-1.py"
+MAIN_SCRIPT="IPTVPlayer.py"
 BUILD_PATH="build"
 DIST_PATH="dist"
 

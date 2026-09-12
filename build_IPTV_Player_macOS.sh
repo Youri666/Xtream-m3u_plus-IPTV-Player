@@ -9,7 +9,7 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 PYTHON_BIN=python3
-MAIN_SCRIPT="IPTV M3U_Plus PLAYER by MY-1.py"
+MAIN_SCRIPT="IPTVPlayer.py"
 BUILD_PATH="build"
 DIST_PATH="dist"
 APP_NAME="IPTV Player"
