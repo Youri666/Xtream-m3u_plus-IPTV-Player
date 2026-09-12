@@ -5,6 +5,7 @@ import time
 import requests
 import subprocess
 import configparser
+from iptv_player.config import write_config_file
 import re
 import json
 import html
@@ -85,8 +86,7 @@ class AccountManager(QtWidgets.QDialog):
 
         config['Startup credentials']['startup_credentials'] = f"{selected_item}"
 
-        with open(self.parent.user_data_file, 'w') as config_file:
-            config.write(config_file)
+        write_config_file(self.parent.user_data_file, config)
 
     def load_saved_accounts(self):
         self.startup_account_options.currentTextChanged.disconnect(self.set_startup_credentials)
@@ -191,8 +191,7 @@ class AccountManager(QtWidgets.QDialog):
             config['Credentials'][name] = f"m3u_plus|{m3u_url}|{live_url_format}|{movie_url_format}|{series_url_format}"
 
         # Write the updated configuration back to the file
-        with open(self.parent.user_data_file, 'w') as config_file:
-            config.write(config_file)
+        write_config_file(self.parent.user_data_file, config)
 
     def select_account(self):
         selected_item = self.accounts_list.currentItem()
@@ -251,8 +250,7 @@ class AccountManager(QtWidgets.QDialog):
                 if 'Startup credentials' in config and config['Startup credentials']['startup_credentials'] == name:
                     config['Startup credentials']['startup_credentials'] = "None"
 
-                with open(self.parent.user_data_file, 'w') as config_file:
-                    config.write(config_file)
+                write_config_file(self.parent.user_data_file, config)
 
                 self.load_saved_accounts()
 

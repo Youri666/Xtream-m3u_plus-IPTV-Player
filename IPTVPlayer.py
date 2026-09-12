@@ -34,7 +34,11 @@ from PyQt5.QtWidgets import (
 
 from AccountManager import AccountManager
 from CustomPyQtWidgets import LiveInfoBox, MovieInfoBox, SeriesInfoBox, EmbeddedPlayerWindow
-from iptv_player.config.paths import macos_bundle_executable, writable_data_directory
+from iptv_player.config import (
+    macos_bundle_executable,
+    writable_data_directory,
+    write_config_file,
+)
 from iptv_player.ui.theme import (
     application_palette_is_dark,
     apply_application_theme,
@@ -880,8 +884,7 @@ class IPTVPlayerApp(QMainWindow):
         }
 
         try:
-            with open(self.user_data_file, 'w') as config_file:
-                config.write(config_file)
+            write_config_file(self.user_data_file, config)
         except OSError as e:
             print(f"Could not save window layout: {e}")
 
@@ -971,8 +974,7 @@ class IPTVPlayerApp(QMainWindow):
         )
 
         try:
-            with open(self.user_data_file, 'w') as config_file:
-                config.write(config_file)
+            write_config_file(self.user_data_file, config)
         except OSError as e:
             print(f"Could not persist user data file: {e}")
 
@@ -991,8 +993,7 @@ class IPTVPlayerApp(QMainWindow):
                 if not config.has_section("InternalPlayer"):
                     config.add_section("InternalPlayer")
                 config.set("InternalPlayer", "volume", str(volume))
-                with open(self.user_data_file, "w") as config_file:
-                    config.write(config_file)
+                write_config_file(self.user_data_file, config)
             os.remove(legacy_path)
         except (OSError, ValueError, configparser.Error, UnicodeDecodeError) as error:
             print(f"Could not migrate the legacy player volume: {error}")
@@ -1413,8 +1414,7 @@ class IPTVPlayerApp(QMainWindow):
             for stream_type, hidden_ids in self.hidden_category_ids.items()
         }
         try:
-            with open(self.user_data_file, 'w') as config_file:
-                config.write(config_file)
+            write_config_file(self.user_data_file, config)
         except OSError as e:
             print(f"Could not save hidden categories: {e}")
 
@@ -1930,8 +1930,7 @@ class IPTVPlayerApp(QMainWindow):
             config['Category sorting'][f'{stream_type}_category_list'] = preference
 
         try:
-            with open(self.user_data_file, 'w') as config_file:
-                config.write(config_file)
+            write_config_file(self.user_data_file, config)
         except OSError as e:
             print(f"Could not save category sorting preferences: {e}")
 
@@ -2098,8 +2097,7 @@ class IPTVPlayerApp(QMainWindow):
             config.add_section('Category sorting')
         config['Category sorting']['fallback'] = self.category_sort_fallback
 
-        with open(self.user_data_file, 'w') as config_file:
-            config.write(config_file)
+        write_config_file(self.user_data_file, config)
 
     def initSettingsTab(self):
         #Create items in settings tab
@@ -2368,8 +2366,7 @@ class IPTVPlayerApp(QMainWindow):
             'volume': saved_volume
         }
         try:
-            with open(self.user_data_file, 'w') as config_file:
-                config.write(config_file)
+            write_config_file(self.user_data_file, config)
         except OSError as error:
             print(f"Could not save internal player settings: {error}")
 
@@ -2460,8 +2457,7 @@ class IPTVPlayerApp(QMainWindow):
         }
 
         try:
-            with open(self.user_data_file, 'w') as config_file:
-                config.write(config_file)
+            write_config_file(self.user_data_file, config)
             self.animate_progress(0, 100, "Network settings saved")
         except OSError as e:
             print(f"Could not write user data file: {e}")
@@ -2622,8 +2618,7 @@ class IPTVPlayerApp(QMainWindow):
 
         config['Updater'] = {'auto-update-checker': checked}
 
-        with open(self.user_data_file, 'w') as config_file:
-            config.write(config_file)
+        write_config_file(self.user_data_file, config)
 
     def loadDefaultAutoUpdate(self):
         #Read userdata file
@@ -2648,8 +2643,7 @@ class IPTVPlayerApp(QMainWindow):
             config['Updater'] = {'auto-update-checker': True}
 
             try:
-                with open(self.user_data_file, 'w') as config_file:
-                    config.write(config_file)
+                write_config_file(self.user_data_file, config)
             except OSError as e:
                 print(f"Could not write user data file: {e}")
 
@@ -2810,8 +2804,7 @@ class IPTVPlayerApp(QMainWindow):
             config = configparser.ConfigParser()
         config['Theme'] = {'mode': theme_name}
         try:
-            with open(self.user_data_file, 'w') as config_file:
-                config.write(config_file)
+            write_config_file(self.user_data_file, config)
         except OSError as e:
             print(f"Could not write user data file: {e}")
 
@@ -2878,8 +2871,7 @@ class IPTVPlayerApp(QMainWindow):
             for key, enabled in self.content_enabled.items()
         }
         try:
-            with open(self.user_data_file, 'w') as config_file:
-                config.write(config_file)
+            write_config_file(self.user_data_file, config)
         except OSError as e:
             print(f"Could not write user data file: {e}")
 
@@ -4909,8 +4901,7 @@ class IPTVPlayerApp(QMainWindow):
                 config['ExternalPlayer'] = {'Command': default_cmd}
                 self.last_external_player_command = ""
                 try:
-                    with open(self.user_data_file, 'w') as config_file:
-                        config.write(config_file)
+                    write_config_file(self.user_data_file, config)
                 except OSError:
                     pass
                 return default_cmd
@@ -4938,8 +4929,7 @@ class IPTVPlayerApp(QMainWindow):
         }
 
         try:
-            with open(self.user_data_file, 'w') as config_file:
-                config.write(config_file)
+            write_config_file(self.user_data_file, config)
         except OSError as e:
             print(f"Could not write user data file: {e}")
 

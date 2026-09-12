@@ -18,6 +18,7 @@ from PyQt5.QtWidgets import (
 from os import path
 import sys
 import configparser
+from iptv_player.config import write_config_file
 import json
 
 from SearchUtils import normalize_search_text, title_matches_search
@@ -1528,8 +1529,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             if not config.has_section("InternalPlayer"):
                 config.add_section("InternalPlayer")
             config.set("InternalPlayer", "volume", str(self._volume))
-            with open(settings_path, "w") as settings_file:
-                config.write(settings_file)
+            write_config_file(settings_path, config)
         except (OSError, configparser.Error, UnicodeDecodeError):
             pass
 
