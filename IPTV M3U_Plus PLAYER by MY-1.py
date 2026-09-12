@@ -34,7 +34,9 @@ from PyQt5.QtWidgets import (
 
 from AccountManager import AccountManager
 from CustomPyQtWidgets import LiveInfoBox, MovieInfoBox, SeriesInfoBox, EmbeddedPlayerWindow
-from SearchUtils import normalize_search_text, title_matches_search
+from iptv_player.config.paths import macos_bundle_executable, writable_data_directory
+from iptv_player.utils.privacy import private_url_log_reference
+from iptv_player.utils.search import normalize_search_text, title_matches_search
 import Threadpools
 from Threadpools import FetchDataWorker, SearchWorker, OnlineWorker, EPGWorker, MovieInfoFetcher, SeriesInfoFetcher, ImageFetcher, AccountInfoWorker
 
@@ -64,30 +66,6 @@ is_mac      = sys.platform.startswith('darwin')
 is_linux    = sys.platform.startswith('linux')
 
 GITHUB_REPO = "Youri666/Xtream-m3u_plus-IPTV-Player"
-
-
-def writable_data_directory():
-    """Return the directory used for configuration and disposable user data."""
-    if is_mac:
-        # A signed or Finder-launched .app must not rely on its bundle directory
-        # being writable. Application Support is the standard persistent location.
-        return path.join(path.expanduser("~"), "Library", "Application Support", "IPTV Player")
-    return path.abspath(".")
-
-
-def macos_bundle_executable(bundle_path):
-    """Resolve the executable declared by a macOS .app bundle."""
-    import plistlib
-
-    info_path = path.join(bundle_path, "Contents", "Info.plist")
-    with open(info_path, "rb") as info_file:
-        executable_name = plistlib.load(info_file).get("CFBundleExecutable", "")
-    if not executable_name:
-        raise OSError(f"The application bundle has no CFBundleExecutable: {bundle_path}")
-    executable_path = path.join(bundle_path, "Contents", "MacOS", executable_name)
-    if not path.isfile(executable_path) or not os.access(executable_path, os.X_OK):
-        raise OSError(f"The application bundle executable is unavailable: {executable_path}")
-    return executable_path
 
 
 class KeyboardNavigableListWidget(QListWidget):
@@ -132,16 +110,6 @@ class KeyboardNavigableListWidget(QListWidget):
             return
 
         super().keyPressEvent(event)
-
-
-def private_url_log_reference(url):
-    """Identify a stream in logs without exposing its host or credentials."""
-    try:
-        from urllib.parse import urlparse
-        final_component = path.basename(urlparse(str(url)).path)
-        return f"<private URL ending in {final_component or 'unknown'}>"
-    except Exception:
-        return "<private URL>"
 
 
 class EmbeddedPlayerCommandBridge(QObject):
