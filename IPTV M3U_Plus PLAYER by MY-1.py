@@ -16,7 +16,7 @@ from lxml import etree, html
 from datetime import datetime
 from dateutil import parser, tz
 import xml.etree.ElementTree as ET
-from PyQt5.QtGui import QIcon, QFont, QImage, QPixmap, QColor, QDesktopServices, QIntValidator, QPalette, QPainter
+from PyQt5.QtGui import QIcon, QFont, QImage, QPixmap, QColor, QDesktopServices, QIntValidator, QPainter
 from PyQt5.QtCore import (
     Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize, QObject, pyqtSignal, 
     QRunnable, pyqtSlot, QThreadPool, QModelIndex, QAbstractItemModel, QVariant,
@@ -35,6 +35,12 @@ from PyQt5.QtWidgets import (
 from AccountManager import AccountManager
 from CustomPyQtWidgets import LiveInfoBox, MovieInfoBox, SeriesInfoBox, EmbeddedPlayerWindow
 from iptv_player.config.paths import macos_bundle_executable, writable_data_directory
+from iptv_player.ui.theme import (
+    application_palette_is_dark,
+    apply_application_theme,
+    apply_windows_title_bar_theme,
+)
+from iptv_player.ui.widgets import KeyboardNavigableListWidget
 from iptv_player.utils.privacy import private_url_log_reference
 from iptv_player.utils.search import normalize_search_text, title_matches_search
 import Threadpools
@@ -68,156 +74,11 @@ is_linux    = sys.platform.startswith('linux')
 GITHUB_REPO = "Youri666/Xtream-m3u_plus-IPTV-Player"
 
 
-class KeyboardNavigableListWidget(QListWidget):
-    """Give catalog lists explicit keyboard activation and column switching."""
-
-    keyboardSelected = pyqtSignal(QListWidgetItem)
-    keyboardActivated = pyqtSignal(QListWidgetItem)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._tab_target = None
-
-    def setTabTarget(self, target):
-        self._tab_target = target
-
-    def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
-            current_item = self.currentItem()
-            if current_item is not None:
-                self.keyboardActivated.emit(current_item)
-            event.accept()
-            return
-
-        if event.key() in (Qt.Key_Tab, Qt.Key_Backtab) and self._tab_target is not None:
-            if self._tab_target.currentItem() is None and self._tab_target.count():
-                self._tab_target.setCurrentRow(0)
-                self._tab_target.keyboardSelected.emit(self._tab_target.currentItem())
-            self._tab_target.setFocus(Qt.TabFocusReason)
-            event.accept()
-            return
-
-        navigation_keys = (
-            Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End,
-            Qt.Key_PageUp, Qt.Key_PageDown
-        )
-        if event.key() in navigation_keys:
-            previous_item = self.currentItem()
-            super().keyPressEvent(event)
-            current_item = self.currentItem()
-            if current_item is not None and current_item is not previous_item:
-                self.keyboardSelected.emit(current_item)
-            return
-
-        super().keyPressEvent(event)
-
-
 class EmbeddedPlayerCommandBridge(QObject):
     """Deliver commands received off the GUI thread to the player safely."""
 
     command_received = pyqtSignal(dict)
     connection_closed = pyqtSignal()
-
-
-def is_system_dark(app):
-    """Return whether the operating-system application theme is dark."""
-    if is_windows:
-        try:
-            import winreg
-            with winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-            ) as key:
-                value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-                return value == 0
-        except OSError:
-            return False
-    try:
-        background = app.palette().color(QPalette.Window)
-        # Use perceived luminance rather than assuming a platform-specific palette.
-        luminance = (
-            0.299 * background.red()
-            + 0.587 * background.green()
-            + 0.114 * background.blue()
-        )
-        return luminance < 128
-    except Exception:
-        return False
-
-
-def apply_application_theme(app, theme_name):
-    """Apply one shared palette to the main application and isolated player."""
-    selected_theme = theme_name if theme_name in ("System", "Light", "Dark") else "System"
-    dark = selected_theme == "Dark" or (
-        selected_theme == "System" and is_system_dark(app)
-    )
-    if dark:
-        palette = QPalette()
-        palette.setColor(QPalette.Window,          QColor(45, 45, 48))
-        palette.setColor(QPalette.WindowText,      Qt.white)
-        palette.setColor(QPalette.Base,            QColor(30, 30, 30))
-        palette.setColor(QPalette.AlternateBase,   QColor(45, 45, 48))
-        palette.setColor(QPalette.ToolTipBase,     QColor(45, 45, 48))
-        palette.setColor(QPalette.ToolTipText,     Qt.white)
-        palette.setColor(QPalette.Text,            Qt.white)
-        palette.setColor(QPalette.Button,          QColor(45, 45, 48))
-        palette.setColor(QPalette.ButtonText,      Qt.white)
-        palette.setColor(QPalette.BrightText,      Qt.red)
-        palette.setColor(QPalette.Link,            QColor(91, 141, 239))
-        palette.setColor(QPalette.Highlight,       QColor(91, 141, 239))
-        palette.setColor(QPalette.HighlightedText, Qt.black)
-        palette.setColor(QPalette.Disabled, QPalette.Text,       QColor(127, 127, 127))
-        palette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(127, 127, 127))
-        app.setPalette(palette)
-    else:
-        app.setPalette(app.style().standardPalette())
-    return dark
-
-
-def apply_windows_title_bar_theme(widget, dark):
-    """Synchronize a native Windows title bar with the Qt application theme."""
-    if not is_windows:
-        return
-    try:
-        import ctypes
-        enabled = ctypes.c_int(1 if dark else 0)
-        hwnd = int(widget.winId())
-        # Attribute 20 is current; 19 supports older Windows 10 builds.
-        for attribute in (20, 19):
-            result = ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                hwnd, attribute, ctypes.byref(enabled), ctypes.sizeof(enabled)
-            )
-            if result == 0:
-                break
-
-        # Windows can otherwise choose a slightly different caption tint for
-        # dialogs and main windows. Attributes 35 and 36 make every native title
-        # bar use the same Qt palette colors on supported Windows 11 versions.
-        caption = widget.palette().color(QPalette.Window)
-        caption_color = ctypes.c_uint(
-            caption.red() | (caption.green() << 8) | (caption.blue() << 16)
-        )
-        text = widget.palette().color(QPalette.WindowText)
-        text_color = ctypes.c_uint(
-            text.red() | (text.green() << 8) | (text.blue() << 16)
-        )
-        for attribute, color in ((35, caption_color), (36, text_color)):
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                hwnd, attribute, ctypes.byref(color), ctypes.sizeof(color)
-            )
-    except Exception:
-        pass
-
-
-def application_palette_is_dark(app):
-    """Return whether the palette currently applied to Qt is dark."""
-    background = app.palette().color(QPalette.Window)
-    luminance = (
-        0.299 * background.red()
-        + 0.587 * background.green()
-        + 0.114 * background.blue()
-    )
-    return luminance < 128
 
 
 class NetworkSettingsDialog(QDialog):
