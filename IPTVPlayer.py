@@ -34,6 +34,17 @@ from PyQt5.QtWidgets import (
 
 from AccountManager import AccountManager
 from CustomPyQtWidgets import LiveInfoBox, MovieInfoBox, SeriesInfoBox, EmbeddedPlayerWindow
+from iptv_player.constants import (
+    CURRENT_CONFIG_SCHEMA_VERSION,
+    CURRENT_VERSION,
+    DEFAULT_INTERNAL_SEEK_STEP_SECONDS,
+    DEFAULT_INTERNAL_SPEED_STEP,
+    DEFAULT_INTERNAL_VOLUME_STEP_PERCENT,
+    DEFAULT_URL_FORMATS,
+    GITHUB_REPO,
+    MEDIA_LANGUAGE_OPTIONS,
+    REMEMBER_CATEGORY_SORTING,
+)
 from iptv_player.config import (
     macos_bundle_executable,
     writable_data_directory,
@@ -50,33 +61,13 @@ from iptv_player.utils.search import normalize_search_text, title_matches_search
 import Threadpools
 from Threadpools import FetchDataWorker, SearchWorker, OnlineWorker, EPGWorker, MovieInfoFetcher, SeriesInfoFetcher, ImageFetcher, AccountInfoWorker
 
-CURRENT_VERSION = "V2.01.17"
-REMEMBER_CATEGORY_SORTING = "Remember per category"
-
-DEFAULT_INTERNAL_SEEK_STEP_SECONDS = 10
-DEFAULT_INTERNAL_VOLUME_STEP_PERCENT = 2
-DEFAULT_INTERNAL_SPEED_STEP = 0.25
-MEDIA_LANGUAGE_OPTIONS = (
-    ("Arabic", "ara"), ("Chinese", "zho"), ("Dutch", "nld"),
-    ("English", "eng"), ("French", "fra"), ("German", "deu"),
-    ("Hindi", "hin"), ("Italian", "ita"), ("Japanese", "jpn"),
-    ("Korean", "kor"), ("Polish", "pol"), ("Portuguese", "por"),
-    ("Romanian", "ron"), ("Russian", "rus"), ("Spanish", "spa"),
-    ("Turkish", "tur"),
-)
-
 # CURRENT_CONFIG_SCHEMA_VERSION describes the structure and meaning of userdata.ini.
 # Increment the schema only when a release changes persisted data and add a matching,
 # ordered migration in updateUserDataFile(). It is intentionally independent from
 # CURRENT_VERSION because most application releases do not change persisted data.
-CURRENT_CONFIG_SCHEMA_VERSION = 1
-
 is_windows  = sys.platform.startswith('win')
 is_mac      = sys.platform.startswith('darwin')
 is_linux    = sys.platform.startswith('linux')
-
-GITHUB_REPO = "Youri666/Xtream-m3u_plus-IPTV-Player"
-
 
 class EmbeddedPlayerCommandBridge(QObject):
     """Deliver commands received off the GUI thread to the player safely."""
@@ -435,11 +426,7 @@ class IPTVPlayerApp(QMainWindow):
         self.internal_audio_language = ""
         self.internal_subtitle_language = ""
         # Default values for URL formats
-        self.default_url_formats = {
-            'live': "{server}/live/{username}/{password}/{stream_id}.{container_extension}",
-            'movie': "{server}/movie/{username}/{password}/{stream_id}.{container_extension}",
-            'series': "{server}/series/{username}/{password}/{stream_id}.{container_extension}"
-        }
+        self.default_url_formats = dict(DEFAULT_URL_FORMATS)
 
         # Update the .ini file if needed to maintain backward compatibility.
         self.updateUserDataFile()

@@ -10,6 +10,7 @@ fi
 
 PYTHON_BIN=python3
 MAIN_SCRIPT="IPTVPlayer.py"
+VERSION_FILE="iptv_player/constants.py"
 BUILD_PATH="build"
 DIST_PATH="dist"
 APP_NAME="IPTV Player"
@@ -128,9 +129,9 @@ fi
 # Create a compressed disk image suitable for a GitHub release. The Applications
 # shortcut lets users install the app with the usual drag-and-drop gesture.
 # Strip Windows carriage returns because the source file may use CRLF endings.
-APP_VERSION=$(sed -n 's/^CURRENT_VERSION = "\([^"]*\)"/\1/p' "$MAIN_SCRIPT" | head -n 1 | tr -d '\r')
+APP_VERSION=$(sed -n 's/^CURRENT_VERSION = "\([^"]*\)"/\1/p' "$VERSION_FILE" | head -n 1 | tr -d '\r')
 if [ -z "$APP_VERSION" ]; then
-  echo "ERROR: Could not read CURRENT_VERSION from $MAIN_SCRIPT."
+  echo "ERROR: Could not read CURRENT_VERSION from $VERSION_FILE."
   exit 1
 fi
 
