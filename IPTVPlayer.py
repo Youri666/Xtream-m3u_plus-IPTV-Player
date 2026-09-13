@@ -10,11 +10,11 @@ import json
 import queue
 import threading
 import uuid
-from multiprocessing.connection import Client, Listener
+from multiprocessing.connection import Listener
 from datetime import datetime
 from PyQt5.QtGui import QIcon, QFont, QPixmap, QColor, QDesktopServices, QPainter
 from PyQt5.QtCore import (
-    Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize, QObject, pyqtSignal, 
+    Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize,
     QThreadPool, QUrl, QByteArray
 )
 from PyQt5 import QtWidgets
@@ -61,6 +61,7 @@ from iptv_player.utils.privacy import private_url_log_reference
 from iptv_player.utils.search import normalize_search_text, title_matches_search
 from iptv_player.storage import read_json_mapping, write_json_file
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
+from iptv_player.player_process import run_embedded_player_process
 from iptv_player.provider.network import (
     DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL,
     DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS,
@@ -89,11 +90,6 @@ is_windows  = sys.platform.startswith('win')
 is_mac      = sys.platform.startswith('darwin')
 is_linux    = sys.platform.startswith('linux')
 
-class EmbeddedPlayerCommandBridge(QObject):
-    """Deliver commands received off the GUI thread to the player safely."""
-
-    command_received = pyqtSignal(dict)
-    connection_closed = pyqtSignal()
 
 
 class IPTVPlayerApp(QMainWindow):
@@ -4634,124 +4630,13 @@ class IPTVPlayerApp(QMainWindow):
 
 
 
-def _run_embedded_player_process():
-    """Run the libVLC window separately from the main application process."""
-    address = os.environ.get('IPTV_PLAYER_IPC_ADDRESS', '')
-    family = os.environ.get('IPTV_PLAYER_IPC_FAMILY', '')
-    encoded_auth_key = os.environ.get('IPTV_PLAYER_IPC_AUTH', '')
-    if not address or not family or not encoded_auth_key:
-        return 1
-
-    try:
-        connection = Client(
-            address=address,
-            family=family,
-            authkey=bytes.fromhex(encoded_auth_key)
-        )
-        first_command = connection.recv()
-    except (EOFError, OSError, ValueError):
-        return 1
-
-    # Do not expose the private child-mode argument to Qt's option parser.
-    app = QApplication([sys.argv[0]])
-    configure_qt_application(app)
-    apply_application_theme(app, os.environ.get('IPTV_PLAYER_THEME', 'System'))
-
-    # Environment values originate from bounded application settings, but parse
-    # defensively so a manually launched child still receives safe defaults.
-    try:
-        seek_step = max(1, min(int(os.environ.get(
-            'IPTV_PLAYER_SEEK_STEP', DEFAULT_INTERNAL_SEEK_STEP_SECONDS
-        )), 300))
-    except ValueError:
-        seek_step = DEFAULT_INTERNAL_SEEK_STEP_SECONDS
-    try:
-        volume_step = max(1, min(int(os.environ.get(
-            'IPTV_PLAYER_VOLUME_STEP', DEFAULT_INTERNAL_VOLUME_STEP_PERCENT
-        )), 25))
-    except ValueError:
-        volume_step = DEFAULT_INTERNAL_VOLUME_STEP_PERCENT
-    try:
-        speed_step = max(0.05, min(float(os.environ.get(
-            'IPTV_PLAYER_SPEED_STEP', DEFAULT_INTERNAL_SPEED_STEP
-        )), 1.0))
-    except ValueError:
-        speed_step = DEFAULT_INTERNAL_SPEED_STEP
-
-    player = EmbeddedPlayerWindow(
-        None,
-        user_agent=os.environ.get('IPTV_PLAYER_USER_AGENT', ''),
-        settings_path=os.environ.get('IPTV_PLAYER_SETTINGS_FILE') or None,
-        seek_step_seconds=seek_step,
-        volume_step_percent=volume_step,
-        speed_step=speed_step,
-        audio_language=os.environ.get('IPTV_PLAYER_AUDIO_LANGUAGE', ''),
-        subtitle_language=os.environ.get('IPTV_PLAYER_SUBTITLE_LANGUAGE', '')
-    )
-    bridge = EmbeddedPlayerCommandBridge()
-
-    def handle_command(payload):
-        if payload.get('command') == 'play':
-            player.play_url(
-                payload.get('url', ''),
-                payload.get('title', ''),
-                payload.get('playlist') or [],
-                payload.get('index', 0)
-            )
-        elif payload.get('command') == 'quit':
-            player.close()
-            app.quit()
-        elif payload.get('command') == 'theme':
-            apply_application_theme(app, payload.get('theme', 'System'))
-            player.apply_theme()
-        elif payload.get('command') == 'control_steps':
-            player.set_control_steps(
-                payload.get('seek_seconds', DEFAULT_INTERNAL_SEEK_STEP_SECONDS),
-                payload.get('volume_percent', DEFAULT_INTERNAL_VOLUME_STEP_PERCENT),
-                payload.get('speed_step', DEFAULT_INTERNAL_SPEED_STEP)
-            )
-            player.set_track_preferences(
-                payload.get('audio_language', ''),
-                payload.get('subtitle_language', '')
-            )
-
-    bridge.command_received.connect(handle_command)
-    bridge.connection_closed.connect(app.quit)
-
-    def receive_commands():
-        try:
-            while True:
-                payload = connection.recv()
-                if not isinstance(payload, dict):
-                    continue
-                bridge.command_received.emit(payload)
-                if payload.get('command') == 'quit':
-                    break
-        except (EOFError, OSError):
-            bridge.connection_closed.emit()
-
-    receiver = threading.Thread(
-        target=receive_commands,
-        name='EmbeddedPlayerCommandReceiver',
-        daemon=True
-    )
-    receiver.start()
-    handle_command(first_command)
-
-    try:
-        return app.exec_()
-    finally:
-        try:
-            connection.close()
-        except OSError:
-            pass
 
 
 def main():
     # A frozen one-file executable re-enters this module for its player child.
     # Handle that mode before configuring the main process and its log file.
     if '--embedded-player-process' in sys.argv:
-        sys.exit(_run_embedded_player_process())
+        sys.exit(run_embedded_player_process())
 
     install_logging()
     app = QApplication(sys.argv)
