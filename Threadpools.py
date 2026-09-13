@@ -1,7 +1,6 @@
 from os import path
 import time
 import requests
-import json
 from PyQt5.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot
 
 from iptv_player.provider.cache import (
@@ -16,8 +15,10 @@ from iptv_player.provider.client import (
     XtreamClient,
     provider_headers,
 )
+from iptv_player.provider.catalog import prepare_catalog_entries
 from iptv_player.provider.epg import decode_epg_data, decode_epg_text
 from iptv_player.provider.streams import generate_stream_url
+from iptv_player.storage import read_json_mapping
 
 # Default network values. Keep immutable defaults separate from the active values
 # so the Advanced network settings dialog can reliably restore factory settings.
@@ -252,58 +253,12 @@ class FetchDataWorker(QRunnable):
                         print(f"Failed writing provider cache: {error}")
             self.signals.progress_bar.emit(80, 100, "Provider catalog ready")
 
-            fav_data = {}
-
-            #Check if cache file exists
-            if path.isfile(self.parent.favorites_file):
-                print("Favorites file is there")
-
-                with open(self.parent.favorites_file, 'r') as fav_file:
-                    fav_data = json.load(fav_file)
-
             print("Preparing streaming data")
-            #Make streaming URL in each entry except for the series
-            for tab_name in entries_per_stream_type.keys():
-                for idx, entry in enumerate(entries_per_stream_type[tab_name]):
-                    #Get stream type. If no stream_type is found it is series
-                    stream_type         = entry.get('stream_type', 'series')
-                    stream_id           = entry.get("stream_id", -1)
-                    series_id           = entry.get("series_id", -1)
-                    container_extension = entry.get("container_extension", "m3u8")
-
-                    #Correct for any vague other stream types. Series stream type is already fixed by code above.
-                    if "live" in stream_type:
-                        stream_type = "live"
-
-                    if "movie" in stream_type:
-                        stream_type = "movie"
-
-                    #Check if stream_id is valid
-                    if stream_id:
-                        entries_per_stream_type[tab_name][idx]["url"] = self.generate_url(stream_type, stream_id, container_extension)
-
-                        #Check if stream id is in favorites list in userdata.ini
-                        if stream_id in fav_data.get('stream_ids', []):
-                            #Add "favorite" parameter to entries_per_stream_type and set to True or False depending if inside userdata.ini
-                            entries_per_stream_type[tab_name][idx]['favorite'] = True
-                        else:
-                            entries_per_stream_type[tab_name][idx]['favorite'] = False
-                    else:
-                        entries_per_stream_type[tab_name][idx]["url"] = None
-
-                    #Check if stream type is series
-                    if stream_type == 'series':
-                        #Create stream type key for series data
-                        entries_per_stream_type[tab_name][idx]["stream_type"] = stream_type
-
-                        #Check if series_id is valid
-                        if series_id:
-                            #Check if series id is in favorites list in userdata.ini
-                            if series_id in fav_data.get('series_ids', []):
-                                #Add "favorite" parameter to entries_per_stream_type and set to True or False depending if inside userdata.ini
-                                entries_per_stream_type[tab_name][idx]['favorite'] = True
-                            else:
-                                entries_per_stream_type[tab_name][idx]['favorite'] = False
+            prepare_catalog_entries(
+                entries_per_stream_type,
+                read_json_mapping(self.parent.favorites_file),
+                self.generate_url,
+            )
 
             #Send received data to processing function
             self.signals.finished.emit(iptv_info_data, categories_per_stream_type, entries_per_stream_type)

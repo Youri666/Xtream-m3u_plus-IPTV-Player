@@ -63,6 +63,7 @@ from iptv_player.ui.dialogs.settings import (
 from iptv_player.ui.widgets import KeyboardNavigableListWidget
 from iptv_player.utils.privacy import private_url_log_reference
 from iptv_player.utils.search import normalize_search_text, title_matches_search
+from iptv_player.storage import read_json_mapping, write_json_file
 import Threadpools
 from Threadpools import FetchDataWorker, OnlineWorker, EPGWorker, MovieInfoFetcher, SeriesInfoFetcher, ImageFetcher, AccountInfoWorker
 
@@ -3279,15 +3280,7 @@ class IPTVPlayerApp(QMainWindow):
             #Set data to currently selected item
             current_sel_item.setData(Qt.UserRole, data)
 
-            fav_data = {}
-
-            if path.isfile(self.favorites_file):
-                try:
-                    with open(self.favorites_file, 'r') as fav_file:
-                        fav_data = json.load(fav_file)
-                except (OSError, ValueError) as e:
-                    print(f"Could not read favorites file, starting fresh: {e}")
-                    fav_data = {}
+            fav_data = read_json_mapping(self.favorites_file)
 
             fav_key = 'series_ids' if stream_type == "Series" else 'stream_ids'
             ids = fav_data.get(fav_key) or []
@@ -3303,8 +3296,7 @@ class IPTVPlayerApp(QMainWindow):
 
             fav_data[fav_key] = ids
 
-            with open(self.favorites_file, 'w') as fav_file:
-                json.dump(fav_data, fav_file, indent=4)
+            write_json_file(self.favorites_file, fav_data)
 
             # Only the Favorites view changes here. Other cached category lists keep
             # references to the same entry dictionaries and remain valid.
@@ -3338,13 +3330,7 @@ class IPTVPlayerApp(QMainWindow):
         id_field = 'series_id' if stream_type == 'Series' else 'stream_id'
         fav_key  = 'series_ids' if stream_type == 'Series' else 'stream_ids'
 
-        fav_data = {}
-        if path.isfile(self.favorites_file):
-            try:
-                with open(self.favorites_file, 'r') as fav_file:
-                    fav_data = json.load(fav_file)
-            except (OSError, ValueError) as e:
-                print(f"Could not read favorites file: {e}")
+        fav_data = read_json_mapping(self.favorites_file)
 
         ordered_ids = fav_data.get(fav_key, []) or []
         if not ordered_ids:

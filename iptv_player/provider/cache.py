@@ -1,11 +1,9 @@
 """Account-aware storage for provider catalog responses."""
 
 import hashlib
-import json
-import os
-import tempfile
 import time
-from pathlib import Path
+
+from iptv_player.storage import read_json_mapping, write_json_file
 
 
 CACHE_SCHEMA_VERSION = 1
@@ -20,12 +18,7 @@ def account_cache_key(server, username):
 
 def load_catalog_cache(filename):
     """Return a valid cache mapping or an empty mapping for unreadable data."""
-    try:
-        with open(filename, "r") as cache_file:
-            cached_data = json.load(cache_file)
-        return cached_data if isinstance(cached_data, dict) else {}
-    except (OSError, ValueError, TypeError, UnicodeDecodeError):
-        return {}
+    return read_json_mapping(filename)
 
 
 def required_catalog_keys(enabled_stream_types):
@@ -95,24 +88,4 @@ def build_catalog_cache(
 
 def write_catalog_cache(filename, cached_data):
     """Atomically replace the catalog cache after serializing it completely."""
-    destination = Path(filename)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    file_descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{destination.name}.",
-        suffix=".tmp",
-        dir=str(destination.parent),
-        text=True,
-    )
-    try:
-        with os.fdopen(file_descriptor, "w", newline="") as cache_file:
-            json.dump(cached_data, cache_file, indent=4)
-            cache_file.flush()
-            os.fsync(cache_file.fileno())
-        os.replace(temporary_name, destination)
-    except Exception:
-        try:
-            os.unlink(temporary_name)
-        except OSError:
-            pass
-        raise
-
+    write_json_file(filename, cached_data)
