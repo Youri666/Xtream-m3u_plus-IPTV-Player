@@ -342,149 +342,36 @@ class IPTVPlayerApp(QMainWindow):
         #Load default settings after GUI has been initialized
         self.load_data_at_startup()
 
-        #Create live tv tab splitter
-        self.live_splitter = QSplitter(Qt.Horizontal)
-
-        # Column 0 widget (category)
-        live_category_container = QWidget()
-        live_category_layout = QVBoxLayout(live_category_container)
-        live_category_layout.setContentsMargins(0, 0, 0, 0)
-        live_category_layout.addWidget(self.category_search_widgets["LIVE"])
-        live_category_layout.addWidget(self.category_list_live)
-
-        # Set width limits
-        live_category_container.setMinimumWidth(150)
-
-        # Column 1 widget (streaming)
-        live_streaming_container = QWidget()
-        live_streaming_layout = QVBoxLayout(live_streaming_container)
-        live_streaming_layout.setContentsMargins(0, 0, 0, 0)
-        live_streaming_layout.addWidget(self.streaming_search_widgets["LIVE"])
-        live_streaming_layout.addWidget(self.streaming_list_live)
-
-        # Set width limits
-        live_streaming_container.setMinimumWidth(150)
-
-        # Column 2 widget (live info)
-        live_info_box_container = QWidget()
-        live_info_box_layout = QVBoxLayout(live_info_box_container)
-        live_info_box_layout.setContentsMargins(0, 0, 0, 0)
-        live_info_box_layout.addWidget(self.live_info_box)
-
-        # Set width limits
-        live_info_box_container.setMinimumWidth(300)
-
-        # Add widgets to splitter
-        self.live_splitter.addWidget(live_category_container)
-        self.live_splitter.addWidget(live_streaming_container)
-        self.live_splitter.addWidget(live_info_box_container)
-
-        # Stretch ratios (initial splitter sizes)
-        self.live_splitter.setSizes([200, 200, 300])  # Initial widths
-
-        self.live_splitter.setCollapsible(0, False)  # Prevent collapsing column 0
-        self.live_splitter.setCollapsible(1, False)  # Prevent collapsing column 1
-        self.live_splitter.setCollapsible(2, False)  # prevent collapsing column 2
-
-        # Add splitter to live tab layout
+        self.live_splitter = self._create_content_splitter(
+            self.category_search_widgets["LIVE"],
+            self.category_list_live,
+            self.streaming_search_widgets["LIVE"],
+            self.streaming_list_live,
+            self.live_info_box,
+            info_minimum_width=300,
+        )
         self.live_tab_layout.addWidget(self.live_splitter)
 
-
-        #Create movies tab splitter
-        self.movies_splitter = QSplitter(Qt.Horizontal)
-
-        # Column 0 widget (category)
-        movies_category_container = QWidget()
-        movies_category_layout = QVBoxLayout(movies_category_container)
-        movies_category_layout.setContentsMargins(0, 0, 0, 0)
-        movies_category_layout.addWidget(self.category_search_widgets["Movies"])
-        movies_category_layout.addWidget(self.category_list_movies)
-
-        # Set width limits
-        movies_category_container.setMinimumWidth(150)
-
-        # Column 1 widget (streaming)
-        movies_streaming_container = QWidget()
-        movies_streaming_layout = QVBoxLayout(movies_streaming_container)
-        movies_streaming_layout.setContentsMargins(0, 0, 0, 0)
-        movies_streaming_layout.addWidget(self.streaming_search_widgets["Movies"])
-        movies_streaming_layout.addWidget(self.streaming_list_movies)
-
-        # Set width limits
-        movies_streaming_container.setMinimumWidth(150)
-
-        # Column 2 widget (movies info)
-        movies_info_box_container = QWidget()
-        movies_info_box_layout = QVBoxLayout(movies_info_box_container)
-        movies_info_box_layout.setContentsMargins(0, 0, 0, 0)
-        movies_info_box_layout.addWidget(self.movies_info_box)
-
-        # Set width limits
-        movies_info_box_container.setMinimumWidth(350)
-
-        # Add widgets to splitter
-        self.movies_splitter.addWidget(movies_category_container)
-        self.movies_splitter.addWidget(movies_streaming_container)
-        self.movies_splitter.addWidget(movies_info_box_container)
-
-        # Stretch ratios (initial splitter sizes)
-        self.movies_splitter.setSizes([200, 200, 300])  # Initial widths
-
-        self.movies_splitter.setCollapsible(0, False)  # Prevent collapsing column 0
-        self.movies_splitter.setCollapsible(1, False)  # Prevent collapsing column 1
-        self.movies_splitter.setCollapsible(2, False)  # prevent collapsing column 2
-
-        # Add splitter to movies tab layout
+        self.movies_splitter = self._create_content_splitter(
+            self.category_search_widgets["Movies"],
+            self.category_list_movies,
+            self.streaming_search_widgets["Movies"],
+            self.streaming_list_movies,
+            self.movies_info_box,
+            info_minimum_width=350,
+        )
         self.movies_tab_layout.addWidget(self.movies_splitter)
 
-
-        #Create series tab splitter
-        self.series_splitter = QSplitter(Qt.Horizontal)
-
-        # Column 0 widget (category)
-        series_category_container = QWidget()
-        series_category_layout = QVBoxLayout(series_category_container)
-        series_category_layout.setContentsMargins(0, 0, 0, 0)
-        series_category_layout.addWidget(self.category_search_widgets["Series"])
-        series_category_layout.addWidget(self.category_list_series)
-
-        # Set width limits
-        series_category_container.setMinimumWidth(150)
-
-        # Column 1 widget (streaming)
-        series_streaming_container = QWidget()
-        series_streaming_layout = QVBoxLayout(series_streaming_container)
-        series_streaming_layout.setContentsMargins(0, 0, 0, 0)
-        series_streaming_layout.addWidget(self.streaming_search_widgets["Series"])
-        series_streaming_layout.addWidget(self.streaming_list_series)
-
-        # Set width limits
-        series_streaming_container.setMinimumWidth(150)
-
-        # Column 2 widget (series info)
-        series_info_box_container = QWidget()
-        series_info_box_layout = QVBoxLayout(series_info_box_container)
-        series_info_box_layout.setContentsMargins(0, 0, 0, 0)
-        series_info_box_layout.addWidget(self.series_info_box)
-
-        # Set width limits
-        series_info_box_container.setMinimumWidth(350)
-
-        # Add widgets to splitter
-        self.series_splitter.addWidget(series_category_container)
-        self.series_splitter.addWidget(series_streaming_container)
-        self.series_splitter.addWidget(series_info_box_container)
-
-        # Stretch ratios (initial splitter sizes)
-        self.series_splitter.setSizes([200, 200, 300])  # Initial widths
-
-        self.series_splitter.setCollapsible(0, False)  # Prevent collapsing column 0
-        self.series_splitter.setCollapsible(1, False)  # Prevent collapsing column 1
-        self.series_splitter.setCollapsible(2, False)  # prevent collapsing column 2
-
-        # Add splitter to series tab layout
+        self.series_splitter = self._create_content_splitter(
+            self.category_search_widgets["Series"],
+            self.category_list_series,
+            self.streaming_search_widgets["Series"],
+            self.streaming_list_series,
+            self.series_info_box,
+            info_minimum_width=350,
+        )
         self.series_tab_layout.addWidget(self.series_splitter)
-        
+
         #Add iptv info text to info tab
         self.info_tab_layout.addWidget(self.iptv_info_text)
 
@@ -503,6 +390,47 @@ class IPTVPlayerApp(QMainWindow):
         # carries the maximized state, while the splitter states preserve the three
         # independently resized columns in each content tab.
         self.restore_window_layout()
+
+    def _create_content_splitter(
+        self,
+        category_search,
+        category_list,
+        streaming_search,
+        streaming_list,
+        info_box,
+        info_minimum_width,
+    ):
+        """Build the shared category, catalog, and information column layout."""
+        splitter = QSplitter(Qt.Horizontal)
+
+        category_container = QWidget()
+        category_layout = QVBoxLayout(category_container)
+        category_layout.setContentsMargins(0, 0, 0, 0)
+        category_layout.addWidget(category_search)
+        category_layout.addWidget(category_list)
+        category_container.setMinimumWidth(150)
+
+        streaming_container = QWidget()
+        streaming_layout = QVBoxLayout(streaming_container)
+        streaming_layout.setContentsMargins(0, 0, 0, 0)
+        streaming_layout.addWidget(streaming_search)
+        streaming_layout.addWidget(streaming_list)
+        streaming_container.setMinimumWidth(150)
+
+        info_container = QWidget()
+        info_layout = QVBoxLayout(info_container)
+        info_layout.setContentsMargins(0, 0, 0, 0)
+        info_layout.addWidget(info_box)
+        info_container.setMinimumWidth(info_minimum_width)
+
+        for column in (category_container, streaming_container, info_container):
+            splitter.addWidget(column)
+
+        splitter.setSizes([200, 200, 300])
+        for column_index in range(3):
+            splitter.setCollapsible(column_index, False)
+
+        return splitter
 
     def _encoded_widget_state(self, state):
         """Encode Qt's binary geometry/state payload for safe INI storage."""
