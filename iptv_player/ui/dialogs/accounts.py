@@ -1,5 +1,3 @@
-import configparser
-
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
@@ -10,7 +8,14 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
 )
 
-from iptv_player.config import write_config_file
+from iptv_player.config import (
+    delete_account,
+    load_account,
+    load_accounts,
+    load_startup_account,
+    save_account,
+    save_startup_account,
+)
 
 class AccountManager(QtWidgets.QDialog):
     def __init__(self, parent=None):
@@ -62,16 +67,7 @@ class AccountManager(QtWidgets.QDialog):
 
     def set_startup_credentials(self):
         selected_item = self.startup_account_options.currentText()
-
-        config = configparser.ConfigParser()
-        config.read(self.parent.user_data_file)
-
-        if 'Startup credentials' not in config:
-            config['Startup credentials'] = {}
-
-        config['Startup credentials']['startup_credentials'] = f"{selected_item}"
-
-        write_config_file(self.parent.user_data_file, config)
+        save_startup_account(self.parent.user_data_file, selected_item)
 
     def load_saved_accounts(self):
         self.startup_account_options.currentTextChanged.disconnect(self.set_startup_credentials)
@@ -80,18 +76,13 @@ class AccountManager(QtWidgets.QDialog):
         self.startup_account_options.clear()
         self.startup_account_options.addItem("None")
 
-        config = configparser.ConfigParser()
-        config.read(self.parent.user_data_file)
+        for name in load_accounts(self.parent.user_data_file):
+            self.accounts_list.addItem(name)
+            self.startup_account_options.addItem(name)
 
-        if 'Credentials' in config:
-            for key in config['Credentials']:
-                self.accounts_list.addItem(key)
-                self.startup_account_options.addItem(key)
-
-        if 'Startup credentials' in config:
-            selected_startup_credentials = config['Startup credentials']['startup_credentials']
-            idx = self.startup_account_options.findText(f"{selected_startup_credentials}")
-            self.startup_account_options.setCurrentIndex(idx)
+        selected_name = load_startup_account(self.parent.user_data_file)
+        index = self.startup_account_options.findText(selected_name)
+        self.startup_account_options.setCurrentIndex(max(0, index))
 
         self.startup_account_options.currentTextChanged.connect(self.set_startup_credentials)
 
@@ -100,11 +91,8 @@ class AccountManager(QtWidgets.QDialog):
 
         if selected_item:
             name = selected_item.text()
-            config = configparser.ConfigParser()
-            config.read(self.parent.user_data_file)
-
-            if 'Credentials' in config and name in config['Credentials']:
-                account_data = config['Credentials'][name]
+            account_data = load_account(self.parent.user_data_file, name)
+            if account_data is not None:
                 parts = account_data.split('|')
                 method = parts[0]
                 credentials = parts[1:]
@@ -144,39 +132,16 @@ class AccountManager(QtWidgets.QDialog):
                 self.load_saved_accounts()
 
     def save_credentials(self, credentials_dict):
-        # Load the configuration file
-        config = configparser.ConfigParser()
-        config.read(self.parent.user_data_file)
-
-        # Extract the credentials from the dictionary
         method = credentials_dict['method']
         name = credentials_dict['name']
         credentials = credentials_dict['credentials']
-
-        # Remove the old name if it has been changed (renaming)
-        if 'old_name' in credentials_dict:
-            old_name = credentials_dict['old_name']
-            if old_name != name and old_name in config['Credentials']:
-                del config['Credentials'][old_name]
-                # Update the startup credentials if the old name was used
-                if 'Startup credentials' in config and config['Startup credentials']['startup_credentials'] == old_name:
-                    config['Startup credentials']['startup_credentials'] = name
-
-        # Ensure the 'Credentials' section exists
-        if 'Credentials' not in config:
-            config['Credentials'] = {}
-
-        # Save the credentials
-        if method == 'manual':
-            server, username, password, live_url_format, movie_url_format, series_url_format = credentials
-            config['Credentials'][name] = f"manual|{server}|{username}|{password}|{live_url_format}|{movie_url_format}|{series_url_format}"
-
-        elif method == 'm3u_plus':
-            m3u_url, live_url_format, movie_url_format, series_url_format = credentials
-            config['Credentials'][name] = f"m3u_plus|{m3u_url}|{live_url_format}|{movie_url_format}|{series_url_format}"
-
-        # Write the updated configuration back to the file
-        write_config_file(self.parent.user_data_file, config)
+        save_account(
+            self.parent.user_data_file,
+            method,
+            name,
+            credentials,
+            old_name=credentials_dict.get('old_name'),
+        )
 
     def select_account(self):
         selected_item = self.accounts_list.currentItem()
@@ -184,11 +149,8 @@ class AccountManager(QtWidgets.QDialog):
         if selected_item:
             name = selected_item.text()
 
-            config = configparser.ConfigParser()
-            config.read(self.parent.user_data_file)
-
-            if 'Credentials' in config and name in config['Credentials']:
-                data = config['Credentials'][name]
+            data = load_account(self.parent.user_data_file, name)
+            if data is not None:
 
                 if data.startswith('manual|'):
                     _, server, username, password, live_url_format, movie_url_format, series_url_format = data.split('|')
@@ -225,18 +187,7 @@ class AccountManager(QtWidgets.QDialog):
         if selected_item:
             name = selected_item.text()
 
-            config = configparser.ConfigParser()
-            config.read(self.parent.user_data_file)
-
-            if 'Credentials' in config and name in config['Credentials']:
-                del config['Credentials'][name]
-
-                # Update startup credentials if the deleted account was used for startup
-                if 'Startup credentials' in config and config['Startup credentials']['startup_credentials'] == name:
-                    config['Startup credentials']['startup_credentials'] = "None"
-
-                write_config_file(self.parent.user_data_file, config)
-
+            if delete_account(self.parent.user_data_file, name):
                 self.load_saved_accounts()
 
 class AccountDialog(QtWidgets.QDialog):
