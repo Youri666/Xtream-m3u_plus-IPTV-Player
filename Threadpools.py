@@ -2,10 +2,7 @@ from os import path
 import time
 import requests
 import json
-from datetime import datetime
 from PyQt5.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot
-
-import base64
 
 from iptv_player.provider.cache import (
     account_cache_key,
@@ -14,6 +11,7 @@ from iptv_player.provider.cache import (
     load_catalog_cache,
     write_catalog_cache,
 )
+from iptv_player.provider.epg import decode_epg_data, decode_epg_text
 
 CONNECTION_HEADER           = "Keep-Alive"
 CONTENT_HEADER              = "gzip, deflate"
@@ -590,42 +588,12 @@ class EPGWorker(QRunnable):
             self.signals.error.emit(str(e))
 
     def _decode_epg_text(self, raw_bytes):
-        # EPG payloads come back base64-encoded. Most providers wrap UTF-8 text,
-        # but MENA-region providers (e.g. anghami.us) wrap Windows-1256 (Arabic ANSI).
-        # Decoding cp1256 bytes as UTF-8 either raises or yields mojibake, so try
-        # the common encodings in order and fall back to a replace decode last.
-        for enc in ("utf-8", "utf-8-sig", "cp1256", "iso-8859-6", "cp1252"):
-            try:
-                return raw_bytes.decode(enc)
-            except UnicodeDecodeError:
-                continue
-        return raw_bytes.decode("utf-8", errors="replace")
+        """Keep the historical worker method while delegating pure decoding."""
+        return decode_epg_text(raw_bytes)
 
     def decryptEPGData(self, epg_data):
         try:
-            decrypted_epg_data = []
-
-            for epg_entry in epg_data['epg_listings']:
-                #Get start, stop time and date
-                start_timestamp = datetime.fromtimestamp(int(epg_entry['start_timestamp']))
-                stop_timestamp  = datetime.fromtimestamp(int(epg_entry['stop_timestamp']))
-                date            = f"{start_timestamp.day:02}-{start_timestamp.month:02}-{start_timestamp.year}"
-
-                #Decode program name and description — see _decode_epg_text for the encoding fallback.
-                program_name        = self._decode_epg_text(base64.b64decode(epg_entry['title']))
-                program_description = self._decode_epg_text(base64.b64decode(epg_entry['description']))
-
-                #Put only necessary EPG data in list
-                decrypted_epg_data.append({
-                    'start_time': start_timestamp,
-                    'stop_time': stop_timestamp,
-                    'program_name': program_name,
-                    'description': program_description,
-                    'date': date
-                    })
-
-            #return decrypted EPG data
-            return decrypted_epg_data
+            return decode_epg_data(epg_data)
         except Exception as e:
             print(f"failed decrypting: {e}")
 
