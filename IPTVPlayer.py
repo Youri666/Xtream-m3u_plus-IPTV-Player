@@ -62,7 +62,7 @@ from iptv_player.ui.widgets import KeyboardNavigableListWidget
 from iptv_player.utils.privacy import private_url_log_reference
 from iptv_player.utils.search import normalize_search_text, title_matches_search
 from iptv_player.utils.sorting import ordered_catalog_entries, ordered_season_keys
-from iptv_player.storage import read_json_mapping, write_json_file
+from iptv_player.storage import entries_in_favorite_order, set_favorite
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 from iptv_player.provider.credentials import parse_xtream_m3u_url
 from iptv_player.player_process import run_embedded_player_process
@@ -3185,23 +3185,7 @@ class IPTVPlayerApp(QMainWindow):
             #Set data to currently selected item
             current_sel_item.setData(Qt.UserRole, data)
 
-            fav_data = read_json_mapping(self.favorites_file)
-
-            fav_key = 'series_ids' if stream_type == "Series" else 'stream_ids'
-            ids = fav_data.get(fav_key) or []
-
-            if is_fav:
-                # Remove first to avoid duplicates if the entry was already in the list,
-                # then append so the freshly-marked item sits at the end of the order
-                # (issue #17 — preserve add-order in the Favorites view).
-                ids = [i for i in ids if i != stream_id]
-                ids.append(stream_id)
-            else:
-                ids = [i for i in ids if i != stream_id]
-
-            fav_data[fav_key] = ids
-
-            write_json_file(self.favorites_file, fav_data)
+            set_favorite(self.favorites_file, stream_type, stream_id, is_fav)
 
             # Only the Favorites view changes here. Other cached category lists keep
             # references to the same entry dictionaries and remain valid.
@@ -3232,20 +3216,7 @@ class IPTVPlayerApp(QMainWindow):
         # in which the user marked them). Falls back to catalog order if the file is
         # missing/corrupt — see issue #17.
         entries = self.entries_per_stream_type.get(stream_type, []) or []
-        id_field = 'series_id' if stream_type == 'Series' else 'stream_id'
-        fav_key  = 'series_ids' if stream_type == 'Series' else 'stream_ids'
-
-        fav_data = read_json_mapping(self.favorites_file)
-
-        ordered_ids = fav_data.get(fav_key, []) or []
-        if not ordered_ids:
-            # No favorites file order to follow — fall back to catalog scan, in catalog order.
-            return [e for e in entries if e.get('favorite')]
-
-        # Build a fast lookup, then return entries in favorites.json order, skipping
-        # any ids that no longer exist in the catalog (e.g. removed by the provider).
-        by_id = {e.get(id_field): e for e in entries}
-        return [by_id[i] for i in ordered_ids if i in by_id]
+        return entries_in_favorite_order(self.favorites_file, stream_type, entries)
 
     def _category_view_key(self, stream_type, category_name, category_id=None):
         """Build the cache key shared by prepared entries and Qt list items."""
