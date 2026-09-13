@@ -276,7 +276,6 @@ class AccountDialog(QtWidgets.QDialog):
         self.server_entry       = QLineEdit()
         self.username_entry     = QLineEdit()
         self.password_entry     = QLineEdit()
-        self.password_entry.setEchoMode(QLineEdit.Password)
 
         self.live_url_format_entry = QLineEdit(self.default_url_formats['live'])
         self.movie_url_format_entry = QLineEdit(self.default_url_formats['movie'])
