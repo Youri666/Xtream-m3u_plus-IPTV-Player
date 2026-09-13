@@ -1,33 +1,20 @@
-import sys
-import os
 from os import path
 import time
 import requests
-import subprocess
-import configparser
-import re
 import json
-import hashlib
-import html
-from lxml import etree, html
 from datetime import datetime
-from dateutil import parser, tz
-import xml.etree.ElementTree as ET
-from PyQt5.QtGui import QIcon, QFont, QImage, QPixmap, QColor
-from PyQt5.QtCore import (
-    Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize, QObject, pyqtSignal, 
-    QRunnable, pyqtSlot, QThreadPool, QModelIndex, QAbstractItemModel, QVariant
-)
-from PyQt5 import QtWidgets
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QVBoxLayout, QLineEdit, QLabel, QPushButton,
-    QListWidget, QWidget, QFileDialog, QCheckBox, QSizePolicy, QHBoxLayout,
-    QDialog, QFormLayout, QDialogButtonBox, QTabWidget, QListWidgetItem,
-    QSpinBox, QMenu, QAction, QTextEdit, QGridLayout, QMessageBox, QListView,
-    QTreeWidget, QTreeWidgetItem, QTreeView
-)
+from PyQt5.QtGui import QPixmap
+from PyQt5.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot
 
 import base64
+
+from iptv_player.provider.cache import (
+    account_cache_key,
+    build_catalog_cache,
+    catalog_cache_is_fresh,
+    load_catalog_cache,
+    write_catalog_cache,
+)
 
 CONNECTION_HEADER           = "Keep-Alive"
 CONTENT_HEADER              = "gzip, deflate"
@@ -135,8 +122,7 @@ class FetchDataWorker(QRunnable):
 
     def _cache_account_key(self):
         """Identify a provider account without writing credentials to the cache."""
-        identity = f"{self.server.rstrip('/').casefold()}\0{self.username}"
-        return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+        return account_cache_key(self.server, self.username)
 
     @pyqtSlot()
     def run(self):
@@ -181,13 +167,9 @@ class FetchDataWorker(QRunnable):
             if self.catalog_cache_enabled and path.isfile(self.parent.cache_file):
                 print("Cache file is there")
 
-                try:
-                    print("Loading cached data")
-                    with open(self.parent.cache_file, 'r') as cache_file:
-                        cached_data = json.load(cache_file)
-                    if not isinstance(cached_data, dict):
-                        cached_data = {}
-                except Exception as e:
+                print("Loading cached data")
+                cached_data = load_catalog_cache(self.parent.cache_file)
+                if not cached_data:
                     cached_data = {}
 
                     # self.signals.show_error_msg.emit('Failed loading cache file', 
@@ -199,22 +181,15 @@ class FetchDataWorker(QRunnable):
             cache_matches_account = (
                 metadata.get('account_key') == self._cache_account_key()
             )
-            try:
-                cache_age = max(0, time.time() - float(metadata.get('fetched_at', 0)))
-            except (TypeError, ValueError):
-                cache_age = float('inf')
-            required_cache_keys = {
-                key
-                for stream_type in ('LIVE', 'Movies', 'Series')
-                if self.enabled_stream_types[stream_type]
-                for key in (f'{stream_type} categories', stream_type)
-            }
             cache_is_fresh = (
                 self.catalog_cache_enabled
                 and not self.force_provider_refresh
-                and cache_matches_account
-                and cache_age <= self.catalog_cache_max_age_hours * 3600
-                and required_cache_keys.issubset(cached_data)
+                and catalog_cache_is_fresh(
+                    cached_data,
+                    self._cache_account_key(),
+                    self.enabled_stream_types,
+                    self.catalog_cache_max_age_hours,
+                )
             )
 
             if cache_is_fresh:
@@ -291,29 +266,17 @@ class FetchDataWorker(QRunnable):
 
                 # Preserve cached collections for disabled content. Disabling Movies,
                 # for example, must not erase its useful fallback data from disk.
-                cache_to_write = dict(cached_data) if cache_matches_account else {}
-                for stream_type in ('LIVE', 'Movies', 'Series'):
-                    if self.enabled_stream_types[stream_type]:
-                        cache_to_write[f'{stream_type} categories'] = (
-                            categories_per_stream_type[stream_type]
-                        )
-                        cache_to_write[stream_type] = entries_per_stream_type[stream_type]
-
                 if self.catalog_cache_enabled:
-                    cache_to_write['_metadata'] = {
-                        'schema_version': 1,
-                        'account_key': self._cache_account_key(),
-                        # A partial fallback must remain expired so the next launch
-                        # retries the provider instead of trusting incomplete data.
-                        'fetched_at': (
-                            time.time() if catalog_fetch_complete
-                            else metadata.get('fetched_at', 0)
-                        )
-                    }
-                    all_cached_data = json.dumps(cache_to_write, indent=4)
+                    cache_to_write = build_catalog_cache(
+                        cached_data,
+                        self._cache_account_key(),
+                        categories_per_stream_type,
+                        entries_per_stream_type,
+                        self.enabled_stream_types,
+                        catalog_fetch_complete,
+                    )
                     try:
-                        with open(self.parent.cache_file, 'w') as cache_file:
-                            cache_file.write(all_cached_data)
+                        write_catalog_cache(self.parent.cache_file, cache_to_write)
                     except OSError as error:
                         # Cache persistence must not discard data already fetched.
                         print(f"Failed writing provider cache: {error}")
@@ -583,41 +546,6 @@ class ImageFetcher(QRunnable):
             image = QPixmap(self.parent.path_to_no_img)
             self.signals.finished.emit(image, self.stream_type)
             self.signals.error.emit(str(e))
-
-class SearchWorkerSignals(QObject):
-    list_widget = pyqtSignal(list, str)
-    error = pyqtSignal(str)
-
-class SearchWorker(QRunnable):
-    def __init__(self, stream_type, currently_loaded_entries, list_widgets, text):
-        super().__init__()
-        self.stream_type = stream_type
-        self.currently_loaded_entries = currently_loaded_entries[0]
-        self.list_widgets = list_widgets[0]
-        self.text = text
-
-        self.signals = SearchWorkerSignals()
-
-        # self.setAutoDelete(True)
-
-    @pyqtSlot()
-    def run(self):
-        try:
-            self.list_widgets[self.stream_type].clear()
-            print("starting searching through entries")
-
-            for entry in self.currently_loaded_entries[self.stream_type]:
-                if self.text.lower() in entry['name'].lower():
-                    item = QListWidgetItem(entry['name'])
-                    item.setData(Qt.UserRole, entry)
-
-                    self.list_widgets[self.stream_type].addItem(item)
-
-                    print(entry['name'])
-
-            self.signals.list_widget.emit([self.list_widgets[self.stream_type]], self.stream_type)
-        except Exception as e:
-            print(f"failed search worker: {e}")
 
 class EPGWorkerSignals(QObject):
     finished = pyqtSignal(list)
