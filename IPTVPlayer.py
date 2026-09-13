@@ -1484,8 +1484,8 @@ class IPTVPlayerApp(QMainWindow):
         for stream_type in ('LIVE', 'Movies', 'Series'):
             category_list = self.category_list_widgets[stream_type]
             streaming_list = self.streaming_list_widgets[stream_type]
-            category_list.setTabTarget(streaming_list)
-            streaming_list.setTabTarget(category_list)
+            category_list.set_tab_target(streaming_list)
+            streaming_list.set_tab_target(category_list)
 
         #Configure visuals of the lists
         standard_icon_size = QSize(24, 24)

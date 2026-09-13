@@ -14,7 +14,7 @@ class KeyboardNavigableListWidget(QListWidget):
         super().__init__(parent)
         self._tab_target = None
 
-    def setTabTarget(self, target):
+    def set_tab_target(self, target):
         self._tab_target = target
 
     def keyPressEvent(self, event):

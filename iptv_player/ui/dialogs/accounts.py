@@ -249,9 +249,9 @@ class AccountDialog(QtWidgets.QDialog):
         self.mode = mode
         self.account = account
         self.setWindowTitle("Edit Credentials" if self.mode == self.MODE_EDIT else "Add Credentials")
-        self.setupUi()
+        self.setup_ui()
 
-    def setupUi(self):
+    def setup_ui(self):
         layout = QVBoxLayout(self)
 
         self.manual_entry_name    = "Manual/Xtream entry"

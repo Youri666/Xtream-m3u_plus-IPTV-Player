@@ -501,7 +501,7 @@ class EPGWorker(QRunnable):
             epg_data = response.json()
 
             #Decrypt EPG data with base 64
-            decrypted_epg_data = self.decryptEPGData(epg_data)
+            decrypted_epg_data = self.decrypt_epg_data(epg_data)
 
             self.signals.finished.emit(decrypted_epg_data)
         except Exception as e:
@@ -511,7 +511,7 @@ class EPGWorker(QRunnable):
         """Keep the historical worker method while delegating pure decoding."""
         return decode_epg_text(raw_bytes)
 
-    def decryptEPGData(self, epg_data):
+    def decrypt_epg_data(self, epg_data):
         try:
             return decode_epg_data(epg_data)
         except Exception as e:
@@ -552,7 +552,7 @@ class OnlineWorker(QRunnable):
         # should not make the traffic light flicker before a later probe succeeds.
         for attempt in range(retry_count + 1):
             try:
-                stream_status = self.requestStatus(headers)
+                stream_status = self.request_status(headers)
                 received_response = True
 
                 # A confirmed successful probe is definitive and needs no retry.
@@ -577,7 +577,7 @@ class OnlineWorker(QRunnable):
         else:
             self.signals.error.emit(str(last_error))
 
-    def requestStatus(self, headers):
+    def request_status(self, headers):
         """Read one small chunk instead of waiting for a continuous stream to end."""
 
         # Direct .ts streams may never finish. Streaming the response and closing it
@@ -608,9 +608,9 @@ class OnlineWorker(QRunnable):
                 if not received_data:
                     return False
 
-        return self.checkStatus(response_code, url_data)
+        return self.check_status(response_code, url_data)
 
-    def checkStatus(self, response_code, url_data):
+    def check_status(self, response_code, url_data):
         if response_code != 200:  # need HTTP OK status
             return False
 
