@@ -32,7 +32,6 @@ from PyQt5.QtWidgets import (
     QGroupBox, QRadioButton, QButtonGroup, QToolButton
 )
 
-from AccountManager import AccountManager
 from CustomPyQtWidgets import LiveInfoBox, MovieInfoBox, SeriesInfoBox, EmbeddedPlayerWindow
 from iptv_player.constants import (
     CURRENT_CONFIG_SCHEMA_VERSION,
@@ -60,6 +59,7 @@ from iptv_player.ui.dialogs.settings import (
     InternalPlayerSettingsDialog,
     NetworkSettingsDialog,
 )
+from iptv_player.ui.dialogs.accounts import AccountManager
 from iptv_player.ui.widgets import KeyboardNavigableListWidget
 from iptv_player.utils.privacy import private_url_log_reference
 from iptv_player.utils.search import normalize_search_text, title_matches_search
