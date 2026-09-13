@@ -41,6 +41,7 @@ from iptv_player.constants import (
     REMEMBER_CATEGORY_SORTING,
 )
 from iptv_player.config import (
+    application_resource_path,
     macos_bundle_executable,
     migrate_legacy_player_volume,
     migrate_user_data_file,
@@ -147,34 +148,7 @@ class IPTVPlayerApp(QMainWindow):
         self.update_user_data_file()
         self._migrate_legacy_player_volume()
 
-        self.path_to_window_icon            = path.abspath(path.join(path.dirname(__file__), 'Images/TV_icon.ico'))
-        self.path_to_no_img                 = path.abspath(path.join(path.dirname(__file__), 'Images/no_image.jpg'))
-        self.path_to_loading_img            = path.abspath(path.join(path.dirname(__file__), 'Images/loading-icon.png'))
-        self.path_to_404_img                = path.abspath(path.join(path.dirname(__file__), 'Images/404_not_found.png'))
-        
-        self.path_to_yt_img                 = path.abspath(path.join(path.dirname(__file__), 'Images/yt_icon_rgb.png'))
-        self.path_to_tmdb_img               = path.abspath(path.join(path.dirname(__file__), 'Images/primary_full-TMDB.svg'))
-        
-        self.path_to_home_icon              = path.abspath(path.join(path.dirname(__file__), 'Images/home_tab_icon.ico'))
-        self.path_to_live_icon              = path.abspath(path.join(path.dirname(__file__), 'Images/tv_tab_icon.ico'))
-        self.path_to_movies_icon            = path.abspath(path.join(path.dirname(__file__), 'Images/movies_tab_icon.ico'))
-        self.path_to_series_icon            = path.abspath(path.join(path.dirname(__file__), 'Images/series_tab_icon.ico'))
-        self.path_to_favorites_icon         = path.abspath(path.join(path.dirname(__file__), 'Images/favorite_tab_icon.ico'))
-        self.path_to_fav_colour_icon        = path.abspath(path.join(path.dirname(__file__), 'Images/favorite_tab_icon_colour.ico'))
-        self.path_to_online_status_icon     = path.abspath(path.join(path.dirname(__file__), 'Images/online_status.png'))
-        self.path_to_offline_status_icon    = path.abspath(path.join(path.dirname(__file__), 'Images/offline_status.png'))
-        self.path_to_maybe_status_icon      = path.abspath(path.join(path.dirname(__file__), 'Images/maybe_status.png'))
-        self.path_to_unknown_status_icon    = path.abspath(path.join(path.dirname(__file__), 'Images/unknown_status.png'))
-        self.path_to_info_icon              = path.abspath(path.join(path.dirname(__file__), 'Images/info_tab_icon.ico'))
-        self.path_to_settings_icon          = path.abspath(path.join(path.dirname(__file__), 'Images/settings_tab_icon.ico'))
-        
-        self.path_to_search_icon            = path.abspath(path.join(path.dirname(__file__), 'Images/search_bar_icon.ico'))
-        self.path_to_sorting_icon           = path.abspath(path.join(path.dirname(__file__), 'Images/sorting_icon.ico'))
-        self.path_to_clear_btn_icon         = path.abspath(path.join(path.dirname(__file__), 'Images/clear_button_icon.ico'))
-        self.path_to_go_back_icon           = path.abspath(path.join(path.dirname(__file__), 'Images/go_back_icon.ico'))
-
-        self.path_to_account_icon           = path.abspath(path.join(path.dirname(__file__), 'Images/account_manager_icon.ico'))
-        self.path_to_mediaplayer_icon       = path.abspath(path.join(path.dirname(__file__), 'Images/film_camera_icon.ico'))
+        self._init_resource_paths()
 
         self.setWindowIcon(QIcon(self.path_to_window_icon))
 
@@ -390,6 +364,44 @@ class IPTVPlayerApp(QMainWindow):
         # carries the maximized state, while the splitter states preserve the three
         # independently resized columns in each content tab.
         self.restore_window_layout()
+
+    def _init_resource_paths(self):
+        """Resolve all packaged image assets from one declarative mapping."""
+        filenames = {
+            'path_to_window_icon': 'TV_icon.ico',
+            'path_to_no_img': 'no_image.jpg',
+            'path_to_loading_img': 'loading-icon.png',
+            'path_to_404_img': '404_not_found.png',
+            'path_to_yt_img': 'yt_icon_rgb.png',
+            'path_to_tmdb_img': 'primary_full-TMDB.svg',
+            'path_to_home_icon': 'home_tab_icon.ico',
+            'path_to_live_icon': 'tv_tab_icon.ico',
+            'path_to_movies_icon': 'movies_tab_icon.ico',
+            'path_to_series_icon': 'series_tab_icon.ico',
+            'path_to_favorites_icon': 'favorite_tab_icon.ico',
+            'path_to_fav_colour_icon': 'favorite_tab_icon_colour.ico',
+            'path_to_online_status_icon': 'online_status.png',
+            'path_to_offline_status_icon': 'offline_status.png',
+            'path_to_maybe_status_icon': 'maybe_status.png',
+            'path_to_unknown_status_icon': 'unknown_status.png',
+            'path_to_info_icon': 'info_tab_icon.ico',
+            'path_to_settings_icon': 'settings_tab_icon.ico',
+            'path_to_search_icon': 'search_bar_icon.ico',
+            'path_to_sorting_icon': 'sorting_icon.ico',
+            'path_to_clear_btn_icon': 'clear_button_icon.ico',
+            'path_to_go_back_icon': 'go_back_icon.ico',
+            'path_to_account_icon': 'account_manager_icon.ico',
+            'path_to_mediaplayer_icon': 'film_camera_icon.ico',
+        }
+        application_root = path.dirname(__file__)
+        for attribute, filename in filenames.items():
+            setattr(
+                self,
+                attribute,
+                application_resource_path(
+                    path.join('Images', filename), application_root
+                ),
+            )
 
     def _create_content_splitter(
         self,

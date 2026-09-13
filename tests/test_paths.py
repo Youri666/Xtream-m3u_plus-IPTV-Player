@@ -4,7 +4,23 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from iptv_player.config.paths import macos_bundle_executable, writable_data_directory
+from iptv_player.config.paths import (
+    application_resource_path,
+    macos_bundle_executable,
+    writable_data_directory,
+)
+
+
+class ApplicationResourcePathTests(unittest.TestCase):
+    def test_resolves_resource_from_explicit_application_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            expected = Path(directory) / "Images" / "icon.ico"
+
+            result = application_resource_path(
+                Path("Images") / "icon.ico", application_root=directory
+            )
+
+            self.assertEqual(result, str(expected.resolve()))
 
 
 class WritableDataDirectoryTests(unittest.TestCase):
@@ -51,4 +67,3 @@ class MacOSBundleExecutableTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

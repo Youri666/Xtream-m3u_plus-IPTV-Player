@@ -10,9 +10,14 @@ from .accounts import (
 )
 from .ini import read_config_file, write_config_file
 from .migrations import migrate_legacy_player_volume, migrate_user_data_file
-from .paths import macos_bundle_executable, writable_data_directory
+from .paths import (
+    application_resource_path,
+    macos_bundle_executable,
+    writable_data_directory,
+)
 
 __all__ = (
+    "application_resource_path",
     "delete_account",
     "load_account",
     "load_accounts",

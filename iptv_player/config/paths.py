@@ -9,6 +9,12 @@ from pathlib import Path
 APPLICATION_NAME = "IPTV Player"
 
 
+def application_resource_path(relative_path, application_root=None):
+    """Return an absolute path to a resource bundled with the application."""
+    root = Path(application_root) if application_root else Path(__file__).parents[2]
+    return str((root / relative_path).resolve())
+
+
 def writable_data_directory(platform=None, home=None, working_directory=None):
     """Return the directory used for configuration and disposable user data."""
     platform = platform or sys.platform
@@ -34,4 +40,3 @@ def macos_bundle_executable(bundle_path):
     if not executable_path.is_file() or not os.access(executable_path, os.X_OK):
         raise OSError(f"The application bundle executable is unavailable: {executable_path}")
     return str(executable_path)
-
