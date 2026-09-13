@@ -1,25 +1,20 @@
 from PyQt5.QtGui import (
-    QIcon, QFont, QImage, QPixmap, QColor, QDesktopServices, QPalette,
+    QIcon, QFont, QPixmap, QColor, QDesktopServices, QPalette,
     QPainter, QPen, QPolygon
 )
 from PyQt5.QtCore import (
-    Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize, QPoint, QObject, pyqtSignal,
-    QRunnable, pyqtSlot, QThreadPool, QModelIndex, QAbstractItemModel, QVariant, QUrl
+    Qt, QTimer, QSize, QPoint, QUrl
 )
-from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QLineEdit, QLabel, QPushButton,
-    QListWidget, QWidget, QFileDialog, QCheckBox, QSizePolicy, QHBoxLayout,
-    QDialog, QFormLayout, QDialogButtonBox, QTabWidget, QListWidgetItem,
-    QSpinBox, QMenu, QAction, QTextEdit, QGridLayout, QMessageBox, QListView,
-    QTreeWidget, QTreeWidgetItem, QTreeView, QScrollArea, QSlider, QFrame, QStyle
+    QListWidget, QWidget, QHBoxLayout, QListWidgetItem, QMenu, QAction,
+    QGridLayout, QTreeWidget, QScrollArea, QSlider, QFrame, QStyle
 )
 
 from os import path
 import sys
 import configparser
 from iptv_player.config import write_config_file
-import json
 
 from SearchUtils import normalize_search_text, title_matches_search
 

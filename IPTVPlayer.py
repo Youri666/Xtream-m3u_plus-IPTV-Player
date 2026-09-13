@@ -7,28 +7,22 @@ import subprocess
 import configparser
 import re
 import json
-import html
 import queue
 import threading
 import uuid
 from multiprocessing.connection import Client, Listener
-from lxml import etree, html
 from datetime import datetime
-from dateutil import parser, tz
-import xml.etree.ElementTree as ET
-from PyQt5.QtGui import QIcon, QFont, QImage, QPixmap, QColor, QDesktopServices, QIntValidator, QPainter
+from PyQt5.QtGui import QIcon, QFont, QPixmap, QColor, QDesktopServices, QPainter
 from PyQt5.QtCore import (
     Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize, QObject, pyqtSignal, 
-    QRunnable, pyqtSlot, QThreadPool, QModelIndex, QAbstractItemModel, QVariant,
-    QUrl, QByteArray
+    QThreadPool, QUrl, QByteArray
 )
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QLineEdit, QLabel, QPushButton,
     QListWidget, QWidget, QFileDialog, QCheckBox, QSizePolicy, QHBoxLayout,
     QDialog, QTabWidget, QListWidgetItem, QMenu, QAction, QActionGroup,
-    QTextEdit, QGridLayout, QMessageBox, QListView, QTreeWidget,
-    QTreeWidgetItem, QTreeView, QComboBox, QSplitter,
+    QTextEdit, QGridLayout, QMessageBox, QListView, QTreeWidgetItem, QComboBox, QSplitter,
     QGroupBox, QRadioButton, QButtonGroup, QToolButton
 )
 
