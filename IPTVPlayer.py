@@ -3287,7 +3287,7 @@ class IPTVPlayerApp(QMainWindow):
                     self.entries_per_stream_type[stream_type][idx]['favorite'] = is_fav
 
             #Change fav button colour
-            info_box.setFavorite(is_fav)
+            info_box.set_favorite(is_fav)
             
             #Set favorite parameter
             data['favorite'] = is_fav
@@ -3581,9 +3581,6 @@ class IPTVPlayerApp(QMainWindow):
             #Clear EPG data
             self.live_info_box.live_EPG_info.clear()
 
-            # is_fav = self.streaming_list_live.currentItem().data(Qt.UserRole).get('favorite', False)
-            # self.live_info_box.setFavorite(is_fav)
-
             #Check if EPG data is empty
             if not epg_data:
                 item = QTreeWidgetItem(["--/--/----", "--:--", "--:--", "No EPG Data Available..."])
@@ -3682,7 +3679,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.set_progress_bar(0, "Loading EPG data")
 
                 #Set favorite button according to favorite value
-                self.live_info_box.setFavorite(is_fav)
+                self.live_info_box.set_favorite(is_fav)
 
                 #Set TV channel name in info window
                 self.live_info_box.EPG_box_label.setText(f"{clicked_item_data['name']}")
@@ -3711,7 +3708,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.set_progress_bar(0, "Loading Movie info")
 
                 #Set favorite button according to favorite value
-                self.movies_info_box.setFavorite(is_fav)
+                self.movies_info_box.set_favorite(is_fav)
 
                 #Set loading image
                 self.movies_info_box.cover.setPixmap(QPixmap(self.path_to_loading_img).scaledToWidth(self.series_info_box.maxCoverWidth))
@@ -3747,7 +3744,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.set_progress_bar(0, "Loading Series info")
 
                 #Set favorite button according to favorite value
-                self.series_info_box.setFavorite(is_fav)
+                self.series_info_box.set_favorite(is_fav)
 
                 #Set loading image
                 self.series_info_box.cover.setPixmap(QPixmap(self.path_to_loading_img).scaledToWidth(self.series_info_box.maxCoverWidth))

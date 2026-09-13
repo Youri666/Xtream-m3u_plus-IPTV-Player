@@ -76,7 +76,8 @@ class LiveInfoBox(QWidget):
         self.live_EPG_info_box_layout.addWidget(self.cover)
         self.live_EPG_info_box_layout.addWidget(self.live_EPG_info)
 
-    def setFavorite(self, is_fav):
+    def set_favorite(self, is_fav):
+        """Update the favorite button to reflect the selected entry."""
         if is_fav:
             #If favorite, set coloured icon
             self.fav_button.setIcon(self.parent.favorites_icon_colour)
@@ -151,8 +152,8 @@ class MovieInfoBox(QScrollArea):
         self.tmdb_img = QPixmap(self.parent.path_to_tmdb_img)
         self.tmdb.setPixmap(self.tmdb_img.scaledToHeight(30))
 
-        self.trailer.mousePressEvent    = self.TrailerClicked
-        self.tmdb.mousePressEvent       = self.TmdbClicked
+        self.trailer.mousePressEvent = self.open_trailer
+        self.tmdb.mousePressEvent = self.open_tmdb_page
 
         self.name.setFont(QFont('Segoe UI', 14, QFont.Bold))
 
@@ -192,21 +193,24 @@ class MovieInfoBox(QScrollArea):
 
         self.setWidget(self.widget)
 
-    def TrailerClicked(self, e):
+    def open_trailer(self, event):
+        """Open the selected movie trailer in the default browser."""
         #Get youtube code from text and append to url
         yt_url = f"https://www.youtube.com/watch?v={self.yt_code}"
 
         #Open URL
         QDesktopServices.openUrl(QUrl(yt_url))
 
-    def TmdbClicked(self, e):
+    def open_tmdb_page(self, event):
+        """Open the selected movie page on TMDB."""
         #Get TMDB code from text and append to url
         tmdb_url = f"https://www.themoviedb.org/movie/{self.tmdb_code}"
 
         #Open URL
         QDesktopServices.openUrl(QUrl(tmdb_url))
 
-    def setFavorite(self, is_fav):
+    def set_favorite(self, is_fav):
+        """Update the favorite button to reflect the selected movie."""
         if is_fav:
             #If favorite, set coloured icon
             self.fav_button.setIcon(self.parent.favorites_icon_colour)
@@ -281,8 +285,8 @@ class SeriesInfoBox(QScrollArea):
         self.tmdb_img = QPixmap(self.parent.path_to_tmdb_img)
         self.tmdb.setPixmap(self.tmdb_img.scaledToHeight(30))
 
-        self.trailer.mousePressEvent    = self.TrailerClicked
-        self.tmdb.mousePressEvent       = self.TmdbClicked
+        self.trailer.mousePressEvent = self.open_trailer
+        self.tmdb.mousePressEvent = self.open_tmdb_page
 
         self.name.setFont(QFont('Segoe UI', 14, QFont.Bold))
 
@@ -324,21 +328,24 @@ class SeriesInfoBox(QScrollArea):
         #Add widget with all items to the scrollarea (self)
         self.setWidget(self.widget)
 
-    def TrailerClicked(self, e):
+    def open_trailer(self, event):
+        """Open the selected series trailer in the default browser."""
         #Get youtube code from text and append to url
         yt_url = f"https://www.youtube.com/watch?v={self.yt_code}"
 
         #Open URL
         QDesktopServices.openUrl(QUrl(yt_url))
 
-    def TmdbClicked(self, e):
+    def open_tmdb_page(self, event):
+        """Open the selected series page on TMDB."""
         #Get TMDB code from text and append to url
         tmdb_url = f"https://www.themoviedb.org/tv/{self.tmdb_code}"
 
         #Open URL
         QDesktopServices.openUrl(QUrl(tmdb_url))
 
-    def setFavorite(self, is_fav):
+    def set_favorite(self, is_fav):
+        """Update the favorite button to reflect the selected series."""
         if is_fav:
             #If favorite, set coloured icon
             self.fav_button.setIcon(self.parent.favorites_icon_colour)
