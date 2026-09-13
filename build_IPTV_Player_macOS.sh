@@ -19,6 +19,12 @@ DIST_PATH="dist"
 APP_NAME="IPTV Player"
 APP_PATH="$DIST_PATH/$APP_NAME.app"
 
+# Remove generated specification files after both successful and failed builds.
+cleanup_spec_files() {
+  rm -f "IPTV Player.spec" "IPTV Player with debug console.spec"
+}
+trap cleanup_spec_files EXIT
+
 # Accept an explicit mode for automation, or ask when launched interactively.
 case "${1:-}" in
   --release) BUILD_CHOICE=1 ;;
@@ -115,7 +121,6 @@ PYINSTALLER_ARGS=(
   "${ICON_ARGS[@]}"
   --distpath "$DIST_PATH"
   --workpath "$BUILD_PATH"
-  --specpath "$BUILD_PATH"
   --add-data "Images/TV_icon.ico:Images"
   --add-data "Images/404_not_found.png:Images"
   --add-data "Images/no_image.jpg:Images"

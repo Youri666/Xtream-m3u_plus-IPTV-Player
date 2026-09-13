@@ -117,7 +117,6 @@ REM Run PyInstaller directly with all necessary options and added data files
   --icon "Images/TV_icon.ico" ^
   --name "IPTV Player" ^
   --workpath %BUILD_PATH% ^
-  --specpath %BUILD_PATH% ^
   --distpath %DIST_PATH% ^
   --add-data "Images/TV_icon.ico;Images" ^
   --add-data "Images/404_not_found.png;Images" ^
@@ -147,6 +146,7 @@ REM Run PyInstaller directly with all necessary options and added data files
   --add-data "CustomPyQtWidgets.py;." ^
   --add-data "AccountManager.py;." ^
   %MAIN_SCRIPT%
+IF ERRORLEVEL 1 GOTO build_failed
 
 IF "%exec_choice%"=="1" GOTO end
 
@@ -160,7 +160,6 @@ REM Keep the lazy python-vlc import available in the diagnostic build too.
   --icon "Images/TV_icon.ico" ^
   --name "IPTV Player with debug console" ^
   --workpath %BUILD_PATH% ^
-  --specpath %BUILD_PATH% ^
   --distpath %DIST_PATH% ^
   --add-data "Images/TV_icon.ico;Images" ^
   --add-data "Images/404_not_found.png;Images" ^
@@ -190,8 +189,20 @@ REM Keep the lazy python-vlc import available in the diagnostic build too.
   --add-data "CustomPyQtWidgets.py;." ^
   --add-data "AccountManager.py;." ^
   %MAIN_SCRIPT%
+IF ERRORLEVEL 1 GOTO build_failed
 
 :end
+IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
+IF EXIST "IPTV Player with debug console.spec" del /q "IPTV Player with debug console.spec"
 echo.
 echo Build complete. Executable saved in %DIST_PATH%.
 pause
+exit /b 0
+
+:build_failed
+IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
+IF EXIST "IPTV Player with debug console.spec" del /q "IPTV Player with debug console.spec"
+echo.
+echo ERROR: The build failed. Review the messages above for details.
+pause
+exit /b 1
