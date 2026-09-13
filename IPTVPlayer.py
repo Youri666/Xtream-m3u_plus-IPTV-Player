@@ -75,7 +75,15 @@ from iptv_player.provider.network import (
     MAX_LIVE_STATUS_RETRIES,
     NETWORK_SETTINGS,
 )
-from Threadpools import FetchDataWorker, OnlineWorker, EPGWorker, MovieInfoFetcher, SeriesInfoFetcher, ImageFetcher, AccountInfoWorker
+from iptv_player.provider.workers import (
+    AccountInfoWorker,
+    EPGWorker,
+    FetchDataWorker,
+    ImageFetcher,
+    MovieInfoFetcher,
+    OnlineWorker,
+    SeriesInfoFetcher,
+)
 
 # CURRENT_CONFIG_SCHEMA_VERSION describes the structure and meaning of userdata.ini.
 # Increment the schema only when a release changes persisted data and add a matching,
