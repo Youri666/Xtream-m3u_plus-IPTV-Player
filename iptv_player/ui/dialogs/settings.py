@@ -197,7 +197,7 @@ class NetworkSettingsDialog(QDialog):
 
     def save_settings(self, force_catalog_refresh=False):
         """Apply the complete dialog state as one coherent configuration update."""
-        self.parent_app.applyNetworkSettings(
+        self.parent_app.apply_network_settings(
             self.user_agent_box.currentText(),
             self.connection_timeout_spin.value(),
             self.read_timeout_spin.value(),

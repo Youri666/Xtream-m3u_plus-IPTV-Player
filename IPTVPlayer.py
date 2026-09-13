@@ -321,22 +321,22 @@ class IPTVPlayerApp(QMainWindow):
 
         self.init_tab_widget()
 
-        self.initIPTVinfo()
+        self.init_iptv_info()
 
-        self.initCategoryListWidgets()
-        self.initEntryListWidgets()
-        self.initInfoBoxes()
+        self.init_category_list_widgets()
+        self.init_entry_list_widgets()
+        self.init_info_boxes()
 
         self.init_search_bars()
 
         # self.initHomeTab()
 
-        self.initSettingsTab()
+        self.init_settings_tab()
 
-        self.initProgressBar()        
+        self.init_progress_bar()
 
         #Load default settings after GUI has been initialized
-        self.loadDataAtStartup()
+        self.load_data_at_startup()
 
         #Create live tv tab splitter
         self.live_splitter = QSplitter(Qt.Horizontal)
@@ -1357,7 +1357,7 @@ class IPTVPlayerApp(QMainWindow):
             list_widget.setUpdatesEnabled(True)
             list_widget.viewport().update()
 
-    def initIPTVinfo(self):
+    def init_iptv_info(self):
         info_controls = QHBoxLayout()
         self.refresh_account_info_button = QPushButton("Refresh")
         self.refresh_account_info_button.setIcon(
@@ -1381,7 +1381,7 @@ class IPTVPlayerApp(QMainWindow):
 
         self.iptv_info_text.setFont(default_font)
 
-    def initCategoryListWidgets(self):
+    def init_category_list_widgets(self):
         #Create lists for categories
         self.category_list_live     = KeyboardNavigableListWidget()
         self.category_list_movies   = KeyboardNavigableListWidget()
@@ -1430,7 +1430,7 @@ class IPTVPlayerApp(QMainWindow):
                 }
             """)
 
-    def initEntryListWidgets(self):
+    def init_entry_list_widgets(self):
         #Create lists for channels
         self.streaming_list_live      = KeyboardNavigableListWidget()
         self.streaming_list_movies    = KeyboardNavigableListWidget()
@@ -1500,13 +1500,13 @@ class IPTVPlayerApp(QMainWindow):
                 }
             """)
 
-    def initInfoBoxes(self):
+    def init_info_boxes(self):
         #Create Movies and Series info box
         self.live_info_box   = LiveInfoBox(self)
         self.movies_info_box = MovieInfoBox(self)
         self.series_info_box = SeriesInfoBox(self)
 
-    def initHomeTab(self):
+    def init_home_tab(self):
         #Create lists to show previously watched content
         self.live_history_list      = QListWidget()
         self.movie_history_list     = QListWidget()
@@ -1535,7 +1535,7 @@ class IPTVPlayerApp(QMainWindow):
         self.home_tab_layout.addWidget(self.series_history_lbl)
         self.home_tab_layout.addWidget(self.series_history_list)
 
-    def loadDefaultSortingOrder(self):
+    def load_default_sorting_order(self):
         sorting_order = ""
 
         config = configparser.ConfigParser()
@@ -1681,7 +1681,7 @@ class IPTVPlayerApp(QMainWindow):
         )
         return self._sorting_tuple_from_preference(preference)
 
-    def setAllSortingOrder(self, sorting_order):
+    def set_all_sorting_order(self, sorting_order):
         match sorting_order:
             case "A-Z":
                 print("sorting A-Z")
@@ -1713,7 +1713,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.sort_list(self.streaming_search_bars["Movies"], 'streaming', "Movies", self.streaming_list_widgets, False, 0)
                 self.sort_list(self.streaming_search_bars["Series"], 'streaming', "Series", self.streaming_list_widgets, False, 0)
 
-    def setDefaultSortingOrder(self, e, combobox):
+    def set_default_sorting_order(self, e, combobox):
         sorting_order = combobox.currentText()
 
         print(f"setting default sorting order: {sorting_order}")
@@ -1785,7 +1785,7 @@ class IPTVPlayerApp(QMainWindow):
                     )
                 )
         else:
-            self.setAllSortingOrder(sorting_order)
+            self.set_all_sorting_order(sorting_order)
 
         config = configparser.ConfigParser()
         config.read(self.user_data_file)
@@ -1797,7 +1797,7 @@ class IPTVPlayerApp(QMainWindow):
 
         write_config_file(self.user_data_file, config)
 
-    def initSettingsTab(self):
+    def init_settings_tab(self):
         #Create items in settings tab
         self.settings_layout.setSpacing(20)
         self.settings_layout.setAlignment(Qt.AlignTop)
@@ -1848,7 +1848,7 @@ class IPTVPlayerApp(QMainWindow):
         )
         self.internal_player_settings_button.setEnabled(False)
         self.internal_player_settings_button.clicked.connect(
-            self.openInternalPlayerSettings
+            self.open_internal_player_settings
         )
 
         self.current_player_label = QLabel("")
@@ -1899,20 +1899,20 @@ class IPTVPlayerApp(QMainWindow):
             "A-Z", "Z-A", "Sorting disabled", REMEMBER_CATEGORY_SORTING
         ])
         self.default_sorting_order_box.setCurrentText("Sorting disabled")
-        self.default_sorting_order_box.currentTextChanged.connect(lambda e: self.setDefaultSortingOrder(e, self.default_sorting_order_box))
+        self.default_sorting_order_box.currentTextChanged.connect(lambda e: self.set_default_sorting_order(e, self.default_sorting_order_box))
 
         self.update_checker = QPushButton("Check for updates")
-        self.update_checker.clicked.connect(lambda: self.checkForUpdates(True))
+        self.update_checker.clicked.connect(lambda: self.check_for_updates(True))
 
         self.auto_update_checkbox = QCheckBox("Auto check for updates")
         self.auto_update_checkbox.setToolTip("Automatically check for updates at startup")
-        self.auto_update_checkbox.stateChanged.connect(self.toggleAutoUpdate)
+        self.auto_update_checkbox.stateChanged.connect(self.toggle_auto_update)
 
         self.advanced_network_button = QPushButton("Advanced settings…")
         self.advanced_network_button.setToolTip(
             "Configure request timeouts, Info refresh, LIVE status checks, retries, and User-Agent"
         )
-        self.advanced_network_button.clicked.connect(self.openNetworkSettings)
+        self.advanced_network_button.clicked.connect(self.open_network_settings)
 
         self.theme_select_box = QComboBox()
         self.theme_select_box.addItems(["System", "Light", "Dark"])
@@ -1952,7 +1952,7 @@ class IPTVPlayerApp(QMainWindow):
         self.settings_layout.addWidget(self.advanced_settings_group_box,     5, 0, 1, 2)
         self.settings_layout.addWidget(self.updates_group_box,               6, 0, 1, 2)
 
-    def loadDefaultUserAgent(self):
+    def load_default_user_agent(self):
         #Read userdata config file
         config = configparser.ConfigParser()
         try:
@@ -1966,7 +1966,7 @@ class IPTVPlayerApp(QMainWindow):
         else:
             self.current_user_agent = DEFAULT_USER_AGENT_HEADER
 
-    def loadDefaultContent(self):
+    def load_default_content(self):
         #Read userdata config file
         config = configparser.ConfigParser()
         try:
@@ -1995,7 +1995,7 @@ class IPTVPlayerApp(QMainWindow):
                 'Series': legacy_vods_enabled
             }
 
-        self._applyContentVisibility()
+        self._apply_content_visibility()
 
         # Loading preferences must not trigger three redundant writes to userdata.ini.
         for stream_type, checkbox in self.content_checkboxes.items():
@@ -2003,7 +2003,7 @@ class IPTVPlayerApp(QMainWindow):
             checkbox.setChecked(self.content_enabled[stream_type])
             checkbox.blockSignals(False)
 
-    def _applyContentVisibility(self):
+    def _apply_content_visibility(self):
         """Show only enabled content tabs while keeping Info and Settings available."""
         tab_by_stream_type = {
             'LIVE': self.live_tab,
@@ -2016,13 +2016,13 @@ class IPTVPlayerApp(QMainWindow):
                 self.content_enabled[stream_type]
             )
 
-    def openNetworkSettings(self):
+    def open_network_settings(self):
         """Open the modal editor after all persisted network values are loaded."""
         dialog = NetworkSettingsDialog(self)
         self._prepare_dialog_theme(dialog)
         dialog.exec_()
 
-    def openInternalPlayerSettings(self):
+    def open_internal_player_settings(self):
         """Edit and immediately apply the internal player's control steps."""
         dialog = InternalPlayerSettingsDialog(self)
         self._prepare_dialog_theme(dialog)
@@ -2034,7 +2034,7 @@ class IPTVPlayerApp(QMainWindow):
         self.internal_speed_step = round(dialog.speed_step.value(), 2)
         self.internal_audio_language = dialog.audio_language.currentData() or ""
         self.internal_subtitle_language = dialog.subtitle_language.currentData() or ""
-        self.saveInternalPlayerSettings()
+        self.save_internal_player_settings()
 
         if self._embedded_player_command_queue is not None:
             self._embedded_player_command_queue.put({
@@ -2046,7 +2046,7 @@ class IPTVPlayerApp(QMainWindow):
                 'subtitle_language': self.internal_subtitle_language
             })
 
-    def saveInternalPlayerSettings(self):
+    def save_internal_player_settings(self):
         """Persist internal-player controls without replacing unrelated settings."""
         config = configparser.ConfigParser()
         try:
@@ -2068,7 +2068,7 @@ class IPTVPlayerApp(QMainWindow):
         except OSError as error:
             print(f"Could not save internal player settings: {error}")
 
-    def loadDefaultInternalPlayerSettings(self):
+    def load_default_internal_player_settings(self):
         """Load bounded control steps so manual INI edits remain safe."""
         config = configparser.ConfigParser()
         try:
@@ -2112,7 +2112,7 @@ class IPTVPlayerApp(QMainWindow):
             if subtitle_language in valid_languages | {'disabled'} else ''
         )
 
-    def applyNetworkSettings(self, user_agent, connection_timeout, read_timeout,
+    def apply_network_settings(self, user_agent, connection_timeout, read_timeout,
                              live_status_timeout, live_status_retries,
                              stream_status_enabled, account_refresh_interval,
                              account_auto_refresh_enabled, catalog_cache_enabled,
@@ -2161,7 +2161,7 @@ class IPTVPlayerApp(QMainWindow):
             print(f"Could not write user data file: {e}")
             self.animate_progress(0, 100, f"Failed saving network settings: {e}", "error")
 
-    def loadDefaultNetworkOptions(self):
+    def load_default_network_options(self):
         try:
             # Read persisted network values. A malformed file falls back to the
             # in-code defaults instead of preventing the application from starting.
@@ -2242,7 +2242,7 @@ class IPTVPlayerApp(QMainWindow):
         # the current build is AHEAD of upstream (e.g. an unreleased fork build).
         return tuple(int(x) for x in re.findall(r'\d+', v or ""))
 
-    def checkForUpdates(self, enable_update_msg):
+    def check_for_updates(self, enable_update_msg):
         try:
             print("Checking for updates")
 
@@ -2310,7 +2310,7 @@ class IPTVPlayerApp(QMainWindow):
             else:
                 self.animate_progress(0, 100, "Failed checking for updates", "error")
 
-    def toggleAutoUpdate(self, state):
+    def toggle_auto_update(self, state):
         checked = bool(state)
 
         config = configparser.ConfigParser()
@@ -2320,7 +2320,7 @@ class IPTVPlayerApp(QMainWindow):
 
         write_config_file(self.user_data_file, config)
 
-    def loadDefaultAutoUpdate(self):
+    def load_default_auto_update(self):
         #Read userdata file
         config = configparser.ConfigParser()
         try:
@@ -2335,7 +2335,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.auto_update_checkbox.setCheckState(Qt.Checked)
 
                 #If auto update checker is enabled, check for update
-                self.checkForUpdates(False)
+                self.check_for_updates(False)
 
         #If not enable the auto-update-checker by default
         else:
@@ -2351,9 +2351,9 @@ class IPTVPlayerApp(QMainWindow):
             self.auto_update_checkbox.setCheckState(Qt.Checked)
 
             #Check for updates
-            self.checkForUpdates(False)
+            self.check_for_updates(False)
 
-    def initProgressBar(self):
+    def init_progress_bar(self):
         #Create progress bar
         self.progress_bar = QtWidgets.QProgressBar()
         self.progress_bar.setValue(0)
@@ -2372,28 +2372,28 @@ class IPTVPlayerApp(QMainWindow):
             self._finish_progress_animation
         )
 
-    def loadDataAtStartup(self):
+    def load_data_at_startup(self):
         # Load internal-player steps before a startup account can launch media.
-        self.loadDefaultInternalPlayerSettings()
+        self.load_default_internal_player_settings()
 
         #Load external media player
         self.external_player_command = self.load_external_player_command()
         self._refresh_current_player_label()
 
         #Load default sorting setting
-        self.loadDefaultSortingOrder()
+        self.load_default_sorting_order()
 
         #Load category exclusions before provider data populates the three columns
         self._load_hidden_categories()
 
         #Load default user agent
-        self.loadDefaultUserAgent()
+        self.load_default_user_agent()
 
         #Load independent LIVE, Movies, and Series availability
-        self.loadDefaultContent()
+        self.load_default_content()
 
         #Load default auto update checker
-        self.loadDefaultAutoUpdate()
+        self.load_default_auto_update()
 
         #Load stream-status toggle (issue #74)
         self.loadDefaultStreamStatus()
@@ -2403,12 +2403,12 @@ class IPTVPlayerApp(QMainWindow):
 
         # Load network and cache preferences before startup credentials can begin
         # provider requests in the background.
-        self.loadDefaultNetworkOptions()
+        self.load_default_network_options()
 
         #Load startup credentials
-        self.loadStartupCredentials()
+        self.load_startup_credentials()
 
-    def loadStartupCredentials(self):
+    def load_startup_credentials(self):
         # Load playlist on startup if enabled. A malformed/missing key here used to crash
         # the app right after the login screen (issue #92), so every access is guarded.
         config = configparser.ConfigParser()
@@ -2559,7 +2559,7 @@ class IPTVPlayerApp(QMainWindow):
         was_enabled = self.content_enabled[stream_type]
         is_enabled = bool(state)
         self.content_enabled[stream_type] = is_enabled
-        self._applyContentVisibility()
+        self._apply_content_visibility()
 
         config = configparser.ConfigParser()
         try:
