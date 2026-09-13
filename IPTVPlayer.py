@@ -28,6 +28,7 @@ from PyQt5.QtWidgets import (
 
 from iptv_player.ui.info_panels import LiveInfoBox, MovieInfoBox, SeriesInfoBox
 from iptv_player.ui.player import EmbeddedPlayerWindow
+from iptv_player.bootstrap import configure_qt_application, install_logging
 from iptv_player.constants import (
     CURRENT_CONFIG_SCHEMA_VERSION,
     CURRENT_VERSION,
@@ -4629,86 +4630,8 @@ class IPTVPlayerApp(QMainWindow):
         self._prepare_dialog_theme(dialog)
         dialog.exec_()
 
-def _install_logging():
-    # Write every print() and unhandled exception to a persistent log file.
-    # The app used to silently die when an external player launch failed; now the
-    # traceback ends up on disk where the user can paste it into a bug report.
-    import logging, atexit, traceback as _tb
-
-    # Frozen Windows and Linux builds keep diagnostics beside the executable.
-    # macOS application bundles are read-only in normal use, so their log shares
-    # the writable Application Support directory with the configuration files.
-    application_dir = writable_data_directory() if is_mac else (
-        path.dirname(path.abspath(sys.executable))
-        if getattr(sys, 'frozen', False)
-        else path.dirname(path.abspath(__file__))
-    )
-    os.makedirs(application_dir, exist_ok=True)
-    log_path = path.join(application_dir, "log.txt")
-
-    class _StreamToLogger:
-        def __init__(self, original, level):
-            self.original = original
-            self.level    = level
-            self._buf     = ""
-        def write(self, data):
-            try:
-                if self.original is not None:
-                    self.original.write(data)
-            except Exception:
-                pass
-            self._buf += data
-            while "\n" in self._buf:
-                line, self._buf = self._buf.split("\n", 1)
-                if line:
-                    logging.log(self.level, line)
-        def flush(self):
-            try:
-                if self.original is not None:
-                    self.original.flush()
-            except Exception:
-                pass
-        def isatty(self):
-            return False
-
-    try:
-        logging.basicConfig(
-            filename=log_path,
-            filemode='a',
-            level=logging.INFO,
-            format='%(asctime)s %(levelname)s %(message)s',
-            encoding='utf-8',
-        )
-    except TypeError:
-        # Python <3.9 has no encoding kwarg — fall back to a manual handler.
-        handler = logging.FileHandler(log_path, mode='a', encoding='utf-8')
-        handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
-        logging.getLogger().addHandler(handler)
-        logging.getLogger().setLevel(logging.INFO)
-
-    sys.stdout = _StreamToLogger(sys.stdout, logging.INFO)
-    sys.stderr = _StreamToLogger(sys.stderr, logging.ERROR)
-
-    def _excepthook(exc_type, exc, tb):
-        logging.error("Unhandled exception:\n%s", "".join(_tb.format_exception(exc_type, exc, tb)))
-        sys.__excepthook__(exc_type, exc, tb)
-    sys.excepthook = _excepthook
-
-    logging.info("=== Session start (log lives at %s) ===", log_path)
-    atexit.register(lambda: logging.info("=== Session end ==="))
 
 
-def _configure_qt_application(app):
-    """Apply the same visual defaults in the main and player processes."""
-    app.setStyle('Fusion')
-
-    # Use fonts with broad Unicode coverage so provider titles remain readable.
-    if is_windows:
-        app.setFont(QFont("Segoe UI", 10))
-    elif is_mac:
-        app.setFont(QFont("Helvetica Neue", 13))
-    else:
-        app.setFont(QFont("Noto Sans", 10))
 
 
 def _run_embedded_player_process():
@@ -4731,7 +4654,7 @@ def _run_embedded_player_process():
 
     # Do not expose the private child-mode argument to Qt's option parser.
     app = QApplication([sys.argv[0]])
-    _configure_qt_application(app)
+    configure_qt_application(app)
     apply_application_theme(app, os.environ.get('IPTV_PLAYER_THEME', 'System'))
 
     # Environment values originate from bounded application settings, but parse
@@ -4830,9 +4753,9 @@ def main():
     if '--embedded-player-process' in sys.argv:
         sys.exit(_run_embedded_player_process())
 
-    _install_logging()
+    install_logging()
     app = QApplication(sys.argv)
-    _configure_qt_application(app)
+    configure_qt_application(app)
 
     player = IPTVPlayerApp()
     player.show()
