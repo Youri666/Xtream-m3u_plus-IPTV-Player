@@ -1,12 +1,14 @@
 """Pure ordering helpers shared by catalog views."""
 
 
-def ordered_catalog_entries(entries, sorting_enabled, descending=False):
+def ordered_catalog_entries(
+    entries, sorting_enabled, descending=False, title_key="name"
+):
     """Return a copy of catalog entries in the requested title order."""
     ordered = list(entries)
     if sorting_enabled:
         ordered.sort(
-            key=lambda entry: entry.get("name", "").casefold(),
+            key=lambda entry: str(entry.get(title_key, "")).casefold(),
             reverse=descending,
         )
     return ordered

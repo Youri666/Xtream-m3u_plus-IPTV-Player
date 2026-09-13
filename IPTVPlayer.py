@@ -4300,11 +4300,12 @@ class IPTVPlayerApp(QMainWindow):
                 category_list_enabled, category_list_order = (
                     self._sorting_for_category_list(stream_type)
                 )
-                if category_list_enabled:
-                    matching_entries.sort(
-                        key=lambda entry: entry.get('category_name', '').casefold(),
-                        reverse=(category_list_order == 1)
-                    )
+                matching_entries = ordered_catalog_entries(
+                    matching_entries,
+                    category_list_enabled,
+                    descending=(category_list_order == 1),
+                    title_key='category_name',
+                )
 
                 # Build the final order once. Keeping Qt automatic sorting enabled
                 # while inserting thousands of matches causes repeated O(n log n)
@@ -4359,24 +4360,17 @@ class IPTVPlayerApp(QMainWindow):
                                     entry.get('name', ''), search_terms
                                 )
                             ]
-                            if self.sorting_enabled:
-                                matching_entries.sort(
-                                    key=lambda entry: entry['name'].casefold(),
-                                    reverse=(self.sorting_order == 1)
-                                )
+                            matching_entries = ordered_catalog_entries(
+                                matching_entries,
+                                self.sorting_enabled,
+                                descending=(self.sorting_order == 1),
+                            )
                             for entry in matching_entries:
                                 item = QListWidgetItem(entry['name'])
                                 item.setData(Qt.UserRole, entry)
                                 list_widget.addItem(item)
                         case 1: #Seasons
                             list_widget.addItem(self.go_back_text)
-
-                            # Sort numerically so "Season 10" follows "Season 9".
-                            def _season_sort_key(k):
-                                try:
-                                    return (0, int(k))
-                                except (TypeError, ValueError):
-                                    return (1, str(k).lower())
 
                             seasons = [
                                 season for season in self.currently_loaded_streams['Seasons']
@@ -4385,9 +4379,9 @@ class IPTVPlayerApp(QMainWindow):
                                 )
                             ]
                             if self.sorting_enabled:
-                                seasons.sort(
-                                    key=_season_sort_key,
-                                    reverse=(self.sorting_order == 1)
+                                seasons = ordered_season_keys(
+                                    seasons,
+                                    descending=(self.sorting_order == 1),
                                 )
                             for season in seasons:
                                 item = QListWidgetItem(f"Season {season}")
@@ -4401,11 +4395,12 @@ class IPTVPlayerApp(QMainWindow):
                                     episode.get('title', ''), search_terms
                                 )
                             ]
-                            if self.sorting_enabled:
-                                matching_episodes.sort(
-                                    key=lambda episode: episode['title'].casefold(),
-                                    reverse=(self.sorting_order == 1)
-                                )
+                            matching_episodes = ordered_catalog_entries(
+                                matching_episodes,
+                                self.sorting_enabled,
+                                descending=(self.sorting_order == 1),
+                                title_key='title',
+                            )
                             for episode in matching_episodes:
                                 item = QListWidgetItem(episode['title'])
                                 item.setData(Qt.UserRole, episode)

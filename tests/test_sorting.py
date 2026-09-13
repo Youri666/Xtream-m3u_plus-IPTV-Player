@@ -17,6 +17,15 @@ class CatalogSortingTests(unittest.TestCase):
 
         self.assertEqual(ordered_catalog_entries(entries, False), entries)
 
+    def test_catalog_sort_accepts_an_alternate_title_field(self):
+        entries = [{"title": "Zulu"}, {"title": "alpha"}]
+
+        ordered = ordered_catalog_entries(
+            entries, True, title_key="title"
+        )
+
+        self.assertEqual([entry["title"] for entry in ordered], ["alpha", "Zulu"])
+
     def test_seasons_use_numeric_order_before_named_entries(self):
         seasons = ["10", "Specials", "2", "1"]
 
