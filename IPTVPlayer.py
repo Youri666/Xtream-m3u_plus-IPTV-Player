@@ -26,12 +26,8 @@ from PyQt5.QtWidgets import (
     QGroupBox, QRadioButton, QButtonGroup, QToolButton
 )
 
-from iptv_player.ui.media_widgets import (
-    EmbeddedPlayerWindow,
-    LiveInfoBox,
-    MovieInfoBox,
-    SeriesInfoBox,
-)
+from iptv_player.ui.info_panels import LiveInfoBox, MovieInfoBox, SeriesInfoBox
+from iptv_player.ui.player import EmbeddedPlayerWindow
 from iptv_player.constants import (
     CURRENT_CONFIG_SCHEMA_VERSION,
     CURRENT_VERSION,
