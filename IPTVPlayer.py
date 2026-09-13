@@ -42,6 +42,8 @@ from iptv_player.constants import (
 )
 from iptv_player.config import (
     macos_bundle_executable,
+    migrate_legacy_player_volume,
+    migrate_user_data_file,
     writable_data_directory,
     write_config_file,
 )
@@ -592,109 +594,16 @@ class IPTVPlayerApp(QMainWindow):
         super().closeEvent(event)
 
     def update_user_data_file(self):
-        # Load the configuration file. A corrupted .ini must not crash the app —
-        # fall back to a fresh config so the user can re-add accounts.
-        config = configparser.ConfigParser()
-        try:
-            config.read(self.user_data_file)
-        except (configparser.Error, UnicodeDecodeError) as e:
-            print(f"User data file is corrupt, ignoring it: {e}")
-            try:
-                os.rename(self.user_data_file, self.user_data_file + ".bak")
-            except OSError:
-                pass
-            return
-
-        if 'Credentials' in config:
-            for account_name, data in config['Credentials'].items():
-                parts = data.split('|')
-
-                # Required total length and which fields are the URL-format tail.
-                if data.startswith('manual|'):
-                    required_length = 7  # manual|server|user|pass|live_fmt|movie_fmt|series_fmt
-                elif data.startswith('m3u_plus|'):
-                    required_length = 5  # m3u_plus|url|live_fmt|movie_fmt|series_fmt
-                else:
-                    continue
-
-                # Append default URL formats for whichever ones are missing at the tail.
-                if len(parts) < required_length:
-                    defaults = [self.default_url_formats['live'],
-                                self.default_url_formats['movie'],
-                                self.default_url_formats['series']]
-                    missing = required_length - len(parts)
-                    # Take the LAST `missing` defaults because missing formats are
-                    # always the trailing fields of the serialized account value.
-                    parts += defaults[-missing:]
-                    config['Credentials'][account_name] = "|".join(parts)
-
-        # Migration contract for future configuration changes:
-        #   1. Increment CURRENT_CONFIG_SCHEMA_VERSION.
-        #   2. Add an ordered `if stored_schema_version < N` block below.
-        #   3. Make the migration safe to run more than once and preserve user choices.
-        # The stored marker represents the latest completed migration. It is written
-        # only after all migration blocks have executed and the configuration is ready.
-        try:
-            stored_schema_version = config.getint(
-                'Application', 'config_schema_version', fallback=0
-            )
-        except (ValueError, configparser.Error):
-            stored_schema_version = 0
-
-        if stored_schema_version < 1:
-            # Schema 1 replaces the combined VOD switch with independent content
-            # switches. Reuse the legacy value for Movies and Series so migration
-            # never changes an existing user's provider traffic preference.
-            try:
-                legacy_vods_enabled = config.getboolean('VOD', 'enabled', fallback=True)
-            except (ValueError, configparser.Error):
-                legacy_vods_enabled = True
-
-            if 'Content' not in config:
-                config['Content'] = {}
-            content = config['Content']
-            if 'LIVE' not in content:
-                content['LIVE'] = 'True'
-            if 'Movies' not in content:
-                content['Movies'] = str(legacy_vods_enabled)
-            if 'Series' not in content:
-                content['Series'] = str(legacy_vods_enabled)
-
-        if 'Application' not in config:
-            config['Application'] = {}
-        # Early V2.01 test builds briefly stored the application version here. Remove
-        # that redundant key because CURRENT_VERSION already drives update checks.
-        config.remove_option('Application', 'last_run_version')
-        # Preserve a newer schema number if this build opens a configuration that
-        # was previously written by a future application version.
-        config['Application']['config_schema_version'] = str(
-            max(stored_schema_version, CURRENT_CONFIG_SCHEMA_VERSION)
+        """Apply ordered migrations to the persisted user configuration."""
+        migrate_user_data_file(
+            self.user_data_file,
+            self.default_url_formats,
+            CURRENT_CONFIG_SCHEMA_VERSION,
         )
-
-        try:
-            write_config_file(self.user_data_file, config)
-        except OSError as e:
-            print(f"Could not persist user data file: {e}")
 
     def _migrate_legacy_player_volume(self):
         """Move the former standalone volume preference into userdata.ini."""
-        legacy_path = path.join(self.data_directory, ".embedded_player_volume")
-        if not path.isfile(legacy_path):
-            return
-
-        config = configparser.ConfigParser()
-        try:
-            config.read(self.user_data_file)
-            if not config.has_option("InternalPlayer", "volume"):
-                with open(legacy_path, "r") as legacy_file:
-                    volume = max(0, min(100, int(legacy_file.read().strip())))
-                if not config.has_section("InternalPlayer"):
-                    config.add_section("InternalPlayer")
-                config.set("InternalPlayer", "volume", str(volume))
-                write_config_file(self.user_data_file, config)
-            os.remove(legacy_path)
-        except (OSError, ValueError, configparser.Error, UnicodeDecodeError) as error:
-            print(f"Could not migrate the legacy player volume: {error}")
+        migrate_legacy_player_volume(self.user_data_file, self.data_directory)
 
     def init_icons(self):
         #Set tab icon size to 24x24
