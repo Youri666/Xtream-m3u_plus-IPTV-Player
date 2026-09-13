@@ -3515,21 +3515,17 @@ class IPTVPlayerApp(QMainWindow):
             self.prev_clicked_streaming_item = clicked_item
 
             #Get clicked item data
-            clicked_item_text = clicked_item.text()
             clicked_item_data = clicked_item.data(Qt.UserRole)
 
-            #Check if item data is valid
-            if not clicked_item_data:
+            # Season rows contain episode lists rather than stream dictionaries.
+            # They have no top-level metadata to display on a single click.
+            if not isinstance(clicked_item_data, dict):
                 return
 
             #Get if clicked item is favorite
             is_fav = clicked_item_data.get('favorite', False)
 
-            #Get stream type
-            try:
-                stream_type = clicked_item_data['stream_type']
-            except:
-                stream_type = ''
+            stream_type = clicked_item_data.get('stream_type', '')
 
             #Skip when back button or already loaded series info
             if clicked_item.text() == self.go_back_text or ('series' in stream_type and self.series_navigation_level > 0):

@@ -44,9 +44,6 @@ class AccountInfoWorker(QRunnable):
 
     @pyqtSlot()
     def run(self):
-        # A fresh cache hit never creates a provider client. Initialize the handle
-        # before branching so cleanup is safe for both cached and network loads.
-        client = None
         try:
             with XtreamClient(
                 self.server,
@@ -106,6 +103,9 @@ class FetchDataWorker(QRunnable):
 
     @pyqtSlot()
     def run(self):
+        # A fresh cache hit never creates a provider client. Initialize the handle
+        # before branching so cleanup is safe for both cached and network loads.
+        client = None
         try:
             categories_per_stream_type = {
                 'LIVE': [],
