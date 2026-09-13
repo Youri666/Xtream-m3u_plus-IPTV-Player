@@ -48,7 +48,7 @@ class LiveInfoBox(QWidget):
 
         #Create stream status indicator
         self.stream_status = QLabel()
-        self.stream_status_img = self.parent.statusPixmap(
+        self.stream_status_img = self.parent.status_pixmap(
             self.parent.path_to_unknown_status_icon, 24
         )
         self.stream_status.setPixmap(self.stream_status_img)

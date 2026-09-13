@@ -140,8 +140,8 @@ class IPTVPlayerApp(QMainWindow):
         self.default_url_formats = dict(DEFAULT_URL_FORMATS)
 
         # Update the .ini file if needed to maintain backward compatibility.
-        self.updateUserDataFile()
-        self._migrateLegacyPlayerVolume()
+        self.update_user_data_file()
+        self._migrate_legacy_player_volume()
 
         self.path_to_window_icon            = path.abspath(path.join(path.dirname(__file__), 'Images/TV_icon.ico'))
         self.path_to_no_img                 = path.abspath(path.join(path.dirname(__file__), 'Images/no_image.jpg'))
@@ -317,9 +317,9 @@ class IPTVPlayerApp(QMainWindow):
         self.account_info_timer = QTimer(self)
         self.account_info_timer.timeout.connect(self.refreshAccountInfo)
 
-        self.initIcons()
+        self.init_icons()
 
-        self.initTabWidget()
+        self.init_tab_widget()
 
         self.initIPTVinfo()
 
@@ -327,7 +327,7 @@ class IPTVPlayerApp(QMainWindow):
         self.initEntryListWidgets()
         self.initInfoBoxes()
 
-        self.initSearchBars()
+        self.init_search_bars()
 
         # self.initHomeTab()
 
@@ -498,7 +498,7 @@ class IPTVPlayerApp(QMainWindow):
         # Restore only after every splitter and tab exists. The saved geometry also
         # carries the maximized state, while the splitter states preserve the three
         # independently resized columns in each content tab.
-        self.restoreWindowLayout()
+        self.restore_window_layout()
 
     def _encoded_widget_state(self, state):
         """Encode Qt's binary geometry/state payload for safe INI storage."""
@@ -511,7 +511,7 @@ class IPTVPlayerApp(QMainWindow):
         except (AttributeError, UnicodeEncodeError):
             return QByteArray()
 
-    def restoreWindowLayout(self):
+    def restore_window_layout(self):
         """Restore window geometry, active tab, and per-tab column widths."""
         config = configparser.ConfigParser()
         try:
@@ -565,7 +565,7 @@ class IPTVPlayerApp(QMainWindow):
         centered_geometry.moveCenter(available.center())
         self.move(centered_geometry.topLeft())
 
-    def saveWindowLayout(self):
+    def save_window_layout(self):
         """Persist durable UI layout preferences in userdata.ini."""
         config = configparser.ConfigParser()
         try:
@@ -587,11 +587,11 @@ class IPTVPlayerApp(QMainWindow):
             print(f"Could not save window layout: {e}")
 
     def closeEvent(self, event):
-        self.saveWindowLayout()
+        self.save_window_layout()
         self._stopEmbeddedPlayerProcess()
         super().closeEvent(event)
 
-    def updateUserDataFile(self):
+    def update_user_data_file(self):
         # Load the configuration file. A corrupted .ini must not crash the app —
         # fall back to a fresh config so the user can re-add accounts.
         config = configparser.ConfigParser()
@@ -676,7 +676,7 @@ class IPTVPlayerApp(QMainWindow):
         except OSError as e:
             print(f"Could not persist user data file: {e}")
 
-    def _migrateLegacyPlayerVolume(self):
+    def _migrate_legacy_player_volume(self):
         """Move the former standalone volume preference into userdata.ini."""
         legacy_path = path.join(self.data_directory, ".embedded_player_volume")
         if not path.isfile(legacy_path):
@@ -696,7 +696,7 @@ class IPTVPlayerApp(QMainWindow):
         except (OSError, ValueError, configparser.Error, UnicodeDecodeError) as error:
             print(f"Could not migrate the legacy player volume: {error}")
 
-    def initIcons(self):
+    def init_icons(self):
         #Set tab icon size to 24x24
         self.tab_icon_size = QSize(24, 24)
 
@@ -799,13 +799,13 @@ class IPTVPlayerApp(QMainWindow):
         if hasattr(self, 'choose_player_button'):
             self.choose_player_button.setIcon(self.mediaplayer_icon)
 
-    def statusPixmap(self, icon_path, width=24):
+    def status_pixmap(self, icon_path, width=24):
         """Load a colored status circle without its legacy opaque white corners."""
         pixmap = QPixmap(icon_path)
         pixmap.setMask(pixmap.createMaskFromColor(QColor(Qt.white), Qt.MaskInColor))
         return pixmap.scaledToWidth(width, Qt.SmoothTransformation)
 
-    def initTabWidget(self):
+    def init_tab_widget(self):
         #Create tab widget
         self.tab_widget = QTabWidget()
 
@@ -837,34 +837,34 @@ class IPTVPlayerApp(QMainWindow):
         self.tab_widget.addTab(settings_tab,    self.settings_icon,     "Settings")
         self.tab_widget.currentChanged.connect(self._onCurrentTabChanged)
 
-    def initSearchBars(self):
+    def init_search_bars(self):
         #Initialize search bars for category lists
         self.category_search_bars["LIVE"] = QLineEdit()
         self.category_search_bars["LIVE"].setPlaceholderText("Search Live TV Categories...")
-        self.category_search_widgets["LIVE"] = self.configSearchBar(self.category_search_bars["LIVE"], 'category', 'LIVE', self.category_list_widgets, self.category_search_history_list, self.category_search_history_list_idx)
+        self.category_search_widgets["LIVE"] = self.configure_search_bar(self.category_search_bars["LIVE"], 'category', 'LIVE', self.category_list_widgets, self.category_search_history_list, self.category_search_history_list_idx)
 
         self.category_search_bars["Movies"] = QLineEdit()
         self.category_search_bars["Movies"].setPlaceholderText("Search Movies Categories...")
-        self.category_search_widgets["Movies"] = self.configSearchBar(self.category_search_bars["Movies"], 'category', 'Movies', self.category_list_widgets, self.category_search_history_list, self.category_search_history_list_idx)
+        self.category_search_widgets["Movies"] = self.configure_search_bar(self.category_search_bars["Movies"], 'category', 'Movies', self.category_list_widgets, self.category_search_history_list, self.category_search_history_list_idx)
 
         self.category_search_bars["Series"] = QLineEdit()
         self.category_search_bars["Series"].setPlaceholderText("Search Series Categories...")
-        self.category_search_widgets["Series"] = self.configSearchBar(self.category_search_bars["Series"], 'category', 'Series', self.category_list_widgets, self.category_search_history_list, self.category_search_history_list_idx)
+        self.category_search_widgets["Series"] = self.configure_search_bar(self.category_search_bars["Series"], 'category', 'Series', self.category_list_widgets, self.category_search_history_list, self.category_search_history_list_idx)
 
         #Initialize search bars for streaming content lists
         self.streaming_search_bars["LIVE"] = QLineEdit()
         self.streaming_search_bars["LIVE"].setPlaceholderText("Search Live TV Channels...")
-        self.streaming_search_widgets["LIVE"] = self.configSearchBar(self.streaming_search_bars["LIVE"], 'streaming', 'LIVE', self.streaming_list_widgets, self.streaming_search_history_list, self.streaming_search_history_list_idx)
+        self.streaming_search_widgets["LIVE"] = self.configure_search_bar(self.streaming_search_bars["LIVE"], 'streaming', 'LIVE', self.streaming_list_widgets, self.streaming_search_history_list, self.streaming_search_history_list_idx)
 
         self.streaming_search_bars["Movies"] = QLineEdit()
         self.streaming_search_bars["Movies"].setPlaceholderText("Search Movies...")
-        self.streaming_search_widgets["Movies"] = self.configSearchBar(self.streaming_search_bars["Movies"], 'streaming', 'Movies', self.streaming_list_widgets, self.streaming_search_history_list, self.streaming_search_history_list_idx)
+        self.streaming_search_widgets["Movies"] = self.configure_search_bar(self.streaming_search_bars["Movies"], 'streaming', 'Movies', self.streaming_list_widgets, self.streaming_search_history_list, self.streaming_search_history_list_idx)
 
         self.streaming_search_bars["Series"] = QLineEdit()
         self.streaming_search_bars["Series"].setPlaceholderText("Search Series...")
-        self.streaming_search_widgets["Series"] = self.configSearchBar(self.streaming_search_bars["Series"], 'streaming', 'Series', self.streaming_list_widgets, self.streaming_search_history_list, self.streaming_search_history_list_idx)
+        self.streaming_search_widgets["Series"] = self.configure_search_bar(self.streaming_search_bars["Series"], 'streaming', 'Series', self.streaming_list_widgets, self.streaming_search_history_list, self.streaming_search_history_list_idx)
 
-    def configSearchBar(self, search_bar, list_content_type, stream_type, list_widgets, search_history_list, search_history_list_idx):
+    def configure_search_bar(self, search_bar, list_content_type, stream_type, list_widgets, search_history_list, search_history_list_idx):
         #Create sorting actions
         sort_a_z        = QAction("A-Z", self)
         sort_z_a        = QAction("Z-A", self)
@@ -898,17 +898,17 @@ class IPTVPlayerApp(QMainWindow):
 
         #Connect functions to sorting actions
         sort_a_z.triggered.connect(
-            lambda: self.applySortingChoice(
+            lambda: self.apply_sorting_choice(
                 search_bar, list_content_type, stream_type, list_widgets, True, 0
             )
         )
         sort_z_a.triggered.connect(
-            lambda: self.applySortingChoice(
+            lambda: self.apply_sorting_choice(
                 search_bar, list_content_type, stream_type, list_widgets, True, 1
             )
         )
         sort_disabled.triggered.connect(
-            lambda: self.applySortingChoice(
+            lambda: self.apply_sorting_choice(
                 search_bar, list_content_type, stream_type, list_widgets, False, 0
             )
         )
@@ -919,7 +919,7 @@ class IPTVPlayerApp(QMainWindow):
         clear_button.setToolTip("Clear search")
 
         #Connect function to clear search action
-        clear_button.clicked.connect(lambda: self.clearSearch(search_bar, list_content_type, stream_type, list_widgets, search_history_list_idx))
+        clear_button.clicked.connect(lambda: self.clear_search(search_bar, list_content_type, stream_type, list_widgets, search_history_list_idx))
 
         # Store references on the editor for tests and future UI customization.
         search_bar.sort_button = sort_button
@@ -933,7 +933,7 @@ class IPTVPlayerApp(QMainWindow):
         }
         search_bar.current_sorting = (self.sorting_enabled, self.sorting_order)
         sorting_menu.aboutToShow.connect(
-            lambda: self.updateSortingMenu(
+            lambda: self.update_sorting_menu(
                 search_bar, list_content_type, stream_type
             )
         )
@@ -962,7 +962,7 @@ class IPTVPlayerApp(QMainWindow):
                 f"Choose which {stream_type} categories are displayed"
             )
             category_visibility_button.clicked.connect(
-                lambda: self.openCategoryVisibilityDialog(stream_type)
+                lambda: self.open_category_visibility_dialog(stream_type)
             )
             search_bar.category_visibility_button = category_visibility_button
             container_layout.addWidget(category_visibility_button)
@@ -974,7 +974,7 @@ class IPTVPlayerApp(QMainWindow):
 
         return container
 
-    def openCategoryVisibilityDialog(self, stream_type):
+    def open_category_visibility_dialog(self, stream_type):
         """Open the visibility editor and apply accepted changes immediately."""
         categories = self.categories_per_stream_type.get(stream_type, [])
         if not categories:
@@ -1116,7 +1116,7 @@ class IPTVPlayerApp(QMainWindow):
         except OSError as e:
             print(f"Could not save hidden categories: {e}")
 
-    def updateSortingMenu(self, search_bar, list_content_type, stream_type):
+    def update_sorting_menu(self, search_bar, list_content_type, stream_type):
         """Check the action that matches the order of the list being displayed."""
         remembers_current_category = (
             self.remember_category_sorting
@@ -1140,7 +1140,7 @@ class IPTVPlayerApp(QMainWindow):
         for action_name, action in search_bar.sort_actions.items():
             action.setChecked(action_name == preference)
 
-    def applySortingChoice(
+    def apply_sorting_choice(
         self, search_bar, list_content_type, stream_type, list_widgets,
         sorting_enabled, sort_order
     ):
@@ -1180,7 +1180,7 @@ class IPTVPlayerApp(QMainWindow):
             )
             self.currently_loaded_streams[stream_type] = list(prepared_entries)
 
-        self.sortList(
+        self.sort_list(
             search_bar, list_content_type, stream_type, list_widgets,
             sorting_enabled, sort_order
         )
@@ -1191,7 +1191,7 @@ class IPTVPlayerApp(QMainWindow):
                 stream_type, category_name, category_id
             )
 
-    def clearSearch(self, search_bar, list_content_type, stream_type, list_widgets, history_list_idx):
+    def clear_search(self, search_bar, list_content_type, stream_type, list_widgets, history_list_idx):
         #Clear search bar
         search_bar.clear()
 
@@ -1201,7 +1201,7 @@ class IPTVPlayerApp(QMainWindow):
         #Search for nothing so list will be reset
         self.search_in_list(list_content_type, stream_type, "")
 
-    def sortList(self, search_bar, list_content_type, stream_type, list_widgets, sorting_enabled, sort_order):
+    def sort_list(self, search_bar, list_content_type, stream_type, list_widgets, sorting_enabled, sort_order):
         # Keep the menu check mark synchronized even when a global setting invokes
         # sorting directly instead of going through applySortingChoice().
         search_bar.current_sorting = (sorting_enabled, sort_order)
@@ -1685,33 +1685,33 @@ class IPTVPlayerApp(QMainWindow):
         match sorting_order:
             case "A-Z":
                 print("sorting A-Z")
-                self.sortList(self.category_search_bars["LIVE"], 'category', "LIVE", self.category_list_widgets, True, 0)
-                self.sortList(self.category_search_bars["Movies"], 'category', "Movies", self.category_list_widgets, True, 0)
-                self.sortList(self.category_search_bars["Series"], 'category', "Series", self.category_list_widgets, True, 0)
+                self.sort_list(self.category_search_bars["LIVE"], 'category', "LIVE", self.category_list_widgets, True, 0)
+                self.sort_list(self.category_search_bars["Movies"], 'category', "Movies", self.category_list_widgets, True, 0)
+                self.sort_list(self.category_search_bars["Series"], 'category', "Series", self.category_list_widgets, True, 0)
 
-                self.sortList(self.streaming_search_bars["LIVE"], 'streaming', "LIVE", self.streaming_list_widgets, True, 0)
-                self.sortList(self.streaming_search_bars["Movies"], 'streaming', "Movies", self.streaming_list_widgets, True, 0)
-                self.sortList(self.streaming_search_bars["Series"], 'streaming', "Series", self.streaming_list_widgets, True, 0)
+                self.sort_list(self.streaming_search_bars["LIVE"], 'streaming', "LIVE", self.streaming_list_widgets, True, 0)
+                self.sort_list(self.streaming_search_bars["Movies"], 'streaming', "Movies", self.streaming_list_widgets, True, 0)
+                self.sort_list(self.streaming_search_bars["Series"], 'streaming', "Series", self.streaming_list_widgets, True, 0)
 
             case "Z-A":
                 print("sorting Z-A")
-                self.sortList(self.category_search_bars["LIVE"], 'category', "LIVE", self.category_list_widgets, True, 1)
-                self.sortList(self.category_search_bars["Movies"], 'category', "Movies", self.category_list_widgets, True, 1)
-                self.sortList(self.category_search_bars["Series"], 'category', "Series", self.category_list_widgets, True, 1)
+                self.sort_list(self.category_search_bars["LIVE"], 'category', "LIVE", self.category_list_widgets, True, 1)
+                self.sort_list(self.category_search_bars["Movies"], 'category', "Movies", self.category_list_widgets, True, 1)
+                self.sort_list(self.category_search_bars["Series"], 'category', "Series", self.category_list_widgets, True, 1)
 
-                self.sortList(self.streaming_search_bars["LIVE"], 'streaming', "LIVE", self.streaming_list_widgets, True, 1)
-                self.sortList(self.streaming_search_bars["Movies"], 'streaming', "Movies", self.streaming_list_widgets, True, 1)
-                self.sortList(self.streaming_search_bars["Series"], 'streaming', "Series", self.streaming_list_widgets, True, 1)
+                self.sort_list(self.streaming_search_bars["LIVE"], 'streaming', "LIVE", self.streaming_list_widgets, True, 1)
+                self.sort_list(self.streaming_search_bars["Movies"], 'streaming', "Movies", self.streaming_list_widgets, True, 1)
+                self.sort_list(self.streaming_search_bars["Series"], 'streaming', "Series", self.streaming_list_widgets, True, 1)
 
             case _:
                 print("sorting disabled")
-                self.sortList(self.category_search_bars["LIVE"], 'category', "LIVE", self.category_list_widgets, False, 0)
-                self.sortList(self.category_search_bars["Movies"], 'category', "Movies", self.category_list_widgets, False, 0)
-                self.sortList(self.category_search_bars["Series"], 'category', "Series", self.category_list_widgets, False, 0)
+                self.sort_list(self.category_search_bars["LIVE"], 'category', "LIVE", self.category_list_widgets, False, 0)
+                self.sort_list(self.category_search_bars["Movies"], 'category', "Movies", self.category_list_widgets, False, 0)
+                self.sort_list(self.category_search_bars["Series"], 'category', "Series", self.category_list_widgets, False, 0)
 
-                self.sortList(self.streaming_search_bars["LIVE"], 'streaming', "LIVE", self.streaming_list_widgets, False, 0)
-                self.sortList(self.streaming_search_bars["Movies"], 'streaming', "Movies", self.streaming_list_widgets, False, 0)
-                self.sortList(self.streaming_search_bars["Series"], 'streaming', "Series", self.streaming_list_widgets, False, 0)
+                self.sort_list(self.streaming_search_bars["LIVE"], 'streaming', "LIVE", self.streaming_list_widgets, False, 0)
+                self.sort_list(self.streaming_search_bars["Movies"], 'streaming', "Movies", self.streaming_list_widgets, False, 0)
+                self.sort_list(self.streaming_search_bars["Series"], 'streaming', "Series", self.streaming_list_widgets, False, 0)
 
     def setDefaultSortingOrder(self, e, combobox):
         sorting_order = combobox.currentText()
@@ -1760,7 +1760,7 @@ class IPTVPlayerApp(QMainWindow):
                 category_list_enabled, category_list_order = (
                     self._sorting_for_category_list(stream_type)
                 )
-                self.sortList(
+                self.sort_list(
                     self.category_search_bars[stream_type], 'category',
                     stream_type, self.category_list_widgets,
                     category_list_enabled, category_list_order
@@ -1775,7 +1775,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.currently_loaded_streams[stream_type] = list(
                     prepared_entries
                 )
-                self.sortList(
+                self.sort_list(
                     self.streaming_search_bars[stream_type], 'streaming',
                     stream_type, self.streaming_list_widgets, enabled, order
                 )
@@ -2535,7 +2535,7 @@ class IPTVPlayerApp(QMainWindow):
             self.live_info_box.stream_status.setVisible(self.stream_status_enabled)
             if not self.stream_status_enabled:
                 self.live_info_box.stream_status.setPixmap(
-                    self.statusPixmap(self.path_to_unknown_status_icon, 24)
+                    self.status_pixmap(self.path_to_unknown_status_icon, 24)
                 )
         except Exception:
             pass
@@ -2977,7 +2977,7 @@ class IPTVPlayerApp(QMainWindow):
             category_list_enabled, category_list_order = (
                 self._sorting_for_category_list(stream_type)
             )
-            self.sortList(
+            self.sort_list(
                 self.category_search_bars[stream_type], 'category', stream_type,
                 self.category_list_widgets, category_list_enabled,
                 category_list_order
@@ -2989,7 +2989,7 @@ class IPTVPlayerApp(QMainWindow):
             enabled, order = self._sorting_for_category(
                 stream_type, self.all_categories_text
             )
-            self.sortList(
+            self.sort_list(
                 self.streaming_search_bars[stream_type], 'streaming',
                 stream_type, self.streaming_list_widgets, enabled, order
             )
@@ -3529,7 +3529,7 @@ class IPTVPlayerApp(QMainWindow):
 
         #Set stream status to unknown
         self.live_info_box.stream_status.setPixmap(
-            self.statusPixmap(self.path_to_unknown_status_icon, 24)
+            self.status_pixmap(self.path_to_unknown_status_icon, 24)
         )
 
     def ProcessStreamStatus(self, stream_id, stream_status):
@@ -3541,15 +3541,15 @@ class IPTVPlayerApp(QMainWindow):
 
             if (stream_status == "True"):
                 self.live_info_box.stream_status.setPixmap(
-                    self.statusPixmap(self.path_to_online_status_icon, 24)
+                    self.status_pixmap(self.path_to_online_status_icon, 24)
                 )
             elif (stream_status == "Maybe"):
                 self.live_info_box.stream_status.setPixmap(
-                    self.statusPixmap(self.path_to_maybe_status_icon, 24)
+                    self.status_pixmap(self.path_to_maybe_status_icon, 24)
                 )
             else:
                 self.live_info_box.stream_status.setPixmap(
-                    self.statusPixmap(self.path_to_offline_status_icon, 24)
+                    self.status_pixmap(self.path_to_offline_status_icon, 24)
                 )
         except Exception as e:
             print(f"Failed processing streaming status: {e}")
@@ -3683,7 +3683,7 @@ class IPTVPlayerApp(QMainWindow):
 
                 #Clear Stream Status indicator
                 self.live_info_box.stream_status.setPixmap(
-                    self.statusPixmap(self.path_to_unknown_status_icon, 25)
+                    self.status_pixmap(self.path_to_unknown_status_icon, 25)
                 )
 
                 #Clear EPG data
