@@ -2,13 +2,16 @@
 
 set -e
 
-# Use Python 3 consistently for dependency checks and the PyInstaller build.
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "Python 3 was not found. Install it and try again."
+# Use the same Python interpreter for dependency checks and the build.
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN=python3
+elif command -v python >/dev/null 2>&1 && python -c 'import sys; raise SystemExit(sys.version_info.major != 3)' >/dev/null 2>&1; then
+  PYTHON_BIN=python
+else
+  echo "Python was not found. Install Python 3 and try again."
   exit 1
 fi
 
-PYTHON_BIN=python3
 MAIN_SCRIPT="IPTVPlayer.py"
 VERSION_FILE="iptv_player/constants.py"
 BUILD_PATH="build"

@@ -1,24 +1,20 @@
 @echo off
 SET PYTHON_BIN=
 
-cls
-echo ===============================
-echo Select the Python interpreter:
-echo.
-echo 1. python
-echo 2. py -3
-echo ===============================
-set /p py_choice=Enter your choice (1 or 2):
-
-IF "%py_choice%"=="1" SET PYTHON_BIN=python
-IF "%py_choice%"=="2" SET PYTHON_BIN=py -3
+REM Detect a Python 3 interpreter instead of asking users which command works.
+py -3 --version >nul 2>&1
+IF NOT ERRORLEVEL 1 SET PYTHON_BIN=py -3
 IF NOT DEFINED PYTHON_BIN (
-  echo ERROR: Invalid Python selection.
+  python -c "import sys; raise SystemExit(sys.version_info.major != 3)" >nul 2>&1
+  IF NOT ERRORLEVEL 1 SET PYTHON_BIN=python
+)
+IF NOT DEFINED PYTHON_BIN (
+  echo ERROR: Python 3 was not found. Install it and try again.
   pause
   exit /b 1
 )
 
-REM Use the selected interpreter for dependency checks and the build.
+REM Use the detected interpreter for dependency checks and the build.
 echo.
 echo PyInstaller version:
 %PYTHON_BIN% -m PyInstaller --version
@@ -73,6 +69,12 @@ echo 2. Create Executable with console
 echo 3. Create both Executables
 echo ===============================
 set /p exec_choice=Enter your choice (1, 2, or 3): 
+
+IF NOT "%exec_choice%"=="1" IF NOT "%exec_choice%"=="2" IF NOT "%exec_choice%"=="3" (
+  echo ERROR: Invalid build selection.
+  pause
+  exit /b 1
+)
 
 REM Clean previous build folder
 IF EXIST %BUILD_PATH% (

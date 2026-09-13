@@ -5,7 +5,7 @@ set -e
 # Use the same Python interpreter for dependency checks and the build.
 if command -v python3 &> /dev/null; then
   PYTHON_BIN=python3
-elif command -v python &> /dev/null; then
+elif command -v python &> /dev/null && python -c 'import sys; raise SystemExit(sys.version_info.major != 3)' &> /dev/null; then
   PYTHON_BIN=python
 else
   echo "Python was not found. Install Python 3 and try again."
