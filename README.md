@@ -80,7 +80,7 @@ not change the configuration schema.
 When adding a configuration migration:
 
 1. Increment `CURRENT_CONFIG_SCHEMA_VERSION`.
-2. Add an ordered `if stored_schema_version < N` block to `updateUserDataFile()`.
+2. Add an ordered `if stored_schema_version < N` block to `migrate_user_data_file()`.
 3. Make the migration safe to run repeatedly and preserve existing user preferences.
 4. Update the stored schema marker only after the migration blocks have completed.
 

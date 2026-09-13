@@ -87,7 +87,7 @@ from iptv_player.provider.workers import (
 
 # CURRENT_CONFIG_SCHEMA_VERSION describes the structure and meaning of userdata.ini.
 # Increment the schema only when a release changes persisted data and add a matching,
-# ordered migration in updateUserDataFile(). It is intentionally independent from
+# ordered migration in migrate_user_data_file(). It is intentionally independent from
 # CURRENT_VERSION because most application releases do not change persisted data.
 is_windows  = sys.platform.startswith('win')
 is_mac      = sys.platform.startswith('darwin')

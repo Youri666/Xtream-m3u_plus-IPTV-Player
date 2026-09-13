@@ -1,6 +1,6 @@
 """Application metadata and defaults shared across IPTV Player modules."""
 
-CURRENT_VERSION = "V2.01.17"
+CURRENT_VERSION = "V3.0.0"
 CURRENT_CONFIG_SCHEMA_VERSION = 1
 GITHUB_REPO = "Youri666/Xtream-m3u_plus-IPTV-Player"
 
@@ -34,4 +34,3 @@ DEFAULT_URL_FORMATS = {
     "movie": "{server}/movie/{username}/{password}/{stream_id}.{container_extension}",
     "series": "{server}/series/{username}/{password}/{stream_id}.{container_extension}",
 }
-
