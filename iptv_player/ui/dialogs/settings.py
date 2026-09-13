@@ -210,7 +210,7 @@ class NetworkSettingsDialog(QDialog):
             self.catalog_cache_hours_spin.value()
         )
         if force_catalog_refresh:
-            self.parent_app.refreshProviderCatalog()
+            self.parent_app.refresh_provider_catalog()
         self.accept()
 
     def refresh_catalog_now(self):

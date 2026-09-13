@@ -315,7 +315,7 @@ class IPTVPlayerApp(QMainWindow):
         self.account_info_threadpool = QThreadPool()
         self.account_info_threadpool.setMaxThreadCount(1)
         self.account_info_timer = QTimer(self)
-        self.account_info_timer.timeout.connect(self.refreshAccountInfo)
+        self.account_info_timer.timeout.connect(self.refresh_account_info)
 
         self.init_icons()
 
@@ -588,7 +588,7 @@ class IPTVPlayerApp(QMainWindow):
 
     def closeEvent(self, event):
         self.save_window_layout()
-        self._stopEmbeddedPlayerProcess()
+        self._stop_embedded_player_process()
         super().closeEvent(event)
 
     def update_user_data_file(self):
@@ -835,7 +835,7 @@ class IPTVPlayerApp(QMainWindow):
         # self.tab_widget.addTab(favorites_tab,   self.favorites_icon,    "Favorites")
         self.tab_widget.addTab(self.info_tab,   self.info_icon,         "Info")
         self.tab_widget.addTab(settings_tab,    self.settings_icon,     "Settings")
-        self.tab_widget.currentChanged.connect(self._onCurrentTabChanged)
+        self.tab_widget.currentChanged.connect(self._on_current_tab_changed)
 
     def init_search_bars(self):
         #Initialize search bars for category lists
@@ -968,9 +968,16 @@ class IPTVPlayerApp(QMainWindow):
             container_layout.addWidget(category_visibility_button)
         container_layout.addWidget(sort_button)
 
-        #Connect function to process search bar key presses
-        search_bar.keyPressEvent = lambda e: self.SearchBarKeyPressed(e, 
-            search_bar, list_content_type, stream_type, list_widgets, search_history_list, search_history_list_idx)
+        # Connect the search field to history navigation and filtering.
+        search_bar.keyPressEvent = lambda event: self.search_bar_key_pressed(
+            event,
+            search_bar,
+            list_content_type,
+            stream_type,
+            list_widgets,
+            search_history_list,
+            search_history_list_idx,
+        )
 
         return container
 
@@ -1366,7 +1373,7 @@ class IPTVPlayerApp(QMainWindow):
         self.refresh_account_info_button.setToolTip(
             "Refresh account status and active connections only"
         )
-        self.refresh_account_info_button.clicked.connect(self.refreshAccountInfo)
+        self.refresh_account_info_button.clicked.connect(self.refresh_account_info)
         self.account_info_last_refresh_label = QLabel("Not refreshed yet")
         info_controls.addWidget(self.refresh_account_info_button)
         info_controls.addWidget(self.account_info_last_refresh_label)
@@ -1884,7 +1891,7 @@ class IPTVPlayerApp(QMainWindow):
             )
             checkbox.stateChanged.connect(
                 lambda state, selected_type=stream_type:
-                self.toggleContentType(selected_type, state)
+                self.toggle_content_type(selected_type, state)
             )
             self.content_checkboxes[stream_type] = checkbox
             self.content_group_layout.addWidget(checkbox)
@@ -1892,7 +1899,7 @@ class IPTVPlayerApp(QMainWindow):
 
         self.keep_on_top_checkbox = QCheckBox("Keep on top")
         self.keep_on_top_checkbox.setToolTip("Keep the application on top of all windows")
-        self.keep_on_top_checkbox.stateChanged.connect(self.toggleKeepOnTop)
+        self.keep_on_top_checkbox.stateChanged.connect(self.toggle_keep_on_top)
 
         self.default_sorting_order_box = QComboBox()
         self.default_sorting_order_box.addItems([
@@ -1917,7 +1924,7 @@ class IPTVPlayerApp(QMainWindow):
         self.theme_select_box = QComboBox()
         self.theme_select_box.addItems(["System", "Light", "Dark"])
         self.theme_select_box.setToolTip("Switch between Light, Dark, or follow the OS setting (default).")
-        self.theme_select_box.currentTextChanged.connect(self.themeChanged)
+        self.theme_select_box.currentTextChanged.connect(self.theme_changed)
 
         # Group the remaining preferences consistently with Media player and Content.
         self.window_behavior_group_box = QGroupBox("Window behavior")
@@ -2128,8 +2135,8 @@ class IPTVPlayerApp(QMainWindow):
         self.account_info_auto_refresh_enabled = account_auto_refresh_enabled
         self.catalog_cache_enabled = catalog_cache_enabled
         self.catalog_cache_max_age_hours = catalog_cache_max_age_hours
-        self._applyStreamStatusVisibility()
-        self._updateAccountInfoTimer()
+        self._apply_stream_status_visibility()
+        self._update_account_info_timer()
 
         config = configparser.ConfigParser()
         try:
@@ -2213,7 +2220,7 @@ class IPTVPlayerApp(QMainWindow):
                 )
             except (ValueError, configparser.Error):
                 self.account_info_auto_refresh_enabled = True
-            self._updateAccountInfoTimer()
+            self._update_account_info_timer()
 
             try:
                 self.catalog_cache_enabled = config.getboolean(
@@ -2396,10 +2403,10 @@ class IPTVPlayerApp(QMainWindow):
         self.load_default_auto_update()
 
         #Load stream-status toggle (issue #74)
-        self.loadDefaultStreamStatus()
+        self.load_default_stream_status()
 
         #Apply persisted theme (Light / Dark / System) — default System
-        self.loadDefaultTheme()
+        self.load_default_theme()
 
         # Load network and cache preferences before startup credentials can begin
         # provider requests in the background.
@@ -2458,7 +2465,7 @@ class IPTVPlayerApp(QMainWindow):
         except Exception as e:
             print(f"Failed loading startup account: {e}")
 
-    def toggleKeepOnTop(self, state):
+    def toggle_keep_on_top(self, state):
         if state == Qt.Checked:
             self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         else:
@@ -2489,7 +2496,7 @@ class IPTVPlayerApp(QMainWindow):
             dialog, application_palette_is_dark(QtWidgets.qApp)
         )
 
-    def themeChanged(self, theme_name):
+    def theme_changed(self, theme_name):
         self._apply_theme(theme_name)
         # Keep an already-open isolated player synchronized with Settings.
         if self._embedded_player_command_queue is not None:
@@ -2508,7 +2515,7 @@ class IPTVPlayerApp(QMainWindow):
         except OSError as e:
             print(f"Could not write user data file: {e}")
 
-    def loadDefaultTheme(self):
+    def load_default_theme(self):
         config = configparser.ConfigParser()
         try:
             config.read(self.user_data_file)
@@ -2526,7 +2533,7 @@ class IPTVPlayerApp(QMainWindow):
         self.theme_select_box.blockSignals(False)
         self._apply_theme(mode)
 
-    def _applyStreamStatusVisibility(self):
+    def _apply_stream_status_visibility(self):
         """Keep the indicator visibility consistent with the no-probe preference."""
         # Hiding the widget also releases its reserved space in the title layout.
         # More importantly, startOnlineWorker() uses the same flag to avoid sending
@@ -2540,7 +2547,7 @@ class IPTVPlayerApp(QMainWindow):
         except Exception:
             pass
 
-    def loadDefaultStreamStatus(self):
+    def load_default_stream_status(self):
         config = configparser.ConfigParser()
         try:
             config.read(self.user_data_file)
@@ -2552,9 +2559,9 @@ class IPTVPlayerApp(QMainWindow):
         else:
             self.stream_status_enabled = True
 
-        self._applyStreamStatusVisibility()
+        self._apply_stream_status_visibility()
 
-    def toggleContentType(self, stream_type, state):
+    def toggle_content_type(self, stream_type, state):
         """Persist one content choice and immediately update tab visibility."""
         was_enabled = self.content_enabled[stream_type]
         is_enabled = bool(state)
@@ -2782,7 +2789,7 @@ class IPTVPlayerApp(QMainWindow):
         dataWorker.signals.show_info_msg.connect(self.show_info_msg)
         self.threadpool.start(dataWorker)
 
-    def refreshProviderCatalog(self):
+    def refresh_provider_catalog(self):
         """Fetch every enabled provider collection while retaining cache fallback."""
         if not self.server or not self.username or not self.password:
             self.show_info_msg("No account selected", "Select an IPTV account first.")
@@ -2790,15 +2797,15 @@ class IPTVPlayerApp(QMainWindow):
         self.set_progress_bar(0, "Refreshing provider catalog...")
         self.fetch_data_thread(force_refresh=True)
 
-    def _isInfoTabVisible(self):
+    def _is_info_tab_visible(self):
         """Return whether Info is the currently selected visible tab."""
         return self.tab_widget.currentWidget() is self.info_tab
 
-    def _updateAccountInfoTimer(self):
+    def _update_account_info_timer(self):
         """Run automatic refreshes only while Info is selected and enabled."""
         should_run = (
             self.account_info_auto_refresh_enabled
-            and self._isInfoTabVisible()
+            and self._is_info_tab_visible()
             and bool(self.server and self.username and self.password)
         )
         if should_run:
@@ -2808,15 +2815,15 @@ class IPTVPlayerApp(QMainWindow):
         else:
             self.account_info_timer.stop()
 
-    def _onCurrentTabChanged(self, _index):
+    def _on_current_tab_changed(self, _index):
         """Refresh immediately on Info, then start or stop its periodic timer."""
-        self._updateAccountInfoTimer()
-        if self._isInfoTabVisible():
+        self._update_account_info_timer()
+        if self._is_info_tab_visible():
             # Entering Info should show the current connection count immediately;
             # disabling auto-refresh affects only subsequent periodic requests.
-            self.refreshAccountInfo()
+            self.refresh_account_info()
 
-    def refreshAccountInfo(self):
+    def refresh_account_info(self):
         """Refresh account metadata without downloading provider content."""
         if self.account_info_refresh_in_progress:
             return
@@ -2833,20 +2840,20 @@ class IPTVPlayerApp(QMainWindow):
             self.password,
             self.current_user_agent
         )
-        worker.signals.finished.connect(self._accountInfoRefreshFinished)
-        worker.signals.error.connect(self._accountInfoRefreshFailed)
+        worker.signals.finished.connect(self._account_info_refresh_finished)
+        worker.signals.error.connect(self._account_info_refresh_failed)
         # Keep the Python wrapper alive until the QRunnable has emitted its result.
         self.account_info_worker = worker
         self.account_info_threadpool.start(worker)
 
-    def _accountInfoRefreshFinished(self, iptv_info):
+    def _account_info_refresh_finished(self, iptv_info):
         """Display the refreshed metadata and release the request guard."""
         self.account_info_refresh_in_progress = False
         self.account_info_worker = None
         self.refresh_account_info_button.setEnabled(True)
-        self.updateAccountInfo(iptv_info)
+        self.update_account_info(iptv_info)
 
-    def _accountInfoRefreshFailed(self, error):
+    def _account_info_refresh_failed(self, error):
         """Keep existing information visible when a lightweight refresh fails."""
         self.account_info_refresh_in_progress = False
         self.account_info_worker = None
@@ -2856,7 +2863,7 @@ class IPTVPlayerApp(QMainWindow):
         )
         print(f"Failed refreshing account information: {error}")
 
-    def updateAccountInfo(self, iptv_info):
+    def update_account_info(self, iptv_info):
         """Render account and server metadata returned by player_api.php."""
         user_info = iptv_info.get("user_info", {})
         server_info = iptv_info.get("server_info", {})
@@ -2895,7 +2902,7 @@ class IPTVPlayerApp(QMainWindow):
         self.account_info_last_refresh_label.setText(
             f"Last refreshed: {datetime.now().strftime('%H:%M:%S')}"
         )
-        self._updateAccountInfoTimer()
+        self._update_account_info_timer()
 
     def process_data(self, iptv_info, categories_per_stream_type, entries_per_stream_type):
         print("Going to process IPTV data now")
@@ -2916,7 +2923,7 @@ class IPTVPlayerApp(QMainWindow):
         # A cache hit deliberately skips the account request. Keep the initial Info
         # state until that tab performs its existing lightweight refresh.
         if iptv_info:
-            self.updateAccountInfo(iptv_info)
+            self.update_account_info(iptv_info)
 
         #Process categories and entries
         hidden_categories_changed = False
@@ -3242,7 +3249,7 @@ class IPTVPlayerApp(QMainWindow):
         except Exception as e:
             print(f"Failed processing image: {e}")
 
-    def favButtonPressed(self, stream_type, info_box):
+    def favorite_button_pressed(self, stream_type, info_box):
         try:
             #Get current selected item and stream id
             current_sel_item = self.streaming_list_widgets[stream_type].currentItem()
@@ -3513,18 +3520,18 @@ class IPTVPlayerApp(QMainWindow):
         except Exception as e:
             print(f"Failed: {e}")
 
-    def startOnlineWorker(self, stream_id, url):
+    def start_online_worker(self, stream_id, url):
         # Bail out early if the user disabled the traffic-light check.
         if not getattr(self, 'stream_status_enabled', True):
             return
 
         # Run the stream-status probe on the dedicated pool — see issue #74.
         online_worker = OnlineWorker(stream_id, url, self)
-        online_worker.signals.finished.connect(self.ProcessStreamStatus)
-        online_worker.signals.error.connect(self.onProcessStreamStatusError)
+        online_worker.signals.finished.connect(self.process_stream_status)
+        online_worker.signals.error.connect(self.on_stream_status_error)
         self.status_threadpool.start(online_worker)
 
-    def onProcessStreamStatusError(self, error_msg):
+    def on_stream_status_error(self, error_msg):
         print(f"Failed processing streaming status: {error_msg}")
 
         #Set stream status to unknown
@@ -3532,7 +3539,7 @@ class IPTVPlayerApp(QMainWindow):
             self.status_pixmap(self.path_to_unknown_status_icon, 24)
         )
 
-    def ProcessStreamStatus(self, stream_id, stream_status):
+    def process_stream_status(self, stream_id, stream_status):
         try:
             #Ensure user hasn't changed live channel before request came through
             last_clicked_item = self.prev_clicked_streaming_item.data(Qt.UserRole)
@@ -3554,18 +3561,18 @@ class IPTVPlayerApp(QMainWindow):
         except Exception as e:
             print(f"Failed processing streaming status: {e}")
 
-    def startEPGWorker(self, stream_id):
+    def start_epg_worker(self, stream_id):
         #Create EPG thread worker that will fetch EPG data
         epg_worker = EPGWorker(self.server, self.username, self.password, stream_id, self)
 
         #Connect functions to signals
-        epg_worker.signals.finished.connect(self.ProcessEPGData)
-        epg_worker.signals.error.connect(self.onEPGFetchError)
+        epg_worker.signals.finished.connect(self.process_epg_data)
+        epg_worker.signals.error.connect(self.on_epg_fetch_error)
 
         #Start EPG thread
         self.threadpool.start(epg_worker)
 
-    def onEPGFetchError(self, error_msg):
+    def on_epg_fetch_error(self, error_msg):
         print(f"Failed fetching EPG data: {error_msg}")
         self.set_progress_bar(100, "Failed loading EPG data", "error")
 
@@ -3573,7 +3580,7 @@ class IPTVPlayerApp(QMainWindow):
         item = QTreeWidgetItem(["--/--/----", "--:--", "--:--", "Failed loading EPG data..."])
         self.live_info_box.live_EPG_info.addTopLevelItem(item)
 
-    def ProcessEPGData(self, epg_data):
+    def process_epg_data(self, epg_data):
         try:
             #Clear EPG data
             self.live_info_box.live_EPG_info.clear()
@@ -3695,10 +3702,10 @@ class IPTVPlayerApp(QMainWindow):
                 self.fetch_image(clicked_item_data['stream_icon'], 'Live')
 
                 # Fetch stream status
-                self.startOnlineWorker(clicked_item_data['stream_id'], clicked_item_data['url'])
+                self.start_online_worker(clicked_item_data['stream_id'], clicked_item_data['url'])
 
                 #Fetch EPG data
-                self.startEPGWorker(clicked_item_data['stream_id'])
+                self.start_epg_worker(clicked_item_data['stream_id'])
 
             #Show movie info if movie clicked
             elif 'movie' in stream_type:
@@ -4180,7 +4187,7 @@ class IPTVPlayerApp(QMainWindow):
     def _play_embedded(self, url):
         try:
             playlist, current_idx, title = self._collect_visible_playlist(url)
-            self._ensureEmbeddedPlayerProcess()
+            self._ensure_embedded_player_process()
             self._embedded_player_command_queue.put({
                 'command': 'play',
                 'url': url,
@@ -4198,7 +4205,7 @@ class IPTVPlayerApp(QMainWindow):
                 f"[{private_url_log_reference(url)}]: {e}"
             )
 
-    def _ensureEmbeddedPlayerProcess(self):
+    def _ensure_embedded_player_process(self):
         """Start the isolated player process and its private command channel."""
         if (
             self._embedded_player_process is not None
@@ -4207,7 +4214,7 @@ class IPTVPlayerApp(QMainWindow):
         ):
             return
 
-        self._closeEmbeddedPlayerListener()
+        self._close_embedded_player_listener()
         auth_key = os.urandom(32)
         if is_windows:
             family = 'AF_PIPE'
@@ -4280,7 +4287,7 @@ class IPTVPlayerApp(QMainWindow):
         )
         self._embedded_player_sender_thread.start()
 
-    def _closeEmbeddedPlayerListener(self):
+    def _close_embedded_player_listener(self):
         """Close resources left by an earlier isolated player instance."""
         if self._embedded_player_listener is not None:
             try:
@@ -4290,7 +4297,7 @@ class IPTVPlayerApp(QMainWindow):
         self._embedded_player_listener = None
         self._embedded_player_command_queue = None
 
-    def _stopEmbeddedPlayerProcess(self):
+    def _stop_embedded_player_process(self):
         """Stop the isolated player when the main application exits."""
         if self._embedded_player_command_queue is not None:
             self._embedded_player_command_queue.put({'command': 'quit'})
@@ -4302,7 +4309,7 @@ class IPTVPlayerApp(QMainWindow):
             except OSError:
                 pass
         self._embedded_player_process = None
-        self._closeEmbeddedPlayerListener()
+        self._close_embedded_player_listener()
 
     def _collect_visible_playlist(self, url):
         # Build the player's sidebar list from what's CURRENTLY VISIBLE in the main
@@ -4353,7 +4360,7 @@ class IPTVPlayerApp(QMainWindow):
             print(f"Could not build embedded playlist: {e}")
             return [{'name': url, 'url': url}], 0, ""
 
-    def SearchBarKeyPressed(self, e, search_bar, list_content_type, stream_type, list_widgets, history_list, history_list_idx):
+    def search_bar_key_pressed(self, e, search_bar, list_content_type, stream_type, list_widgets, history_list, history_list_idx):
         search_history_size = len(history_list)
         text = search_bar.text()
 

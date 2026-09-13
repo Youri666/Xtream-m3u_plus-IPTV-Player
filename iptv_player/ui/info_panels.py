@@ -63,7 +63,7 @@ class LiveInfoBox(QWidget):
         self.fav_button.setFlat(True)
         self.fav_button.setToolTip("Toggle favorite")
         self.fav_button.setIcon(self.parent.favorites_icon)
-        self.fav_button.clicked.connect(lambda: self.parent.favButtonPressed("LIVE", self))
+        self.fav_button.clicked.connect(lambda: self.parent.favorite_button_pressed("LIVE", self))
 
         #Create title layout with favorites button
         self.title_layout = QHBoxLayout()
@@ -121,7 +121,7 @@ class MovieInfoBox(QScrollArea):
         self.fav_button.setFlat(True)
         self.fav_button.setToolTip("Toggle favorite")
         self.fav_button.setIcon(self.parent.favorites_icon)
-        self.fav_button.clicked.connect(lambda: self.parent.favButtonPressed("Movies", self))
+        self.fav_button.clicked.connect(lambda: self.parent.favorite_button_pressed("Movies", self))
 
         #Create information labels
         self.name           = QLabel("No movie selected...")
@@ -254,7 +254,7 @@ class SeriesInfoBox(QScrollArea):
         self.fav_button.setFlat(True)
         self.fav_button.setToolTip("Toggle favorite")
         self.fav_button.setIcon(self.parent.favorites_icon)
-        self.fav_button.clicked.connect(lambda: self.parent.favButtonPressed("Series", self))
+        self.fav_button.clicked.connect(lambda: self.parent.favorite_button_pressed("Series", self))
 
         #Create information labels
         self.name           = QLabel("No series selected...")
