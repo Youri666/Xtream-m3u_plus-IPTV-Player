@@ -166,7 +166,8 @@ class EmbeddedPlayerWindow(QMainWindow):
     - Left-edge sidebar with the current playlist + a live filter; click to play
     - Next/Previous walk the visible playlist, disabled at the edges (no wrap)
     - Subtitle button shows up only when libvlc reports >1 SPU track
-    - Keyboard: Space=play/pause, F=fullscreen, A/S=cycle audio/subtitles, [/]=prev/next,
+    - Keyboard: Space=play/pause, F=fullscreen, A/S=cycle audio/subtitles,
+      Page Up/Page Down=previous/next,
       Left/Right=seek ±10s, Up/Down=volume, +/-=speed, M=mute
 
     The whole thing is a single QMainWindow so multi-monitor + window
@@ -292,11 +293,11 @@ class EmbeddedPlayerWindow(QMainWindow):
         # width keeps every neighbouring control stationary when the icon changes.
         self.btn_play.setFixedWidth(44)
 
-        self.btn_prev.setToolTip("Previous (])")
+        self.btn_prev.setToolTip("Previous (Page Up)")
         self.btn_rewind.setToolTip("Rewind (Left arrow)")
         self.btn_play.setToolTip("Play / Pause (Space)")
         self.btn_ffwd.setToolTip("Forward (Right arrow)")
-        self.btn_next.setToolTip("Next ([)")
+        self.btn_next.setToolTip("Next (Page Down)")
         self.btn_slow.setToolTip("Slower (-)")
         self.btn_fast.setToolTip("Faster (+)")
         self.btn_mute.setToolTip("Mute (M)")
@@ -451,8 +452,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         QShortcut(QKeySequence(Qt.Key_A),     self, activated=self._cycle_audio)
         QShortcut(QKeySequence(Qt.Key_S),     self, activated=self._cycle_subs)
         QShortcut(QKeySequence(Qt.Key_M),     self, activated=self.toggle_mute)
-        QShortcut(QKeySequence(Qt.Key_BracketLeft),  self, activated=self.next)      # nebula uses ]
-        QShortcut(QKeySequence(Qt.Key_BracketRight), self, activated=self.previous)
+        QShortcut(QKeySequence(Qt.Key_PageUp), self, activated=self.previous)
+        QShortcut(QKeySequence(Qt.Key_PageDown), self, activated=self.next)
         QShortcut(QKeySequence(Qt.Key_Left),  self, activated=lambda: self.seek_by(-self._seek_step_ms))
         QShortcut(QKeySequence(Qt.Key_Right), self, activated=lambda: self.seek_by(self._seek_step_ms))
         QShortcut(QKeySequence(Qt.Key_Up),    self, activated=lambda: self._step_volume(self._volume_step))
