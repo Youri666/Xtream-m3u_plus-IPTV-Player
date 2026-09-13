@@ -17,6 +17,7 @@ from iptv_player.provider.client import (
     provider_headers,
 )
 from iptv_player.provider.epg import decode_epg_data, decode_epg_text
+from iptv_player.provider.streams import generate_stream_url
 
 # Default network values. Keep immutable defaults separate from the active values
 # so the Advanced network settings dialog can reliably restore factory settings.
@@ -317,27 +318,16 @@ class FetchDataWorker(QRunnable):
                 client.close()
 
     def generate_url(self, stream_type, stream_id, container_extension):
-        # Select the appropriate format string
-        if stream_type == 'live':
-            fmt = self.live_url_format
-        elif stream_type == 'movie':
-            fmt = self.movie_url_format
-        else:
-            # Fallback format if unknown type
-            fmt = "{server}/{stream_type}/{username}/{password}/{stream_id}.{container_extension}"
-    
-        # Remove extension if not included in the format string
-        if ".{container_extension}" not in fmt:
-            container_extension = ""
-    
-        # Format and return the URL
-        return fmt.format(
-            server=self.server,
-            username=self.username,
-            password=self.password,
-            stream_type=stream_type,
-            stream_id=stream_id,
-            container_extension=container_extension
+        """Keep the worker API while delegating URL formatting to the provider layer."""
+        return generate_stream_url(
+            self.server,
+            self.username,
+            self.password,
+            stream_type,
+            stream_id,
+            container_extension,
+            self.live_url_format,
+            self.movie_url_format,
         )
 
 class MovieInfoFetcherSignals(QObject):
