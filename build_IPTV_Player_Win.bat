@@ -60,15 +60,28 @@ SET BUILD_PATH=build
 SET DIST_PATH=dist
 
 REM Give options what to create
-cls
-echo ===============================
-echo What would you like to do?
-echo.
-echo 1. Create Executable without console
-echo 2. Create Executable with console
-echo 3. Create both Executables
-echo ===============================
-set /p exec_choice=Enter your choice (1, 2, or 3): 
+SET exec_choice=
+IF /I "%~1"=="--release" SET exec_choice=1
+IF /I "%~1"=="--debug" SET exec_choice=2
+IF /I "%~1"=="--both" SET exec_choice=3
+
+IF NOT "%~1"=="" IF NOT DEFINED exec_choice (
+  echo Usage: %~nx0 [--release^|--debug^|--both]
+  pause
+  exit /b 1
+)
+
+IF NOT DEFINED exec_choice (
+  cls
+  echo ===============================
+  echo What would you like to do?
+  echo.
+  echo 1. Create Executable without console
+  echo 2. Create Executable with console
+  echo 3. Create both Executables
+  echo ===============================
+  set /p exec_choice=Enter your choice ^(1, 2, or 3^):
+)
 
 IF NOT "%exec_choice%"=="1" IF NOT "%exec_choice%"=="2" IF NOT "%exec_choice%"=="3" (
   echo ERROR: Invalid build selection.
@@ -88,6 +101,10 @@ IF EXIST %DIST_PATH% (
   rmdir /s /q %DIST_PATH%
 )
 
+REM PyInstaller writes specification files beside the script; remove stale variants.
+IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
+IF EXIST "IPTV Player with debug console.spec" del /q "IPTV Player with debug console.spec"
+
 IF "%exec_choice%"=="2" GOTO option2
 
 REM python-vlc is imported lazily, so PyInstaller cannot discover it automatically.
@@ -100,6 +117,7 @@ REM Run PyInstaller directly with all necessary options and added data files
   --icon "Images/TV_icon.ico" ^
   --name "IPTV Player" ^
   --workpath %BUILD_PATH% ^
+  --specpath %BUILD_PATH% ^
   --distpath %DIST_PATH% ^
   --add-data "Images/TV_icon.ico;Images" ^
   --add-data "Images/404_not_found.png;Images" ^
@@ -142,6 +160,7 @@ REM Keep the lazy python-vlc import available in the diagnostic build too.
   --icon "Images/TV_icon.ico" ^
   --name "IPTV Player with debug console" ^
   --workpath %BUILD_PATH% ^
+  --specpath %BUILD_PATH% ^
   --distpath %DIST_PATH% ^
   --add-data "Images/TV_icon.ico;Images" ^
   --add-data "Images/404_not_found.png;Images" ^

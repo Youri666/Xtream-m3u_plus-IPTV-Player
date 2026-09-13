@@ -173,6 +173,8 @@ pyinstaller --version
 
 ### 4. Final Setup
 - Run the [build_IPTV_Player_Win.bat](build_IPTV_Player_Win.bat) file to start the process.
+- Choose a release build, a debug-console build, or both when prompted. For an
+  unattended build, pass `--release`, `--debug`, or `--both`.
 
 ## Rocky9/RHEL9 Project Setup Instructions
 
@@ -207,6 +209,8 @@ pyinstaller --version
 - Make the SH script executable with the command:\
 `chmod +x build_IPTV_Player_Linux.sh`
 - Run the [./build_IPTV_Player_Linux.sh](build_IPTV_Player_Linux.sh) file to start the process.
+- Choose a release build, a debug-console build, or both when prompted. For an
+  unattended build, pass `--release`, `--debug`, or `--both`.
 
 ## macOS Project Setup Instructions
 
@@ -225,6 +229,8 @@ python3 -m pip install -r requirements.txt
 - Make the macOS script executable with the command:\
 `chmod +x build_IPTV_Player_macOS.sh`
 - Run [./build_IPTV_Player_macOS.sh](build_IPTV_Player_macOS.sh).
+- Choose a release build, a debug-console build, or both when prompted. For an
+  unattended build, pass `--release`, `--debug`, or `--both`.
 - The generated application is written to `dist/IPTV Player.app`.
 - A versioned `dist/IPTV Player Vx.x.x.dmg` release package is also created.
 
