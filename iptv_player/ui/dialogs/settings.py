@@ -19,8 +19,18 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-import Threadpools
 from iptv_player.constants import MEDIA_LANGUAGE_OPTIONS
+from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
+from iptv_player.provider.network import (
+    DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL,
+    DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS,
+    DEFAULT_CONNECTION_TIMEOUT,
+    DEFAULT_LIVE_STATUS_RETRIES,
+    DEFAULT_LIVE_STATUS_TIMEOUT,
+    DEFAULT_READ_TIMEOUT,
+    MAX_LIVE_STATUS_RETRIES,
+    NETWORK_SETTINGS,
+)
 
 
 class NetworkSettingsDialog(QDialog):
@@ -49,11 +59,11 @@ class NetworkSettingsDialog(QDialog):
         self.user_agent_box.setToolTip("User-Agent sent with IPTV provider requests")
 
         self.connection_timeout_spin = self._create_seconds_spinbox(
-            Threadpools.CONNECTION_TIMEOUT,
+            NETWORK_SETTINGS.connection_timeout,
             "Maximum time allowed to establish a connection"
         )
         self.read_timeout_spin = self._create_seconds_spinbox(
-            Threadpools.READ_TIMEOUT,
+            NETWORK_SETTINGS.read_timeout,
             "Maximum time allowed while waiting for regular response data"
         )
 
@@ -121,12 +131,12 @@ class NetworkSettingsDialog(QDialog):
         live_form = QFormLayout(self.live_options_widget)
         live_form.setContentsMargins(0, 0, 0, 0)
         self.live_timeout_spin = self._create_seconds_spinbox(
-            Threadpools.LIVE_STATUS_TIMEOUT,
+            NETWORK_SETTINGS.live_status_timeout,
             "Maximum wait for each LIVE status attempt"
         )
         self.live_retries_spin = QSpinBox()
-        self.live_retries_spin.setRange(0, Threadpools.MAX_LIVE_STATUS_RETRIES)
-        self.live_retries_spin.setValue(Threadpools.LIVE_STATUS_RETRIES)
+        self.live_retries_spin.setRange(0, MAX_LIVE_STATUS_RETRIES)
+        self.live_retries_spin.setValue(NETWORK_SETTINGS.live_status_retries)
         self.live_retries_spin.setToolTip(
             "Number of additional attempts after the initial LIVE status request"
         )
@@ -170,19 +180,19 @@ class NetworkSettingsDialog(QDialog):
 
     def restore_defaults(self):
         """Restore the documented defaults without closing or saving the dialog."""
-        self.user_agent_box.setCurrentText(Threadpools.DEFAULT_USER_AGENT_HEADER)
-        self.connection_timeout_spin.setValue(Threadpools.DEFAULT_CONNECTION_TIMEOUT)
-        self.read_timeout_spin.setValue(Threadpools.DEFAULT_READ_TIMEOUT)
+        self.user_agent_box.setCurrentText(DEFAULT_USER_AGENT_HEADER)
+        self.connection_timeout_spin.setValue(DEFAULT_CONNECTION_TIMEOUT)
+        self.read_timeout_spin.setValue(DEFAULT_READ_TIMEOUT)
         self.live_status_checkbox.setChecked(True)
-        self.live_timeout_spin.setValue(Threadpools.DEFAULT_LIVE_STATUS_TIMEOUT)
-        self.live_retries_spin.setValue(Threadpools.DEFAULT_LIVE_STATUS_RETRIES)
+        self.live_timeout_spin.setValue(DEFAULT_LIVE_STATUS_TIMEOUT)
+        self.live_retries_spin.setValue(DEFAULT_LIVE_STATUS_RETRIES)
         self.account_refresh_spin.setValue(
-            Threadpools.DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL
+            DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL
         )
         self.account_refresh_checkbox.setChecked(True)
         self.catalog_cache_checkbox.setChecked(True)
         self.catalog_cache_hours_spin.setValue(
-            Threadpools.DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
+            DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
         )
 
     def save_settings(self, force_catalog_refresh=False):

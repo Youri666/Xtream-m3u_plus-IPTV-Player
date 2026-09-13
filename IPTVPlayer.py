@@ -64,7 +64,17 @@ from iptv_player.ui.widgets import KeyboardNavigableListWidget
 from iptv_player.utils.privacy import private_url_log_reference
 from iptv_player.utils.search import normalize_search_text, title_matches_search
 from iptv_player.storage import read_json_mapping, write_json_file
-import Threadpools
+from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
+from iptv_player.provider.network import (
+    DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL,
+    DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS,
+    DEFAULT_CONNECTION_TIMEOUT,
+    DEFAULT_LIVE_STATUS_RETRIES,
+    DEFAULT_LIVE_STATUS_TIMEOUT,
+    DEFAULT_READ_TIMEOUT,
+    MAX_LIVE_STATUS_RETRIES,
+    NETWORK_SETTINGS,
+)
 from Threadpools import FetchDataWorker, OnlineWorker, EPGWorker, MovieInfoFetcher, SeriesInfoFetcher, ImageFetcher, AccountInfoWorker
 
 # CURRENT_CONFIG_SCHEMA_VERSION describes the structure and meaning of userdata.ini.
@@ -293,12 +303,12 @@ class IPTVPlayerApp(QMainWindow):
         # Account metadata has its own lightweight worker and timer. It must never
         # trigger a playlist, category, stream, or EPG reload.
         self.account_info_refresh_interval = (
-            Threadpools.DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL
+            DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL
         )
         self.account_info_auto_refresh_enabled = True
         self.catalog_cache_enabled = True
         self.catalog_cache_max_age_hours = (
-            Threadpools.DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
+            DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
         )
         self.account_info_refresh_in_progress = False
         self.account_info_worker = None
@@ -1954,7 +1964,7 @@ class IPTVPlayerApp(QMainWindow):
         if config.has_option('User-Agent', 'user-agent'):
             self.current_user_agent = config['User-Agent']['user-agent']
         else:
-            self.current_user_agent = Threadpools.DEFAULT_USER_AGENT_HEADER
+            self.current_user_agent = DEFAULT_USER_AGENT_HEADER
 
     def loadDefaultContent(self):
         #Read userdata config file
@@ -2108,11 +2118,11 @@ class IPTVPlayerApp(QMainWindow):
                              account_auto_refresh_enabled, catalog_cache_enabled,
                              catalog_cache_max_age_hours):
         """Apply and persist all advanced provider settings in one operation."""
-        self.current_user_agent = user_agent or Threadpools.DEFAULT_USER_AGENT_HEADER
-        Threadpools.CONNECTION_TIMEOUT = connection_timeout
-        Threadpools.READ_TIMEOUT = read_timeout
-        Threadpools.LIVE_STATUS_TIMEOUT = live_status_timeout
-        Threadpools.LIVE_STATUS_RETRIES = live_status_retries
+        self.current_user_agent = user_agent or DEFAULT_USER_AGENT_HEADER
+        NETWORK_SETTINGS.connection_timeout = connection_timeout
+        NETWORK_SETTINGS.read_timeout = read_timeout
+        NETWORK_SETTINGS.live_status_timeout = live_status_timeout
+        NETWORK_SETTINGS.live_status_retries = live_status_retries
         self.stream_status_enabled = stream_status_enabled
         self.account_info_refresh_interval = account_refresh_interval
         self.account_info_auto_refresh_enabled = account_auto_refresh_enabled
@@ -2171,28 +2181,28 @@ class IPTVPlayerApp(QMainWindow):
                 return max(minimum, min(value, maximum))
 
             if config.has_section("Timeouts"):
-                Threadpools.CONNECTION_TIMEOUT = read_bounded_integer(
-                    "CONNECTION_TIMEOUT", Threadpools.DEFAULT_CONNECTION_TIMEOUT, 1, 999
+                NETWORK_SETTINGS.connection_timeout = read_bounded_integer(
+                    "CONNECTION_TIMEOUT", DEFAULT_CONNECTION_TIMEOUT, 1, 999
                 )
-                Threadpools.READ_TIMEOUT = read_bounded_integer(
-                    "READ_TIMEOUT", Threadpools.DEFAULT_READ_TIMEOUT, 1, 999
+                NETWORK_SETTINGS.read_timeout = read_bounded_integer(
+                    "READ_TIMEOUT", DEFAULT_READ_TIMEOUT, 1, 999
                 )
-                Threadpools.LIVE_STATUS_TIMEOUT = read_bounded_integer(
-                    "LIVE_STATUS_TIMEOUT", Threadpools.DEFAULT_LIVE_STATUS_TIMEOUT, 1, 999
+                NETWORK_SETTINGS.live_status_timeout = read_bounded_integer(
+                    "LIVE_STATUS_TIMEOUT", DEFAULT_LIVE_STATUS_TIMEOUT, 1, 999
                 )
-                Threadpools.LIVE_STATUS_RETRIES = read_bounded_integer(
-                    "LIVE_STATUS_RETRIES", Threadpools.DEFAULT_LIVE_STATUS_RETRIES,
-                    0, Threadpools.MAX_LIVE_STATUS_RETRIES
+                NETWORK_SETTINGS.live_status_retries = read_bounded_integer(
+                    "LIVE_STATUS_RETRIES", DEFAULT_LIVE_STATUS_RETRIES,
+                    0, MAX_LIVE_STATUS_RETRIES
                 )
 
             try:
                 self.account_info_refresh_interval = config.getint(
                     'AccountInfo', 'refresh_interval',
-                    fallback=Threadpools.DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL
+                    fallback=DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL
                 )
             except (ValueError, configparser.Error):
                 self.account_info_refresh_interval = (
-                    Threadpools.DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL
+                    DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL
                 )
             self.account_info_refresh_interval = max(
                 10, min(self.account_info_refresh_interval, 3600)
@@ -2214,11 +2224,11 @@ class IPTVPlayerApp(QMainWindow):
             try:
                 self.catalog_cache_max_age_hours = config.getint(
                     'CatalogCache', 'max_age_hours',
-                    fallback=Threadpools.DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
+                    fallback=DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
                 )
             except (ValueError, configparser.Error):
                 self.catalog_cache_max_age_hours = (
-                    Threadpools.DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
+                    DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
                 )
             self.catalog_cache_max_age_hours = max(
                 1, min(self.catalog_cache_max_age_hours, 720)
@@ -2242,7 +2252,9 @@ class IPTVPlayerApp(QMainWindow):
             #Request data from url. Pair a small read-timeout with the connection timeout —
             #without one a slow GitHub response can block the main thread indefinitely
             #(the previous code only set the connection timeout).
-            git_resp = requests.get(git_api_url, timeout=(Threadpools.CONNECTION_TIMEOUT, 5))
+            git_resp = requests.get(
+                git_api_url, timeout=(NETWORK_SETTINGS.connection_timeout, 5)
+            )
 
             #Get data and latest version
             data = git_resp.json()

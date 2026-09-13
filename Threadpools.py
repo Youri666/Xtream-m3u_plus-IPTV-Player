@@ -17,28 +17,14 @@ from iptv_player.provider.client import (
 )
 from iptv_player.provider.catalog import prepare_catalog_entries
 from iptv_player.provider.epg import decode_epg_data, decode_epg_text
+from iptv_player.provider.network import (
+    LIVE_STATUS_CHUNK_SIZE,
+    LIVE_STATUS_RETRY_DELAY,
+    MAX_LIVE_STATUS_RETRIES,
+    NETWORK_SETTINGS,
+)
 from iptv_player.provider.streams import generate_stream_url
 from iptv_player.storage import read_json_mapping
-
-# Default network values. Keep immutable defaults separate from the active values
-# so the Advanced network settings dialog can reliably restore factory settings.
-DEFAULT_CONNECTION_TIMEOUT  = 3
-DEFAULT_READ_TIMEOUT         = 30
-DEFAULT_LIVE_STATUS_TIMEOUT  = 7
-DEFAULT_LIVE_STATUS_RETRIES  = 2
-DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL = 60
-DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS = 24
-
-# LIVE status retries are additional attempts, so the default value of 2 allows
-# up to 3 probes including the initial request.
-CONNECTION_TIMEOUT       = DEFAULT_CONNECTION_TIMEOUT
-READ_TIMEOUT             = DEFAULT_READ_TIMEOUT
-LIVE_STATUS_TIMEOUT      = DEFAULT_LIVE_STATUS_TIMEOUT
-LIVE_STATUS_RETRIES      = DEFAULT_LIVE_STATUS_RETRIES
-LIVE_STATUS_RETRY_DELAY  = 0.5
-LIVE_STATUS_CHUNK_SIZE   = 4096
-MAX_LIVE_STATUS_RETRIES  = 10
-
 
 class AccountInfoWorkerSignals(QObject):
     finished = pyqtSignal(dict)
@@ -64,7 +50,7 @@ class AccountInfoWorker(QRunnable):
                 self.username,
                 self.password,
                 self.user_agent,
-                (CONNECTION_TIMEOUT, READ_TIMEOUT),
+                (NETWORK_SETTINGS.connection_timeout, NETWORK_SETTINGS.read_timeout),
             ) as client:
                 data = client.get_json()
             if not isinstance(data, dict):
@@ -184,7 +170,7 @@ class FetchDataWorker(QRunnable):
                     self.username,
                     self.password,
                     ua,
-                    (CONNECTION_TIMEOUT, READ_TIMEOUT),
+                    (NETWORK_SETTINGS.connection_timeout, NETWORK_SETTINGS.read_timeout),
                 )
                 # Account metadata stays out of the catalog cache because provider
                 # responses can contain credentials. The Info tab can refresh it later.
@@ -319,7 +305,15 @@ class MovieInfoFetcher(QRunnable):
             }
 
             #Request vod info
-            vod_info_resp = requests.get(host_url, params=params, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
+            vod_info_resp = requests.get(
+                host_url,
+                params=params,
+                headers=headers,
+                timeout=(
+                    NETWORK_SETTINGS.connection_timeout,
+                    NETWORK_SETTINGS.read_timeout,
+                ),
+            )
 
             #Get vod info data
             vod_info_data = vod_info_resp.json()
@@ -376,7 +370,15 @@ class SeriesInfoFetcher(QRunnable):
             }
 
             #Request series info
-            series_info_resp = requests.get(host_url, params=params, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
+            series_info_resp = requests.get(
+                host_url,
+                params=params,
+                headers=headers,
+                timeout=(
+                    NETWORK_SETTINGS.connection_timeout,
+                    NETWORK_SETTINGS.read_timeout,
+                ),
+            )
 
             #Get series info data
             series_info_data = series_info_resp.json()
@@ -423,7 +425,14 @@ class ImageFetcher(QRunnable):
             headers = provider_headers(ua)
 
             #Request image
-            image_resp = requests.get(self.img_url, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
+            image_resp = requests.get(
+                self.img_url,
+                headers=headers,
+                timeout=(
+                    NETWORK_SETTINGS.connection_timeout,
+                    NETWORK_SETTINGS.read_timeout,
+                ),
+            )
 
             #Check if response code is valid, otherwise set replacement image
             resp_status = image_resp.status_code
@@ -481,7 +490,14 @@ class EPGWorker(QRunnable):
             headers = provider_headers(ua)
 
             #Requesting EPG data
-            response = requests.get(epg_url, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
+            response = requests.get(
+                epg_url,
+                headers=headers,
+                timeout=(
+                    NETWORK_SETTINGS.connection_timeout,
+                    NETWORK_SETTINGS.read_timeout,
+                ),
+            )
             epg_data = response.json()
 
             #Decrypt EPG data with base 64
@@ -524,7 +540,10 @@ class OnlineWorker(QRunnable):
 
         # Clamp the global value because userdata.ini can be edited manually and
         # therefore cannot be trusted to respect the GUI validator.
-        retry_count = max(0, min(int(LIVE_STATUS_RETRIES), MAX_LIVE_STATUS_RETRIES))
+        retry_count = max(
+            0,
+            min(int(NETWORK_SETTINGS.live_status_retries), MAX_LIVE_STATUS_RETRIES),
+        )
         best_status = False
         received_response = False
         last_error = None
@@ -567,7 +586,10 @@ class OnlineWorker(QRunnable):
         with requests.get(
             self.url,
             headers=headers,
-            timeout=(CONNECTION_TIMEOUT, LIVE_STATUS_TIMEOUT),
+            timeout=(
+                NETWORK_SETTINGS.connection_timeout,
+                NETWORK_SETTINGS.live_status_timeout,
+            ),
             stream=True
         ) as response:
             response_code = response.status_code
