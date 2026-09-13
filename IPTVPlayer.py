@@ -63,6 +63,7 @@ from iptv_player.utils.privacy import private_url_log_reference
 from iptv_player.utils.search import normalize_search_text, title_matches_search
 from iptv_player.storage import read_json_mapping, write_json_file
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
+from iptv_player.provider.credentials import parse_xtream_m3u_url
 from iptv_player.player_process import run_embedded_player_process
 from iptv_player.provider.network import (
     DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL,
@@ -2532,8 +2533,6 @@ class IPTVPlayerApp(QMainWindow):
         # a literal `&output=m3u8` as a "type" alternative — which was a bug. We now use
         # urllib.parse so the query parameters can appear in any order, and we follow
         # shortened-URL redirects (bit.ly etc.) before parsing (see issues #2 and #13).
-        from urllib.parse import urlparse, parse_qs
-
         def _show_invalid():
             self.animate_progress(0, 100, "Invalid m3u_plus or m3u URL", "error")
             dlg = QMessageBox(self)
@@ -2541,24 +2540,8 @@ class IPTVPlayerApp(QMainWindow):
             dlg.setText("M3U plus URL is invalid!\nPlease enter a valid Xtream get.php URL.")
             dlg.exec()
 
-        def _parse(candidate_url):
-            parsed = urlparse(candidate_url)
-            if parsed.scheme not in ("http", "https") or not parsed.netloc:
-                return None
-            # Accept any path that ends with /get.php — some providers use a prefix path.
-            if not parsed.path.endswith('/get.php'):
-                return None
-            qs = parse_qs(parsed.query)
-            username = (qs.get('username') or [None])[0]
-            password = (qs.get('password') or [None])[0]
-            if not username or not password:
-                return None
-            # Build the server origin from the parsed URL (preserves port if present).
-            server = f"{parsed.scheme}://{parsed.netloc}"
-            return server, username, password
-
         try:
-            result = _parse(url)
+            result = parse_xtream_m3u_url(url)
 
             # If it doesn't parse directly, the user may have pasted a shortened URL.
             # Follow redirects once (HEAD with a small timeout) and try the resolved URL.
@@ -2571,7 +2554,7 @@ class IPTVPlayerApp(QMainWindow):
                             f"{private_url_log_reference(url)} -> "
                             f"{private_url_log_reference(resp.url)}"
                         )
-                        result = _parse(resp.url)
+                        result = parse_xtream_m3u_url(resp.url)
                 except requests.RequestException as e:
                     print(
                         "Could not resolve URL "
