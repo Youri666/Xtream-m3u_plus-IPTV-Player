@@ -142,9 +142,6 @@ REM Run PyInstaller directly with all necessary options and added data files
   --add-data "Images/online_status.png;Images" ^
   --add-data "Images/maybe_status.png;Images" ^
   --add-data "Images/offline_status.png;Images" ^
-  --add-data "Threadpools.py;." ^
-  --add-data "CustomPyQtWidgets.py;." ^
-  --add-data "AccountManager.py;." ^
   %MAIN_SCRIPT%
 IF ERRORLEVEL 1 GOTO build_failed
 
@@ -185,9 +182,6 @@ REM Keep the lazy python-vlc import available in the diagnostic build too.
   --add-data "Images/online_status.png;Images" ^
   --add-data "Images/maybe_status.png;Images" ^
   --add-data "Images/offline_status.png;Images" ^
-  --add-data "Threadpools.py;." ^
-  --add-data "CustomPyQtWidgets.py;." ^
-  --add-data "AccountManager.py;." ^
   %MAIN_SCRIPT%
 IF ERRORLEVEL 1 GOTO build_failed
 

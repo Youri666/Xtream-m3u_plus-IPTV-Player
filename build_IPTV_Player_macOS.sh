@@ -145,9 +145,6 @@ PYINSTALLER_ARGS=(
   --add-data "Images/online_status.png:Images"
   --add-data "Images/maybe_status.png:Images"
   --add-data "Images/offline_status.png:Images"
-  --add-data "Threadpools.py:."
-  --add-data "CustomPyQtWidgets.py:."
-  --add-data "AccountManager.py:."
 )
 
 build_application() {
