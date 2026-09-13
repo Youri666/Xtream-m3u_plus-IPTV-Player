@@ -3209,8 +3209,14 @@ class IPTVPlayerApp(QMainWindow):
         image_fetcher.signals.error.connect(self.on_fetch_data_error)
         self.threadpool.start(image_fetcher)
 
-    def process_image_data(self, image, stream_type):
+    def process_image_data(self, image_data, stream_type):
         try:
+            # Construct QPixmap on the GUI thread after the worker returns bytes.
+            image = QPixmap()
+            image.loadFromData(image_data)
+            if image.isNull():
+                image = QPixmap(self.path_to_no_img)
+
             if stream_type == 'Series':
                 #Set series image
                 self.series_info_box.cover.setPixmap(image.scaledToWidth(self.series_info_box.maxCoverWidth))

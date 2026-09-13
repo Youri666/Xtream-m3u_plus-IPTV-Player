@@ -3,7 +3,6 @@ import time
 import requests
 import json
 from datetime import datetime
-from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot
 
 import base64
@@ -484,7 +483,7 @@ class SeriesInfoFetcher(QRunnable):
             self.signals.error.emit(str(e))
         
 class ImageFetcherSignals(QObject):
-    finished    = pyqtSignal(QPixmap, str)
+    finished    = pyqtSignal(bytes, str)
     error       = pyqtSignal(str)
 
 class ImageFetcher(QRunnable):
@@ -501,8 +500,10 @@ class ImageFetcher(QRunnable):
             # Skip the network call entirely if the entry didn't have a logo/cover URL —
             # otherwise requests raises "No scheme supplied" and floods the log.
             if not self.img_url or not str(self.img_url).strip():
-                image = QPixmap(self.parent.path_to_no_img)
-                self.signals.finished.emit(image, self.stream_type)
+                self.signals.finished.emit(
+                    self._read_placeholder(self.parent.path_to_no_img),
+                    self.stream_type,
+                )
                 return
 
             # Fall back to the default UA when the user hasn't picked one — sending an
@@ -521,31 +522,30 @@ class ImageFetcher(QRunnable):
             #Check if response code is valid, otherwise set replacement image
             resp_status = image_resp.status_code
             if resp_status == 404:
-                #Set 404 error as image
-                image = QPixmap(self.parent.path_to_404_img)
+                image_data = self._read_placeholder(self.parent.path_to_404_img)
 
             elif not resp_status == 200:
-                #Set no image
-                image = QPixmap(self.parent.path_to_no_img)
+                image_data = self._read_placeholder(self.parent.path_to_no_img)
 
             else:
-                #Create QPixmap from image data
-                image = QPixmap()
-                image.loadFromData(image_resp.content)  #Don't combine this with the previous line, then it doesn't work
+                image_data = image_resp.content
 
-            #Check if Pixmap is valid
-            if image.isNull():
-                image = QPixmap(self.parent.path_to_no_img)
-
-            #Emit image
-            self.signals.finished.emit(image, self.stream_type)
+            # QPixmap is a GUI resource and must be created by the main thread.
+            self.signals.finished.emit(image_data, self.stream_type)
         except Exception as e:
             print(f"Failed fetching image: {e}")
 
-            #Emit no image placeholder
-            image = QPixmap(self.parent.path_to_no_img)
-            self.signals.finished.emit(image, self.stream_type)
+            self.signals.finished.emit(
+                self._read_placeholder(self.parent.path_to_no_img),
+                self.stream_type,
+            )
             self.signals.error.emit(str(e))
+
+    @staticmethod
+    def _read_placeholder(filename):
+        """Read placeholder bytes without constructing GUI objects in this worker."""
+        with open(filename, "rb") as image_file:
+            return image_file.read()
 
 class EPGWorkerSignals(QObject):
     finished = pyqtSignal(list)
