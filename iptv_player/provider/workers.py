@@ -291,35 +291,20 @@ class MovieInfoFetcher(QRunnable):
     @pyqtSlot()
     def run(self):
         try:
-            #Set request parameters
-            # headers = {'User-Agent': CUSTOM_USER_AGENT}
-            #Create header
-            # Fall back to the default UA when the user hasn't picked one — sending an
-            # empty User-Agent makes some providers return 403 or empty category lists
-            # (related to issues #69 and #10).
             ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
-            headers = provider_headers(ua)
-            host_url = f"{self.server}/player_api.php"
-            params = {
-                'username': self.username,
-                'password': self.password,
-                'action': 'get_vod_info',
-                'vod_id': self.vod_id
-            }
-
-            #Request vod info
-            vod_info_resp = requests.get(
-                host_url,
-                params=params,
-                headers=headers,
-                timeout=(
+            with XtreamClient(
+                self.server,
+                self.username,
+                self.password,
+                ua,
+                (
                     NETWORK_SETTINGS.connection_timeout,
                     NETWORK_SETTINGS.read_timeout,
                 ),
-            )
-
-            #Get vod info data
-            vod_info_data = vod_info_resp.json()
+            ) as client:
+                vod_info_data = client.get_json(
+                    "get_vod_info", vod_id=self.vod_id
+                )
 
             #Get info and movie data
             vod_info = vod_info_data.get('info', {})
@@ -356,35 +341,20 @@ class SeriesInfoFetcher(QRunnable):
     @pyqtSlot()
     def run(self):
         try:
-            #Set request parameters
-            # headers = {'User-Agent': CUSTOM_USER_AGENT}
-            #Create header
-            # Fall back to the default UA when the user hasn't picked one — sending an
-            # empty User-Agent makes some providers return 403 or empty category lists
-            # (related to issues #69 and #10).
             ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
-            headers = provider_headers(ua)
-            host_url = f"{self.server}/player_api.php"
-            params = {
-                'username': self.username,
-                'password': self.password,
-                'action': 'get_series_info',
-                'series_id': self.series_id
-            }
-
-            #Request series info
-            series_info_resp = requests.get(
-                host_url,
-                params=params,
-                headers=headers,
-                timeout=(
+            with XtreamClient(
+                self.server,
+                self.username,
+                self.password,
+                ua,
+                (
                     NETWORK_SETTINGS.connection_timeout,
                     NETWORK_SETTINGS.read_timeout,
                 ),
-            )
-
-            #Get series info data
-            series_info_data = series_info_resp.json()
+            ) as client:
+                series_info_data = client.get_json(
+                    "get_series_info", series_id=self.series_id
+                )
 
             #Check if the variable type is valid
             if not isinstance(series_info_data, dict):
@@ -482,26 +452,20 @@ class EPGWorker(QRunnable):
     @pyqtSlot()
     def run(self):
         try:
-            #Creating url for requesting EPG data for specific stream
-            epg_url = f"{self.server}/player_api.php?username={self.username}&password={self.password}&action=get_simple_data_table&stream_id={self.stream_id}"
-            # headers = {'User-Agent': CUSTOM_USER_AGENT}
-            #Create header
-            # Fall back to the default UA when the user hasn't picked one — sending an
-            # empty User-Agent makes some providers return 403 or empty category lists
-            # (related to issues #69 and #10).
             ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
-            headers = provider_headers(ua)
-
-            #Requesting EPG data
-            response = requests.get(
-                epg_url,
-                headers=headers,
-                timeout=(
+            with XtreamClient(
+                self.server,
+                self.username,
+                self.password,
+                ua,
+                (
                     NETWORK_SETTINGS.connection_timeout,
                     NETWORK_SETTINGS.read_timeout,
                 ),
-            )
-            epg_data = response.json()
+            ) as client:
+                epg_data = client.get_json(
+                    "get_simple_data_table", stream_id=self.stream_id
+                )
 
             #Decrypt EPG data with base 64
             decrypted_epg_data = self.decrypt_epg_data(epg_data)
