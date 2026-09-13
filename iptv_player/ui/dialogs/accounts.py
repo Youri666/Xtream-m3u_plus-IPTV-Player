@@ -349,21 +349,32 @@ class AccountDialog(QtWidgets.QDialog):
                 self.m3u_movie_url_format_entry.setText(credentials[3])
                 self.m3u_series_url_format_entry.setText(credentials[4])
 
-        font_metrics = self.fontMetrics()
-        max_width = max(
-            font_metrics.width(self.name_entry_manual.text()),
-            font_metrics.width(self.server_entry.text()),
-            font_metrics.width(self.live_url_format_entry.text()),
-            font_metrics.width(self.movie_url_format_entry.text()),
-            font_metrics.width(self.series_url_format_entry.text()),
-            font_metrics.width(self.name_entry_m3u.text()),
-            font_metrics.width(self.m3u_url_entry.text()),
-            font_metrics.width(self.m3u_live_url_format_entry.text()),
-            font_metrics.width(self.m3u_movie_url_format_entry.text()),
-            font_metrics.width(self.m3u_series_url_format_entry.text())
-        )
+        self._resize_for_url_fields()
 
-        self.setMinimumWidth(max_width + 150)
+    def _resize_for_url_fields(self):
+        """Choose a readable initial width while keeping the dialog resizable."""
+        fields = (
+            self.server_entry,
+            self.live_url_format_entry,
+            self.movie_url_format_entry,
+            self.series_url_format_entry,
+            self.m3u_url_entry,
+            self.m3u_live_url_format_entry,
+            self.m3u_movie_url_format_entry,
+            self.m3u_series_url_format_entry,
+        )
+        metrics = self.fontMetrics()
+        content_width = max(
+            metrics.horizontalAdvance(field.text() or field.placeholderText())
+            for field in fields
+        )
+        target_width = max(850, content_width + 220)
+
+        screen = QtWidgets.QApplication.primaryScreen()
+        if screen is not None:
+            target_width = min(target_width, int(screen.availableGeometry().width() * 0.9))
+
+        self.resize(target_width, self.sizeHint().height())
     
     def validate_and_accept(self):
         method = self.method_selector.currentText()
