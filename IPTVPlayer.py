@@ -61,6 +61,7 @@ from iptv_player.ui.dialogs.accounts import AccountManager
 from iptv_player.ui.widgets import KeyboardNavigableListWidget
 from iptv_player.utils.privacy import private_url_log_reference
 from iptv_player.utils.search import normalize_search_text, title_matches_search
+from iptv_player.utils.sorting import ordered_catalog_entries, ordered_season_keys
 from iptv_player.storage import read_json_mapping, write_json_file
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 from iptv_player.provider.credentials import parse_xtream_m3u_url
@@ -1136,12 +1137,11 @@ class IPTVPlayerApp(QMainWindow):
             and (stream_type != 'Series' or self.series_navigation_level == 0)
         )
         if is_top_level_stream_view:
-            ordered_entries = list(self.currently_loaded_streams[stream_type])
-            if sorting_enabled:
-                ordered_entries.sort(
-                    key=lambda entry: entry.get('name', '').casefold(),
-                    reverse=(sort_order == 1)
-                )
+            ordered_entries = ordered_catalog_entries(
+                self.currently_loaded_streams[stream_type],
+                sorting_enabled,
+                descending=(sort_order == 1),
+            )
 
             self.currently_loaded_streams[stream_type] = ordered_entries
             self._replace_streaming_list_items(stream_type, ordered_entries)
@@ -1160,15 +1160,9 @@ class IPTVPlayerApp(QMainWindow):
         if is_seasons_view and sorting_enabled:
             seasons_dict = self.currently_loaded_streams.get('Seasons', {}) or {}
 
-            def _season_sort_key(k):
-                try:
-                    return (0, int(k))
-                except (TypeError, ValueError):
-                    return (1, str(k).lower())
-
-            keys = sorted(seasons_dict.keys(), key=_season_sort_key)
-            if sort_order == 1:
-                keys.reverse()
+            keys = ordered_season_keys(
+                seasons_dict.keys(), descending=(sort_order == 1)
+            )
 
             list_widget.setSortingEnabled(False)
             list_widget.clear()
