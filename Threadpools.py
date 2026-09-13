@@ -11,11 +11,12 @@ from iptv_player.provider.cache import (
     load_catalog_cache,
     write_catalog_cache,
 )
+from iptv_player.provider.client import (
+    DEFAULT_USER_AGENT_HEADER,
+    XtreamClient,
+    provider_headers,
+)
 from iptv_player.provider.epg import decode_epg_data, decode_epg_text
-
-CONNECTION_HEADER           = "Keep-Alive"
-CONTENT_HEADER              = "gzip, deflate"
-DEFAULT_USER_AGENT_HEADER   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
 
 # Default network values. Keep immutable defaults separate from the active values
 # so the Advanced network settings dialog can reliably restore factory settings.
@@ -56,23 +57,14 @@ class AccountInfoWorker(QRunnable):
     @pyqtSlot()
     def run(self):
         try:
-            headers = {
-                "Connection": CONNECTION_HEADER,
-                "Accept-Encoding": CONTENT_HEADER,
-                "User-Agent": self.user_agent or DEFAULT_USER_AGENT_HEADER
-            }
-            response = requests.get(
-                f"{self.server}/player_api.php",
-                params={
-                    'username': self.username,
-                    'password': self.password,
-                    'action': ''
-                },
-                headers=headers,
-                timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT)
-            )
-            response.raise_for_status()
-            data = response.json()
+            with XtreamClient(
+                self.server,
+                self.username,
+                self.password,
+                self.user_agent,
+                (CONNECTION_TIMEOUT, READ_TIMEOUT),
+            ) as client:
+                data = client.get_json()
             if not isinstance(data, dict):
                 raise ValueError("The provider returned invalid account information")
             self.signals.finished.emit(data)
@@ -140,20 +132,6 @@ class FetchDataWorker(QRunnable):
             # empty User-Agent makes some providers return 403 or empty category lists
             # (related to issues #69 and #10).
             ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
-            headers = {
-                "Connection": CONNECTION_HEADER,
-                "Accept-Encoding": CONTENT_HEADER,
-                "User-Agent": ua
-            }
-
-            params = {
-                'username': self.username,
-                'password': self.password,
-                'action': ''
-            }
-
-            host_url = f"{self.server}/player_api.php"
-
             print("Going to fetch IPTV data")
 
             iptv_info_data = {}
@@ -199,16 +177,18 @@ class FetchDataWorker(QRunnable):
                     )
                     entries_per_stream_type[stream_type] = cached_data.get(stream_type, [])
             else:
+                client = XtreamClient(
+                    self.server,
+                    self.username,
+                    self.password,
+                    ua,
+                    (CONNECTION_TIMEOUT, READ_TIMEOUT),
+                )
                 # Account metadata stays out of the catalog cache because provider
                 # responses can contain credentials. The Info tab can refresh it later.
                 self.signals.progress_bar.emit(0, 5, "Fetching IPTV info")
                 try:
-                    iptv_info_resp = requests.get(
-                        host_url, params=params, headers=headers,
-                        timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT)
-                    )
-                    iptv_info_resp.raise_for_status()
-                    iptv_info_data = iptv_info_resp.json()
+                    iptv_info_data = client.get_json()
                 except Exception as e:
                     print(f"failed fetching IPTV data: {e}")
 
@@ -233,15 +213,7 @@ class FetchDataWorker(QRunnable):
                     print(f"Fetching {label}")
                     self.signals.progress_bar.emit(start, end, f"Fetching {label}")
                     try:
-                        params['action'] = action
-                        response = requests.get(
-                            host_url,
-                            params=params,
-                            headers=headers,
-                            timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT)
-                        )
-                        response.raise_for_status()
-                        result = response.json()
+                        result = client.get_json(action)
                     except Exception as e:
                         catalog_fetch_complete = False
                         print(f"Failed fetching {label}: {e}")
@@ -277,7 +249,6 @@ class FetchDataWorker(QRunnable):
                     except OSError as error:
                         # Cache persistence must not discard data already fetched.
                         print(f"Failed writing provider cache: {error}")
-
             self.signals.progress_bar.emit(80, 100, "Provider catalog ready")
 
             fav_data = {}
@@ -341,6 +312,9 @@ class FetchDataWorker(QRunnable):
         except Exception as e:
             print(f"Exception! {e}")
             self.signals.error.emit(str(e))
+        finally:
+            if client is not None:
+                client.close()
 
     def generate_url(self, stream_type, stream_id, container_extension):
         # Select the appropriate format string
@@ -390,11 +364,7 @@ class MovieInfoFetcher(QRunnable):
             # empty User-Agent makes some providers return 403 or empty category lists
             # (related to issues #69 and #10).
             ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
-            headers = {
-                "Connection": CONNECTION_HEADER,
-                "Accept-Encoding": CONTENT_HEADER,
-                "User-Agent": ua
-            }
+            headers = provider_headers(ua)
             host_url = f"{self.server}/player_api.php"
             params = {
                 'username': self.username,
@@ -451,11 +421,7 @@ class SeriesInfoFetcher(QRunnable):
             # empty User-Agent makes some providers return 403 or empty category lists
             # (related to issues #69 and #10).
             ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
-            headers = {
-                "Connection": CONNECTION_HEADER,
-                "Accept-Encoding": CONTENT_HEADER,
-                "User-Agent": ua
-            }
+            headers = provider_headers(ua)
             host_url = f"{self.server}/player_api.php"
             params = {
                 'username': self.username,
@@ -494,6 +460,7 @@ class ImageFetcher(QRunnable):
 
     @pyqtSlot()
     def run(self):
+        client = None
         try:
             # Skip the network call entirely if the entry didn't have a logo/cover URL —
             # otherwise requests raises "No scheme supplied" and floods the log.
@@ -508,11 +475,7 @@ class ImageFetcher(QRunnable):
             # empty User-Agent makes some providers return 403 or empty category lists
             # (related to issues #69 and #10).
             ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
-            headers = {
-                "Connection": CONNECTION_HEADER,
-                "Accept-Encoding": CONTENT_HEADER,
-                "User-Agent": ua
-            }
+            headers = provider_headers(ua)
 
             #Request image
             image_resp = requests.get(self.img_url, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
@@ -570,11 +533,7 @@ class EPGWorker(QRunnable):
             # empty User-Agent makes some providers return 403 or empty category lists
             # (related to issues #69 and #10).
             ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
-            headers = {
-                "Connection": CONNECTION_HEADER,
-                "Accept-Encoding": CONTENT_HEADER,
-                "User-Agent": ua
-            }
+            headers = provider_headers(ua)
 
             #Requesting EPG data
             response = requests.get(epg_url, headers=headers, timeout=(CONNECTION_TIMEOUT, READ_TIMEOUT))
@@ -616,11 +575,7 @@ class OnlineWorker(QRunnable):
         # Fall back to the default UA when the user has not picked one. Sending an
         # empty User-Agent makes some providers return 403 or empty responses.
         ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
-        headers = {
-            "Connection": CONNECTION_HEADER,
-            "Accept-Encoding": CONTENT_HEADER,
-            "User-Agent": ua
-        }
+        headers = provider_headers(ua)
 
         # Clamp the global value because userdata.ini can be edited manually and
         # therefore cannot be trusted to respect the GUI validator.
