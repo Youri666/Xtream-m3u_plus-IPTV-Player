@@ -753,6 +753,7 @@ class IPTVPlayerApp(QMainWindow):
         self.live_url_format   = ""
         self.movie_url_format  = ""
         self.series_url_format = ""
+        self.active_account_name = ""
 
         #Create threadpool for data/EPG/image fetching. Single-threaded to keep
         #fetching ordered and gentle on the IPTV server.
@@ -2921,6 +2922,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.live_url_format   = live_url_format
                 self.movie_url_format  = movie_url_format
                 self.series_url_format = series_url_format
+                self.active_account_name = selected_startup_account
 
                 self.login()
 
@@ -2932,6 +2934,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.series_url_format = series_url_format
 
                 if self.extract_credentials_from_m3u_plus_url(m3u_url):
+                    self.active_account_name = selected_startup_account
                     self.login()
             else:
                 print(f"Skipping startup account '{selected_startup_account}': data is malformed.")
