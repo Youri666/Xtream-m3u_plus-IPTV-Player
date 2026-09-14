@@ -10,12 +10,24 @@ def load_accounts(file_path):
     config = _read_config(file_path)
     if "Credentials" not in config:
         return {}
-    return dict(config["Credentials"].items())
+    accounts = dict(config["Credentials"].items())
+    startup_name = load_startup_account_from_config(config)
+    stored_name = _matching_account_name(accounts, startup_name)
+    if stored_name and stored_name != startup_name:
+        # Older versions lowercased INI keys. The separately stored startup
+        # label lets the interface recover the user's preferred capitalization.
+        accounts = {
+            startup_name if name == stored_name else name: value
+            for name, value in accounts.items()
+        }
+    return accounts
 
 
 def load_account(file_path, name):
     """Return one serialized account value, or ``None`` when it is absent."""
-    return load_accounts(file_path).get(name)
+    accounts = load_accounts(file_path)
+    stored_name = _matching_account_name(accounts, name)
+    return accounts.get(stored_name) if stored_name else None
 
 
 def load_startup_account(file_path):
@@ -39,12 +51,19 @@ def save_account(file_path, method, name, credentials, old_name=None):
     if "Credentials" not in config:
         config["Credentials"] = {}
 
-    if old_name and old_name != name:
-        config["Credentials"].pop(old_name, None)
-        if load_startup_account_from_config(config) == old_name:
+    stored_old_name = _matching_account_name(config["Credentials"], old_name)
+    stored_new_name = _matching_account_name(config["Credentials"], name)
+    if stored_old_name and stored_old_name != name:
+        config["Credentials"].pop(stored_old_name, None)
+        if _same_account_name(load_startup_account_from_config(config), old_name):
             if "Startup credentials" not in config:
                 config["Startup credentials"] = {}
             config["Startup credentials"]["startup_credentials"] = name
+
+    # Treat capitalization-only changes as a rename instead of creating a
+    # second account that differs only by case.
+    if stored_new_name and stored_new_name != name:
+        config["Credentials"].pop(stored_new_name, None)
 
     config["Credentials"][name] = serialize_account(method, credentials)
     write_config_file(file_path, config)
@@ -53,11 +72,15 @@ def save_account(file_path, method, name, credentials, old_name=None):
 def delete_account(file_path, name):
     """Delete an account and clear it as the startup choice when necessary."""
     config = _read_config(file_path)
-    if "Credentials" not in config or name not in config["Credentials"]:
+    if "Credentials" not in config:
         return False
 
-    del config["Credentials"][name]
-    if load_startup_account_from_config(config) == name:
+    stored_name = _matching_account_name(config["Credentials"], name)
+    if not stored_name:
+        return False
+
+    del config["Credentials"][stored_name]
+    if _same_account_name(load_startup_account_from_config(config), name):
         if "Startup credentials" not in config:
             config["Startup credentials"] = {}
         config["Startup credentials"]["startup_credentials"] = "None"
@@ -88,6 +111,20 @@ def parse_account(serialized_account):
 
 def load_startup_account_from_config(config):
     return config.get("Startup credentials", "startup_credentials", fallback="None")
+
+
+def _matching_account_name(accounts, requested_name):
+    """Return the stored spelling of an account name matched without case."""
+    requested_name = str(requested_name or "")
+    for stored_name in accounts:
+        if _same_account_name(stored_name, requested_name):
+            return stored_name
+    return None
+
+
+def _same_account_name(first_name, second_name):
+    """Compare user-facing account names without changing their spelling."""
+    return str(first_name or "").casefold() == str(second_name or "").casefold()
 
 
 def _read_config(file_path):

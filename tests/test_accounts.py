@@ -14,6 +14,20 @@ from iptv_player.config.accounts import (
 
 
 class AccountStorageTests(unittest.TestCase):
+    def test_loads_legacy_lowercase_key_from_mixed_case_startup_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "userdata.ini"
+            file_path.write_text(
+                "[Credentials]\n"
+                "maestro = manual|host|user|password|live|movie|series\n\n"
+                "[Startup credentials]\n"
+                "startup_credentials = Maestro\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(list(load_accounts(str(file_path))), ["Maestro"])
+            self.assertIsNotNone(load_account(str(file_path), "Maestro"))
+
     def test_saves_accounts_and_preserves_label_case(self):
         with tempfile.TemporaryDirectory() as directory:
             file_path = Path(directory) / "userdata.ini"
@@ -58,6 +72,29 @@ class AccountStorageTests(unittest.TestCase):
             self.assertTrue(delete_account(str(file_path), "Default"))
             self.assertEqual(load_startup_account(str(file_path)), "None")
             self.assertFalse(delete_account(str(file_path), "Missing"))
+
+    def test_rename_and_delete_match_legacy_names_without_case(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "userdata.ini"
+            file_path.write_text(
+                "[Credentials]\n"
+                "maestro = m3u_plus|url|live|movie|series\n\n"
+                "[Startup credentials]\n"
+                "startup_credentials = Maestro\n",
+                encoding="utf-8",
+            )
+
+            save_account(
+                str(file_path),
+                "m3u_plus",
+                "Living Room",
+                ["url", "live", "movie", "series"],
+                old_name="Maestro",
+            )
+            self.assertIsNone(load_account(str(file_path), "Maestro"))
+            self.assertIsNotNone(load_account(str(file_path), "Living Room"))
+            self.assertEqual(load_startup_account(str(file_path)), "Living Room")
+            self.assertTrue(delete_account(str(file_path), "living room"))
 
     def test_parses_supported_accounts_and_rejects_malformed_data(self):
         self.assertEqual(
