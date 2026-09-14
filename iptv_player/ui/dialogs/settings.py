@@ -147,6 +147,15 @@ class NetworkSettingsDialog(QDialog):
         self.live_status_checkbox.toggled.connect(self.live_options_widget.setEnabled)
         self.live_options_widget.setEnabled(self.live_status_checkbox.isChecked())
 
+        diagnostics_group = QGroupBox("Diagnostics")
+        diagnostics_layout = QVBoxLayout(diagnostics_group)
+        self.detailed_logging_checkbox = QCheckBox("Enable detailed logging")
+        self.detailed_logging_checkbox.setChecked(parent.detailed_logging_enabled)
+        self.detailed_logging_checkbox.setToolTip(
+            "Write additional diagnostic information to log.txt"
+        )
+        diagnostics_layout.addWidget(self.detailed_logging_checkbox)
+
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.Save
             | QDialogButtonBox.Cancel
@@ -161,6 +170,7 @@ class NetworkSettingsDialog(QDialog):
         main_layout.addWidget(general_group)
         main_layout.addWidget(cache_group)
         main_layout.addWidget(live_group)
+        main_layout.addWidget(diagnostics_group)
         main_layout.addWidget(self.button_box)
 
         # Compute the initial dimensions only after every control has been added.
@@ -194,6 +204,7 @@ class NetworkSettingsDialog(QDialog):
         self.catalog_cache_hours_spin.setValue(
             DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
         )
+        self.detailed_logging_checkbox.setChecked(False)
 
     def save_settings(self, force_catalog_refresh=False):
         """Apply the complete dialog state as one coherent configuration update."""
@@ -207,7 +218,8 @@ class NetworkSettingsDialog(QDialog):
             self.account_refresh_spin.value(),
             self.account_refresh_checkbox.isChecked(),
             self.catalog_cache_checkbox.isChecked(),
-            self.catalog_cache_hours_spin.value()
+            self.catalog_cache_hours_spin.value(),
+            self.detailed_logging_checkbox.isChecked()
         )
         if force_catalog_refresh:
             self.parent_app.refresh_provider_catalog()

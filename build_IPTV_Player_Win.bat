@@ -59,36 +59,6 @@ REM Set build and dist folders separately
 SET BUILD_PATH=build
 SET DIST_PATH=dist
 
-REM Give options what to create
-SET exec_choice=
-IF /I "%~1"=="--release" SET exec_choice=1
-IF /I "%~1"=="--debug" SET exec_choice=2
-IF /I "%~1"=="--both" SET exec_choice=3
-
-IF NOT "%~1"=="" IF NOT DEFINED exec_choice (
-  echo Usage: %~nx0 [--release^|--debug^|--both]
-  pause
-  exit /b 1
-)
-
-IF NOT DEFINED exec_choice (
-  cls
-  echo ===============================
-  echo What would you like to do?
-  echo.
-  echo 1. Create Executable without console
-  echo 2. Create Executable with console
-  echo 3. Create both Executables
-  echo ===============================
-  set /p exec_choice=Enter your choice ^(1, 2, or 3^):
-)
-
-IF NOT "%exec_choice%"=="1" IF NOT "%exec_choice%"=="2" IF NOT "%exec_choice%"=="3" (
-  echo ERROR: Invalid build selection.
-  pause
-  exit /b 1
-)
-
 REM Clean previous build folder
 IF EXIST %BUILD_PATH% (
   echo Deleting existing build directory: %BUILD_PATH%
@@ -103,9 +73,6 @@ IF EXIST %DIST_PATH% (
 
 REM PyInstaller writes specification files beside the script; remove stale variants.
 IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
-IF EXIST "IPTV Player with debug console.spec" del /q "IPTV Player with debug console.spec"
-
-IF "%exec_choice%"=="2" GOTO option2
 
 REM python-vlc is imported lazily, so PyInstaller cannot discover it automatically.
 REM Run PyInstaller directly with all necessary options and added data files
@@ -145,49 +112,7 @@ REM Run PyInstaller directly with all necessary options and added data files
   %MAIN_SCRIPT%
 IF ERRORLEVEL 1 GOTO build_failed
 
-IF "%exec_choice%"=="1" GOTO end
-
-:option2
-REM Create executable with debug console
-REM Keep the lazy python-vlc import available in the diagnostic build too.
-%PYTHON_BIN% -m PyInstaller ^
-  --onefile ^
-  --noconfirm ^
-  --hidden-import vlc ^
-  --icon "Images/TV_icon.ico" ^
-  --name "IPTV Player with debug console" ^
-  --workpath %BUILD_PATH% ^
-  --distpath %DIST_PATH% ^
-  --add-data "Images/TV_icon.ico;Images" ^
-  --add-data "Images/404_not_found.png;Images" ^
-  --add-data "Images/no_image.jpg;Images" ^
-  --add-data "Images/loading-icon.png;Images" ^
-  --add-data "Images/home_tab_icon.ico;Images" ^
-  --add-data "Images/tv_tab_icon.ico;Images" ^
-  --add-data "Images/movies_tab_icon.ico;Images" ^
-  --add-data "Images/series_tab_icon.ico;Images" ^
-  --add-data "Images/favorite_tab_icon.ico;Images" ^
-  --add-data "Images/favorite_tab_icon_colour.ico;Images" ^
-  --add-data "Images/info_tab_icon.ico;Images" ^
-  --add-data "Images/settings_tab_icon.ico;Images" ^
-  --add-data "Images/search_bar_icon.ico;Images" ^
-  --add-data "Images/sorting_icon.ico;Images" ^
-  --add-data "Images/clear_button_icon.ico;Images" ^
-  --add-data "Images/go_back_icon.ico;Images" ^
-  --add-data "Images/account_manager_icon.ico;Images" ^
-  --add-data "Images/film_camera_icon.ico;Images" ^
-  --add-data "Images/primary_full-TMDB.svg;Images" ^
-  --add-data "Images/yt_icon_rgb.png;Images" ^
-  --add-data "Images/unknown_status.png;Images" ^
-  --add-data "Images/online_status.png;Images" ^
-  --add-data "Images/maybe_status.png;Images" ^
-  --add-data "Images/offline_status.png;Images" ^
-  %MAIN_SCRIPT%
-IF ERRORLEVEL 1 GOTO build_failed
-
-:end
 IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
-IF EXIST "IPTV Player with debug console.spec" del /q "IPTV Player with debug console.spec"
 echo.
 echo Build complete. Executable saved in %DIST_PATH%.
 pause
@@ -195,7 +120,6 @@ exit /b 0
 
 :build_failed
 IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
-IF EXIST "IPTV Player with debug console.spec" del /q "IPTV Player with debug console.spec"
 echo.
 echo ERROR: The build failed. Review the messages above for details.
 pause

@@ -21,35 +21,9 @@ APP_PATH="$DIST_PATH/$APP_NAME.app"
 
 # Remove generated specification files after both successful and failed builds.
 cleanup_spec_files() {
-  rm -f "IPTV Player.spec" "IPTV Player with debug console.spec"
+  rm -f "IPTV Player.spec"
 }
 trap cleanup_spec_files EXIT
-
-# Accept an explicit mode for automation, or ask when launched interactively.
-case "${1:-}" in
-  --release) BUILD_CHOICE=1 ;;
-  --debug) BUILD_CHOICE=2 ;;
-  --both) BUILD_CHOICE=3 ;;
-  "")
-    echo "==============================="
-    echo "What would you like to do?"
-    echo
-    echo "1. Create application without console"
-    echo "2. Create executable with console"
-    echo "3. Create both"
-    echo "==============================="
-    read -r -p "Enter your choice (1, 2, or 3): " BUILD_CHOICE
-    ;;
-  *)
-    echo "Usage: $0 [--release|--debug|--both]"
-    exit 1
-    ;;
-esac
-
-if [[ ! "$BUILD_CHOICE" =~ ^[123]$ ]]; then
-  echo "ERROR: Invalid build selection."
-  exit 1
-fi
 
 # PyInstaller and every application dependency must belong to the interpreter
 # used for packaging. PyInstaller can otherwise finish with a broken bundle.
@@ -89,7 +63,7 @@ if [ -d "$DIST_PATH" ]; then
 fi
 
 # PyInstaller writes specification files beside the script; remove stale variants.
-rm -f "IPTV Player.spec" "IPTV Player with debug console.spec"
+rm -f "IPTV Player.spec"
 
 # Generate all standard and Retina representations through Apple's native tool.
 # Small Finder icons then use their own bitmap instead of shrinking one large icon.
@@ -112,7 +86,7 @@ if [ -f "Images/TV_icon.png" ]; then
   ICON_ARGS=(--icon "$ICNS_PATH")
 fi
 
-# Keep shared packaging options in one list so release and debug builds cannot drift.
+# Package one desktop application; detailed diagnostics are enabled in the app.
 PYINSTALLER_ARGS=(
   --clean
   --onedir
@@ -147,35 +121,21 @@ PYINSTALLER_ARGS=(
   --add-data "Images/offline_status.png:Images"
 )
 
-build_application() {
-  local output_name=$1
-  local console_option=$2
-  "$PYTHON_BIN" -m PyInstaller \
-    "${PYINSTALLER_ARGS[@]}" \
-    "$console_option" \
-    --name "$output_name" \
-    "$MAIN_SCRIPT"
-}
-
-if [ "$BUILD_CHOICE" = "1" ] || [ "$BUILD_CHOICE" = "3" ]; then
-  build_application "$APP_NAME" --windowed
-fi
-
-if [ "$BUILD_CHOICE" = "2" ] || [ "$BUILD_CHOICE" = "3" ]; then
-  build_application "$APP_NAME with debug console" --console
-fi
+"$PYTHON_BIN" -m PyInstaller \
+  "${PYINSTALLER_ARGS[@]}" \
+  --windowed \
+  --name "$APP_NAME" \
+  "$MAIN_SCRIPT"
 
 # The .app bundle contains its own complete copy. Keep only the artifact users
 # install, after confirming that PyInstaller created it successfully.
-if [ "$BUILD_CHOICE" = "1" ] || [ "$BUILD_CHOICE" = "3" ]; then
-  if [ ! -d "$APP_PATH" ]; then
-    echo "ERROR: The macOS application bundle was not created."
-    exit 1
-  fi
-  if [ -d "$DIST_PATH/$APP_NAME" ]; then
-    echo "Removing duplicate PyInstaller folder: $DIST_PATH/$APP_NAME"
-    rm -rf "$DIST_PATH/$APP_NAME"
-  fi
+if [ ! -d "$APP_PATH" ]; then
+  echo "ERROR: The macOS application bundle was not created."
+  exit 1
+fi
+if [ -d "$DIST_PATH/$APP_NAME" ]; then
+  echo "Removing duplicate PyInstaller folder: $DIST_PATH/$APP_NAME"
+  rm -rf "$DIST_PATH/$APP_NAME"
 fi
 
 # Create a compressed disk image suitable for a GitHub release. The Applications
@@ -187,27 +147,20 @@ if [ -z "$APP_VERSION" ]; then
   exit 1
 fi
 
-if [ "$BUILD_CHOICE" = "1" ] || [ "$BUILD_CHOICE" = "3" ]; then
-  DMG_STAGE="$BUILD_PATH/dmg"
-  DMG_PATH="$DIST_PATH/$APP_NAME $APP_VERSION.dmg"
-  rm -rf "$DMG_STAGE"
-  mkdir -p "$DMG_STAGE"
-  cp -R "$APP_PATH" "$DMG_STAGE/"
-  ln -s /Applications "$DMG_STAGE/Applications"
-  hdiutil create \
-    -volname "$APP_NAME" \
-    -srcfolder "$DMG_STAGE" \
-    -ov \
-    -format UDZO \
-    "$DMG_PATH"
-fi
+DMG_STAGE="$BUILD_PATH/dmg"
+DMG_PATH="$DIST_PATH/$APP_NAME $APP_VERSION.dmg"
+rm -rf "$DMG_STAGE"
+mkdir -p "$DMG_STAGE"
+cp -R "$APP_PATH" "$DMG_STAGE/"
+ln -s /Applications "$DMG_STAGE/Applications"
+hdiutil create \
+  -volname "$APP_NAME" \
+  -srcfolder "$DMG_STAGE" \
+  -ov \
+  -format UDZO \
+  "$DMG_PATH"
 
 echo
 echo "Build completed. Output is available in $DIST_PATH."
-if [ "$BUILD_CHOICE" = "1" ] || [ "$BUILD_CHOICE" = "3" ]; then
-  echo "Application: $APP_PATH"
-  echo "Release package: $DMG_PATH"
-fi
-if [ "$BUILD_CHOICE" = "2" ] || [ "$BUILD_CHOICE" = "3" ]; then
-  echo "Debug executable: $DIST_PATH/$APP_NAME with debug console/$APP_NAME with debug console"
-fi
+echo "Application: $APP_PATH"
+echo "Release package: $DMG_PATH"

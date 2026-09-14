@@ -42,35 +42,9 @@ DIST_PATH="dist"
 
 # Remove generated specification files after both successful and failed builds.
 cleanup_spec_files() {
-  rm -f "IPTV Player.spec" "IPTV Player with debug console.spec"
+  rm -f "IPTV Player.spec"
 }
 trap cleanup_spec_files EXIT
-
-# Accept an explicit mode for automation, or ask when launched interactively.
-case "${1:-}" in
-  --release) BUILD_CHOICE=1 ;;
-  --debug) BUILD_CHOICE=2 ;;
-  --both) BUILD_CHOICE=3 ;;
-  "")
-    echo "==============================="
-    echo "What would you like to do?"
-    echo
-    echo "1. Create executable without console"
-    echo "2. Create executable with console"
-    echo "3. Create both executables"
-    echo "==============================="
-    read -r -p "Enter your choice (1, 2, or 3): " BUILD_CHOICE
-    ;;
-  *)
-    echo "Usage: $0 [--release|--debug|--both]"
-    exit 1
-    ;;
-esac
-
-if [[ ! "$BUILD_CHOICE" =~ ^[123]$ ]]; then
-  echo "ERROR: Invalid build selection."
-  exit 1
-fi
 
 # Remove previous build and dist folders
 if [ -d "$BUILD_PATH" ]; then
@@ -84,9 +58,9 @@ if [ -d "$DIST_PATH" ]; then
 fi
 
 # PyInstaller writes specification files beside the script; remove stale variants.
-rm -f "IPTV Player.spec" "IPTV Player with debug console.spec"
+rm -f "IPTV Player.spec"
 
-# Keep shared packaging options in one list so release and debug builds cannot drift.
+# Package one desktop application; detailed diagnostics are enabled in the app.
 PYINSTALLER_ARGS=(
   --clean
   --onefile
@@ -121,23 +95,11 @@ PYINSTALLER_ARGS=(
   --add-data "Images/offline_status.png:Images"
 )
 
-build_executable() {
-  local output_name=$1
-  local console_option=$2
-  "$PYTHON_BIN" -m PyInstaller \
-    "${PYINSTALLER_ARGS[@]}" \
-    "$console_option" \
-    --name "$output_name" \
-    "$MAIN_SCRIPT"
-}
-
-if [ "$BUILD_CHOICE" = "1" ] || [ "$BUILD_CHOICE" = "3" ]; then
-  build_executable "IPTV Player" --noconsole
-fi
-
-if [ "$BUILD_CHOICE" = "2" ] || [ "$BUILD_CHOICE" = "3" ]; then
-  build_executable "IPTV Player with debug console" --console
-fi
+"$PYTHON_BIN" -m PyInstaller \
+  "${PYINSTALLER_ARGS[@]}" \
+  --noconsole \
+  --name "IPTV Player" \
+  "$MAIN_SCRIPT"
 
 echo
 echo "Build completed. Output is available in $DIST_PATH."

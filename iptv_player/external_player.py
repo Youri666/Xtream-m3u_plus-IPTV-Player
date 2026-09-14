@@ -1,5 +1,6 @@
 """Cross-platform external media player command construction and launching."""
 
+import logging
 import os
 from os import path
 import subprocess
@@ -90,5 +91,11 @@ def launch_external_player(
         user_agent=user_agent,
         title=title,
         platform=platform,
+    )
+    logging.debug(
+        "Launching external player: executable=%r; title=%r; platform=%s",
+        player,
+        title,
+        platform or sys.platform,
     )
     return subprocess.Popen(command)

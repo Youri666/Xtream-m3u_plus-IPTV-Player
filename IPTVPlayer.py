@@ -6,6 +6,7 @@ import requests
 import subprocess
 import configparser
 import json
+import logging
 import queue
 import threading
 import uuid
@@ -28,7 +29,11 @@ from PyQt5.QtWidgets import (
 
 from iptv_player.ui.info_panels import LiveInfoBox, MovieInfoBox, SeriesInfoBox
 from iptv_player.ui.player import EmbeddedPlayerWindow
-from iptv_player.bootstrap import configure_qt_application, install_logging
+from iptv_player.bootstrap import (
+    configure_qt_application,
+    install_logging,
+    set_detailed_logging,
+)
 from iptv_player.constants import (
     CURRENT_CONFIG_SCHEMA_VERSION,
     CURRENT_VERSION,
@@ -47,6 +52,7 @@ from iptv_player.config import (
     load_account_id,
     load_auto_update_preference,
     load_content_preferences,
+    load_detailed_logging_preference,
     load_player_preference,
     load_sorting_preference,
     load_stream_status_preference,
@@ -423,6 +429,11 @@ class IPTVPlayerApp(QMainWindow):
         self.active_account_name = str(name or "").strip()
         self.active_account_id = (
             load_account_id(self.user_data_file, self.active_account_name) or ""
+        )
+        logging.debug(
+            "Active account changed: name=%r; id=%s",
+            self.active_account_name,
+            self.active_account_id or "none",
         )
         self.provider_preferences_file = (
             str(provider_preferences_file(
@@ -2129,7 +2140,7 @@ class IPTVPlayerApp(QMainWindow):
                              live_status_timeout, live_status_retries,
                              stream_status_enabled, account_refresh_interval,
                              account_auto_refresh_enabled, catalog_cache_enabled,
-                             catalog_cache_max_age_hours):
+                             catalog_cache_max_age_hours, detailed_logging_enabled):
         """Apply and persist all advanced provider settings in one operation."""
         self.current_user_agent = user_agent or DEFAULT_USER_AGENT_HEADER
         NETWORK_SETTINGS.connection_timeout = connection_timeout
@@ -2141,6 +2152,7 @@ class IPTVPlayerApp(QMainWindow):
         self.account_info_auto_refresh_enabled = account_auto_refresh_enabled
         self.catalog_cache_enabled = catalog_cache_enabled
         self.catalog_cache_max_age_hours = catalog_cache_max_age_hours
+        self.detailed_logging_enabled = detailed_logging_enabled
         self._apply_stream_status_visibility()
         self._update_account_info_timer()
 
@@ -2166,9 +2178,11 @@ class IPTVPlayerApp(QMainWindow):
             'enabled': str(catalog_cache_enabled),
             'max_age_hours': str(catalog_cache_max_age_hours)
         }
+        config['Logging'] = {'detailed': str(detailed_logging_enabled)}
 
         try:
             write_config_file(self.user_data_file, config)
+            set_detailed_logging(detailed_logging_enabled)
             self.animate_progress(0, 100, "Network settings saved")
         except OSError as e:
             print(f"Could not write user data file: {e}")
@@ -2176,6 +2190,9 @@ class IPTVPlayerApp(QMainWindow):
 
     def load_default_network_options(self):
         try:
+            self.detailed_logging_enabled = load_detailed_logging_preference(
+                self.user_data_file
+            )
             # Read persisted network values. A malformed file falls back to the
             # in-code defaults instead of preventing the application from starting.
             config = configparser.ConfigParser()
@@ -2693,6 +2710,12 @@ class IPTVPlayerApp(QMainWindow):
         self.set_progress_bar(0, "Going to fetch data...")
 
     def fetch_data_thread(self, force_refresh=False):
+        logging.debug(
+            "Catalog load requested: account_id=%s; force_refresh=%s; cache=%s",
+            self.active_account_id or "none",
+            force_refresh,
+            self.catalog_cache_enabled,
+        )
         dataWorker = FetchDataWorker(
             self.server,
             self.username,
@@ -2741,6 +2764,7 @@ class IPTVPlayerApp(QMainWindow):
 
     def _on_current_tab_changed(self, index):
         """Apply tab-specific refresh and temporary sorting behavior."""
+        logging.debug("Active tab changed: %s", self.tab_widget.tabText(index))
         if hasattr(self, 'category_search_bars'):
             stream_type = self.tab_widget.tabText(index)
             if stream_type in ('LIVE', 'Movies', 'Series'):
@@ -3403,6 +3427,12 @@ class IPTVPlayerApp(QMainWindow):
             selected_item_data = selected_item.data(Qt.UserRole) or {}
             selected_item_text = selected_item_data.get(
                 'category_name', selected_item.text()
+            )
+            logging.debug(
+                "Category selected: type=%s; name=%r; id=%s",
+                stream_type,
+                selected_item_text,
+                selected_item_data.get('category_id', 'synthetic'),
             )
 
             #Check if All and Favorites category are not selected

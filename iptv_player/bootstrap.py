@@ -9,7 +9,17 @@ import traceback
 
 from PyQt5.QtGui import QFont
 
-from iptv_player.config import writable_data_directory
+from iptv_player.config import load_detailed_logging_preference, writable_data_directory
+from iptv_player.utils.privacy import redact_log_credentials
+
+
+class _CredentialRedactionFilter(logging.Filter):
+    """Remove provider credentials from every record before it reaches log.txt."""
+
+    def filter(self, record):
+        record.msg = redact_log_credentials(record.getMessage())
+        record.args = ()
+        return True
 
 
 class _StreamToLogger:
@@ -55,21 +65,33 @@ def install_logging():
 
     os.makedirs(application_dir, exist_ok=True)
     log_path = path.join(application_dir, "log.txt")
+    user_data_file = path.join(application_dir, "userdata.ini")
+    log_level = (
+        logging.DEBUG
+        if load_detailed_logging_preference(user_data_file)
+        else logging.INFO
+    )
 
     try:
         logging.basicConfig(
             filename=log_path,
-            filemode="a",
-            level=logging.INFO,
+            # Each launch starts a self-contained diagnostic report.
+            filemode="w",
+            level=log_level,
             format="%(asctime)s %(levelname)s %(message)s",
             encoding="utf-8",
         )
     except TypeError:
         # Python versions before 3.9 do not support the encoding argument.
-        handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+        handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
         logging.getLogger().addHandler(handler)
-        logging.getLogger().setLevel(logging.INFO)
+        logging.getLogger().setLevel(log_level)
+
+    # Third-party DEBUG records may include complete request URLs. Attach the
+    # filter to every output handler so those credentials never reach the file.
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(_CredentialRedactionFilter())
 
     sys.stdout = _StreamToLogger(sys.stdout, logging.INFO)
     sys.stderr = _StreamToLogger(sys.stderr, logging.ERROR)
@@ -82,6 +104,11 @@ def install_logging():
     sys.excepthook = handle_unhandled_exception
     logging.info("=== Session start (log lives at %s) ===", log_path)
     atexit.register(lambda: logging.info("=== Session end ==="))
+
+
+def set_detailed_logging(enabled):
+    """Change diagnostic verbosity immediately without restarting the application."""
+    logging.getLogger().setLevel(logging.DEBUG if enabled else logging.INFO)
 
 
 def configure_qt_application(app):
