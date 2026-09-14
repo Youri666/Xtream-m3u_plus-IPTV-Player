@@ -26,6 +26,41 @@ from PyQt5.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QTreeView
 )
 
+
+class CasePreservingConfigParser(configparser.ConfigParser):
+    """Preserve account labels while reading legacy option names flexibly."""
+
+    optionxform = staticmethod(str)
+
+    def _existing_option(self, section, option):
+        """Return the stored spelling of an option when only its case differs."""
+        if section != self.default_section and not self.has_section(section):
+            return option
+        requested = str(option).casefold()
+        available = self.defaults() if section == self.default_section else self._sections[section]
+        for existing in available:
+            if existing.casefold() == requested:
+                return existing
+        return option
+
+    def get(self, section, option, *, raw=False, vars=None, fallback=configparser._UNSET):
+        return super().get(
+            section,
+            self._existing_option(section, option),
+            raw=raw,
+            vars=vars,
+            fallback=fallback,
+        )
+
+    def has_option(self, section, option):
+        return super().has_option(section, self._existing_option(section, option))
+
+
+def create_config_parser():
+    """Create the shared backward-compatible INI parser."""
+    return CasePreservingConfigParser()
+
+
 class AccountManager(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -77,7 +112,7 @@ class AccountManager(QtWidgets.QDialog):
     def set_startup_credentials(self):
         selected_item = self.startup_account_options.currentText()
 
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         config.read(self.parent.user_data_file)
 
         if 'Startup credentials' not in config:
@@ -95,7 +130,7 @@ class AccountManager(QtWidgets.QDialog):
         self.startup_account_options.clear()
         self.startup_account_options.addItem("None")
 
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         config.read(self.parent.user_data_file)
 
         if 'Credentials' in config:
@@ -115,7 +150,7 @@ class AccountManager(QtWidgets.QDialog):
 
         if selected_item:
             name = selected_item.text()
-            config = configparser.ConfigParser()
+            config = create_config_parser()
             config.read(self.parent.user_data_file)
 
             if 'Credentials' in config and name in config['Credentials']:
@@ -160,7 +195,7 @@ class AccountManager(QtWidgets.QDialog):
 
     def save_credentials(self, credentials_dict):
         # Load the configuration file
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         config.read(self.parent.user_data_file)
 
         # Extract the credentials from the dictionary
@@ -200,7 +235,7 @@ class AccountManager(QtWidgets.QDialog):
         if selected_item:
             name = selected_item.text()
 
-            config = configparser.ConfigParser()
+            config = create_config_parser()
             config.read(self.parent.user_data_file)
 
             if 'Credentials' in config and name in config['Credentials']:
@@ -241,7 +276,7 @@ class AccountManager(QtWidgets.QDialog):
         if selected_item:
             name = selected_item.text()
 
-            config = configparser.ConfigParser()
+            config = create_config_parser()
             config.read(self.parent.user_data_file)
 
             if 'Credentials' in config and name in config['Credentials']:
@@ -293,7 +328,6 @@ class AccountDialog(QtWidgets.QDialog):
         self.server_entry       = QLineEdit()
         self.username_entry     = QLineEdit()
         self.password_entry     = QLineEdit()
-        self.password_entry.setEchoMode(QLineEdit.Password)
 
         self.live_url_format_entry = QLineEdit(self.default_url_formats['live'])
         self.movie_url_format_entry = QLineEdit(self.default_url_formats['movie'])

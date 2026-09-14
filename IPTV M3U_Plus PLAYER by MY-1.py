@@ -32,13 +32,13 @@ from PyQt5.QtWidgets import (
     QGroupBox, QRadioButton, QButtonGroup, QToolButton
 )
 
-from AccountManager import AccountManager
+from AccountManager import AccountManager, create_config_parser
 from CustomPyQtWidgets import LiveInfoBox, MovieInfoBox, SeriesInfoBox, EmbeddedPlayerWindow
 from SearchUtils import normalize_search_text, title_matches_search
 import Threadpools
 from Threadpools import FetchDataWorker, SearchWorker, OnlineWorker, EPGWorker, MovieInfoFetcher, SeriesInfoFetcher, ImageFetcher, AccountInfoWorker
 
-CURRENT_VERSION = "V2.01.17"
+CURRENT_VERSION = "V2.01.18"
 REMEMBER_CATEGORY_SORTING = "Remember per category"
 
 DEFAULT_INTERNAL_SEEK_STEP_SECONDS = 10
@@ -969,6 +969,11 @@ class IPTVPlayerApp(QMainWindow):
         # independently resized columns in each content tab.
         self.restoreWindowLayout()
 
+        # Defer automatic login until the complete window exists and Qt has entered
+        # its event loop. A fast cache load must not populate widgets while the main
+        # window is still being constructed.
+        QTimer.singleShot(0, self.loadStartupCredentials)
+
     def _encoded_widget_state(self, state):
         """Encode Qt's binary geometry/state payload for safe INI storage."""
         return bytes(state.toBase64()).decode('ascii')
@@ -982,7 +987,7 @@ class IPTVPlayerApp(QMainWindow):
 
     def restoreWindowLayout(self):
         """Restore window geometry, active tab, and per-tab column widths."""
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError) as e:
@@ -1036,11 +1041,11 @@ class IPTVPlayerApp(QMainWindow):
 
     def saveWindowLayout(self):
         """Persist durable UI layout preferences in userdata.ini."""
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
 
         config['Window'] = {
             'geometry': self._encoded_widget_state(self.saveGeometry()),
@@ -1064,7 +1069,7 @@ class IPTVPlayerApp(QMainWindow):
     def updateUserDataFile(self):
         # Load the configuration file. A corrupted .ini must not crash the app —
         # fall back to a fresh config so the user can re-add accounts.
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError) as e:
@@ -1153,7 +1158,7 @@ class IPTVPlayerApp(QMainWindow):
         if not path.isfile(legacy_path):
             return
 
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
             if not config.has_option("InternalPlayer", "volume"):
@@ -1550,7 +1555,7 @@ class IPTVPlayerApp(QMainWindow):
 
     def _load_hidden_categories(self):
         """Load independent LIVE, Movies, and Series exclusions from userdata.ini."""
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
@@ -1573,11 +1578,11 @@ class IPTVPlayerApp(QMainWindow):
 
     def _save_hidden_categories(self):
         """Persist category exclusions while preserving every unrelated setting."""
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
 
         config['Hidden categories'] = {
             stream_type: json.dumps(sorted(hidden_ids), separators=(',', ':'))
@@ -2011,7 +2016,7 @@ class IPTVPlayerApp(QMainWindow):
     def loadDefaultSortingOrder(self):
         sorting_order = ""
 
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         config.read(self.user_data_file)
 
         if 'Sorting order' in config:
@@ -2086,11 +2091,11 @@ class IPTVPlayerApp(QMainWindow):
 
     def _save_category_sort_preferences(self):
         """Store durable sorting preferences in INI; IPTV cache remains disposable."""
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
 
         config['Category sorting'] = {
             stream_type: json.dumps(preferences, separators=(',', ':'))
@@ -2261,7 +2266,7 @@ class IPTVPlayerApp(QMainWindow):
         else:
             self.setAllSortingOrder(sorting_order)
 
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         config.read(self.user_data_file)
 
         config['Sorting order'] = {'Order': sorting_order}
@@ -2429,11 +2434,11 @@ class IPTVPlayerApp(QMainWindow):
 
     def loadDefaultUserAgent(self):
         #Read userdata config file
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
 
         #Check if defined in config. Otherwise set to default
         if config.has_option('User-Agent', 'user-agent'):
@@ -2443,11 +2448,11 @@ class IPTVPlayerApp(QMainWindow):
 
     def loadDefaultContent(self):
         #Read userdata config file
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
 
         # Prefer the new independent values. An existing VOD preference remains a
         # migration fallback for Movies and Series, so current users keep their choice.
@@ -2523,11 +2528,11 @@ class IPTVPlayerApp(QMainWindow):
 
     def saveInternalPlayerSettings(self):
         """Persist internal-player controls without replacing unrelated settings."""
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
         # Preserve the volume written by the isolated player process.
         saved_volume = config.get('InternalPlayer', 'volume', fallback='80')
         config['InternalPlayer'] = {
@@ -2546,11 +2551,11 @@ class IPTVPlayerApp(QMainWindow):
 
     def loadDefaultInternalPlayerSettings(self):
         """Load bounded control steps so manual INI edits remain safe."""
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
 
         try:
             seek_seconds = config.getint(
@@ -2607,11 +2612,11 @@ class IPTVPlayerApp(QMainWindow):
         self._applyStreamStatusVisibility()
         self._updateAccountInfoTimer()
 
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
 
         config['User-Agent'] = {'user-agent': self.current_user_agent}
         config['Timeouts'] = {
@@ -2642,11 +2647,11 @@ class IPTVPlayerApp(QMainWindow):
         try:
             # Read persisted network values. A malformed file falls back to the
             # in-code defaults instead of preventing the application from starting.
-            config = configparser.ConfigParser()
+            config = create_config_parser()
             try:
                 config.read(self.user_data_file)
             except (configparser.Error, UnicodeDecodeError):
-                config = configparser.ConfigParser()
+                config = create_config_parser()
 
             # Clamp manually edited values to the same ranges as the dialog. Each
             # value falls back independently, so one bad entry cannot discard the rest.
@@ -2788,7 +2793,7 @@ class IPTVPlayerApp(QMainWindow):
     def toggleAutoUpdate(self, state):
         checked = bool(state)
 
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         config.read(self.user_data_file)
 
         config['Updater'] = {'auto-update-checker': checked}
@@ -2798,11 +2803,11 @@ class IPTVPlayerApp(QMainWindow):
 
     def loadDefaultAutoUpdate(self):
         #Read userdata file
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
 
         #Check if updater is in config
         if config.has_option('Updater', 'auto-update-checker'):
@@ -2882,13 +2887,11 @@ class IPTVPlayerApp(QMainWindow):
         # provider requests in the background.
         self.loadDefaultNetworkOptions()
 
-        #Load startup credentials
-        self.loadStartupCredentials()
 
     def loadStartupCredentials(self):
         # Load playlist on startup if enabled. A malformed/missing key here used to crash
         # the app right after the login screen (issue #92), so every access is guarded.
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError) as e:
@@ -2974,11 +2977,11 @@ class IPTVPlayerApp(QMainWindow):
                 'command': 'theme',
                 'theme': theme_name
             })
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
         config['Theme'] = {'mode': theme_name}
         try:
             with open(self.user_data_file, 'w') as config_file:
@@ -2987,11 +2990,11 @@ class IPTVPlayerApp(QMainWindow):
             print(f"Could not write user data file: {e}")
 
     def loadDefaultTheme(self):
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
         mode = "System"
         if config.has_option("Theme", "mode"):
             mode = config["Theme"]["mode"]
@@ -3019,11 +3022,11 @@ class IPTVPlayerApp(QMainWindow):
             pass
 
     def loadDefaultStreamStatus(self):
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
 
         if config.has_option('StreamStatus', 'enabled'):
             self.stream_status_enabled = (config['StreamStatus']['enabled'] == 'True')
@@ -3039,11 +3042,11 @@ class IPTVPlayerApp(QMainWindow):
         self.content_enabled[stream_type] = is_enabled
         self._applyContentVisibility()
 
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
         config['Content'] = {
             key: str(enabled)
             for key, enabled in self.content_enabled.items()
@@ -5055,11 +5058,11 @@ class IPTVPlayerApp(QMainWindow):
             print(f"search in list failed: {e}")
 
     def load_external_player_command(self):
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
 
         if config.has_option('ExternalPlayer', 'Command'):
             command = config['ExternalPlayer'].get('Command', '')
@@ -5092,11 +5095,11 @@ class IPTVPlayerApp(QMainWindow):
         return ""
 
     def save_external_player_command(self):
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
+            config = create_config_parser()
 
         # Store the active mode and the last external executable separately. Switching
         # to Internal VLC must not erase the path the user may want to select again.
