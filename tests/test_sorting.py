@@ -26,6 +26,24 @@ class CatalogSortingTests(unittest.TestCase):
 
         self.assertEqual([entry["title"] for entry in ordered], ["alpha", "Zulu"])
 
+    def test_catalog_sort_ignores_accents_punctuation_and_invisible_marks(self):
+        entries = [
+            {"name": "[FR] \u200bPapa à plein temps"},
+            {"name": "[FR] Élise sous Emprise"},
+            {"name": "[FR] Youngblood"},
+        ]
+
+        ordered = ordered_catalog_entries(entries, True, descending=True)
+
+        self.assertEqual(
+            [entry["name"] for entry in ordered],
+            [
+                "[FR] Youngblood",
+                "[FR] \u200bPapa à plein temps",
+                "[FR] Élise sous Emprise",
+            ],
+        )
+
     def test_seasons_use_numeric_order_before_named_entries(self):
         seasons = ["10", "Specials", "2", "1"]
 

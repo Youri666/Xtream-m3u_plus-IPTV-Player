@@ -1,5 +1,7 @@
 """Pure ordering helpers shared by catalog views."""
 
+from iptv_player.utils.search import normalize_search_text
+
 
 def ordered_catalog_entries(
     entries, sorting_enabled, descending=False, title_key="name"
@@ -8,7 +10,7 @@ def ordered_catalog_entries(
     ordered = list(entries)
     if sorting_enabled:
         ordered.sort(
-            key=lambda entry: str(entry.get(title_key, "")).casefold(),
+            key=lambda entry: normalize_search_text(entry.get(title_key, "")),
             reverse=descending,
         )
     return ordered
