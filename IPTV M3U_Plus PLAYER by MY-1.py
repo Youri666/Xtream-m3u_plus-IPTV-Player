@@ -34,7 +34,11 @@ from PyQt5.QtWidgets import (
 
 from AccountManager import AccountManager, create_config_parser
 from CustomPyQtWidgets import LiveInfoBox, MovieInfoBox, SeriesInfoBox, EmbeddedPlayerWindow
-from SearchUtils import normalize_search_text, title_matches_search
+from SearchUtils import (
+    normalize_search_text,
+    search_relevance_key,
+    title_matches_search,
+)
 import Threadpools
 from Threadpools import FetchDataWorker, SearchWorker, OnlineWorker, EPGWorker, MovieInfoFetcher, SeriesInfoFetcher, ImageFetcher, AccountInfoWorker
 
@@ -4961,6 +4965,11 @@ class IPTVPlayerApp(QMainWindow):
                         key=lambda entry: entry.get('category_name', '').casefold(),
                         reverse=(category_list_order == 1)
                     )
+                matching_entries.sort(
+                    key=lambda entry: search_relevance_key(
+                        entry.get('category_name', ''), search_terms
+                    )
+                )
 
                 # Build the final order once. Keeping Qt automatic sorting enabled
                 # while inserting thousands of matches causes repeated O(n log n)
@@ -5020,6 +5029,11 @@ class IPTVPlayerApp(QMainWindow):
                                     key=lambda entry: entry['name'].casefold(),
                                     reverse=(self.sorting_order == 1)
                                 )
+                            matching_entries.sort(
+                                key=lambda entry: search_relevance_key(
+                                    entry.get('name', ''), search_terms
+                                )
+                            )
                             for entry in matching_entries:
                                 item = QListWidgetItem(entry['name'])
                                 item.setData(Qt.UserRole, entry)
@@ -5045,6 +5059,11 @@ class IPTVPlayerApp(QMainWindow):
                                     key=_season_sort_key,
                                     reverse=(self.sorting_order == 1)
                                 )
+                            seasons.sort(
+                                key=lambda season: search_relevance_key(
+                                    f"season {season}", search_terms
+                                )
+                            )
                             for season in seasons:
                                 item = QListWidgetItem(f"Season {season}")
                                 item.setData(Qt.UserRole, self.currently_loaded_streams['Seasons'][season])
@@ -5062,6 +5081,11 @@ class IPTVPlayerApp(QMainWindow):
                                     key=lambda episode: episode['title'].casefold(),
                                     reverse=(self.sorting_order == 1)
                                 )
+                            matching_episodes.sort(
+                                key=lambda episode: search_relevance_key(
+                                    episode.get('title', ''), search_terms
+                                )
+                            )
                             for episode in matching_episodes:
                                 item = QListWidgetItem(episode['title'])
                                 item.setData(Qt.UserRole, episode)
