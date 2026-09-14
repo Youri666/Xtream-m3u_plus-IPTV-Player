@@ -26,6 +26,41 @@ from PyQt5.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QTreeView
 )
 
+
+class CasePreservingConfigParser(configparser.ConfigParser):
+    """Preserve account labels while reading legacy option names flexibly."""
+
+    optionxform = staticmethod(str)
+
+    def _existing_option(self, section, option):
+        """Return the stored spelling of an option when only its case differs."""
+        if section != self.default_section and not self.has_section(section):
+            return option
+        requested = str(option).casefold()
+        available = self.defaults() if section == self.default_section else self._sections[section]
+        for existing in available:
+            if existing.casefold() == requested:
+                return existing
+        return option
+
+    def get(self, section, option, *, raw=False, vars=None, fallback=configparser._UNSET):
+        return super().get(
+            section,
+            self._existing_option(section, option),
+            raw=raw,
+            vars=vars,
+            fallback=fallback,
+        )
+
+    def has_option(self, section, option):
+        return super().has_option(section, self._existing_option(section, option))
+
+
+def create_config_parser():
+    """Create the shared backward-compatible INI parser."""
+    return CasePreservingConfigParser()
+
+
 class AccountManager(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -77,7 +112,7 @@ class AccountManager(QtWidgets.QDialog):
     def set_startup_credentials(self):
         selected_item = self.startup_account_options.currentText()
 
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         config.read(self.parent.user_data_file)
 
         if 'Startup credentials' not in config:
@@ -95,7 +130,7 @@ class AccountManager(QtWidgets.QDialog):
         self.startup_account_options.clear()
         self.startup_account_options.addItem("None")
 
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         config.read(self.parent.user_data_file)
 
         if 'Credentials' in config:
@@ -115,7 +150,10 @@ class AccountManager(QtWidgets.QDialog):
 
         if selected_item:
             name = selected_item.text()
-            config = configparser.ConfigParser()
+            editing_active_account = (
+                getattr(self.parent, 'active_account_name', '') == name
+            )
+            config = create_config_parser()
             config.read(self.parent.user_data_file)
 
             if 'Credentials' in config and name in config['Credentials']:
@@ -140,6 +178,10 @@ class AccountManager(QtWidgets.QDialog):
                         }
                         self.save_credentials(credentials_dict)
                         self.load_saved_accounts()
+                        if editing_active_account:
+                            # Reapply changed URLs and credentials immediately so
+                            # the in-memory catalog never keeps stale stream links.
+                            self._activate_account(updated_name)
 
     def add_account(self):
         dialog = AccountDialog(self, AccountDialog.MODE_ADD)
@@ -160,7 +202,7 @@ class AccountManager(QtWidgets.QDialog):
 
     def save_credentials(self, credentials_dict):
         # Load the configuration file
-        config = configparser.ConfigParser()
+        config = create_config_parser()
         config.read(self.parent.user_data_file)
 
         # Extract the credentials from the dictionary
@@ -197,39 +239,63 @@ class AccountManager(QtWidgets.QDialog):
     def select_account(self):
         selected_item = self.accounts_list.currentItem()
 
-        if selected_item:
-            name = selected_item.text()
+        if selected_item and self._activate_account(selected_item.text()):
+            self.accept()
 
-            config = configparser.ConfigParser()
-            config.read(self.parent.user_data_file)
+    def _activate_account(self, name):
+        """Load one saved account into the application and refresh its catalog."""
+        config = create_config_parser()
+        config.read(self.parent.user_data_file)
 
-            if 'Credentials' in config and name in config['Credentials']:
-                data = config['Credentials'][name]
+        if 'Credentials' not in config or name not in config['Credentials']:
+            return False
 
-                if data.startswith('manual|'):
-                    _, server, username, password, live_url_format, movie_url_format, series_url_format = data.split('|')
-                    
-                    self.parent.server            = server
-                    self.parent.username          = username
-                    self.parent.password          = password
-                    self.parent.live_url_format   = live_url_format
-                    self.parent.movie_url_format  = movie_url_format
-                    self.parent.series_url_format = series_url_format
+        data = config['Credentials'][name]
 
-                    self.parent.login()
+        if data.startswith('manual|'):
+            parts = data.split('|')
+            if len(parts) < 7:
+                return False
+            (
+                server,
+                username,
+                password,
+                live_url_format,
+                movie_url_format,
+                series_url_format,
+            ) = parts[1:7]
 
-                elif data.startswith('m3u_plus|'):
-                    _, m3u_url, live_url_format, movie_url_format, series_url_format = data.split('|')
+            self.parent.server            = server
+            self.parent.username          = username
+            self.parent.password          = password
+            self.parent.live_url_format   = live_url_format
+            self.parent.movie_url_format  = movie_url_format
+            self.parent.series_url_format = series_url_format
+            self.parent.active_account_name = name
+            self.parent.login()
+            return True
 
-                    self.parent.live_url_format   = live_url_format
-                    self.parent.movie_url_format  = movie_url_format
-                    self.parent.series_url_format = series_url_format
+        if data.startswith('m3u_plus|'):
+            parts = data.split('|')
+            if len(parts) < 5:
+                return False
+            (
+                m3u_url,
+                live_url_format,
+                movie_url_format,
+                series_url_format,
+            ) = parts[1:5]
 
-                    #Get credentials from M3U plus url and check if valid
-                    if self.parent.extract_credentials_from_m3u_plus_url(m3u_url):
-                        self.parent.login()
+            self.parent.live_url_format   = live_url_format
+            self.parent.movie_url_format  = movie_url_format
+            self.parent.series_url_format = series_url_format
 
-                self.accept()
+            if self.parent.extract_credentials_from_m3u_plus_url(m3u_url):
+                self.parent.active_account_name = name
+                self.parent.login()
+                return True
+
+        return False
 
     def double_click_account(self, item):
         self.select_account()
@@ -241,7 +307,7 @@ class AccountManager(QtWidgets.QDialog):
         if selected_item:
             name = selected_item.text()
 
-            config = configparser.ConfigParser()
+            config = create_config_parser()
             config.read(self.parent.user_data_file)
 
             if 'Credentials' in config and name in config['Credentials']:
@@ -293,7 +359,6 @@ class AccountDialog(QtWidgets.QDialog):
         self.server_entry       = QLineEdit()
         self.username_entry     = QLineEdit()
         self.password_entry     = QLineEdit()
-        self.password_entry.setEchoMode(QLineEdit.Password)
 
         self.live_url_format_entry = QLineEdit(self.default_url_formats['live'])
         self.movie_url_format_entry = QLineEdit(self.default_url_formats['movie'])

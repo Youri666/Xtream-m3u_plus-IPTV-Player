@@ -17,6 +17,61 @@ def normalize_search_text(value):
 
 
 def title_matches_search(title, search_terms):
-    """Match every query term as a partial word anywhere in the normalized title."""
+    """Match every partial query term against a distinct normalized title word."""
     normalized_title = normalize_search_text(title)
-    return all(term in normalized_title for term in search_terms)
+    title_words = normalized_title.split()
+    normalized_terms = [
+        word
+        for term in search_terms
+        for word in normalize_search_text(term).split()
+    ]
+
+    # Joining normalized words supports compact spellings such as "dandadan"
+    # for a provider title written as "Dan Da Dan" without introducing fuzzy rules.
+    compact_query = "".join(normalized_terms)
+    if compact_query and compact_query in "".join(title_words):
+        return True
+
+    # Match longer terms first, then backtrack when two partial terms can use the
+    # same title word. This prevents one word such as "dans" from satisfying every
+    # term in a query such as "dan da dan".
+    normalized_terms.sort(key=len, reverse=True)
+
+    match_cache = {}
+
+    def assign_term(term_index, used_word_mask):
+        cache_key = (term_index, used_word_mask)
+        if cache_key in match_cache:
+            return match_cache[cache_key]
+        if term_index >= len(normalized_terms):
+            return True
+
+        term = normalized_terms[term_index]
+        for word_index, word in enumerate(title_words):
+            word_bit = 1 << word_index
+            if used_word_mask & word_bit or term not in word:
+                continue
+            if assign_term(term_index + 1, used_word_mask | word_bit):
+                match_cache[cache_key] = True
+                return True
+        match_cache[cache_key] = False
+        return False
+
+    return assign_term(0, 0)
+
+
+def search_relevance_key(title, search_terms):
+    """Place contiguous query phrases before distributed partial matches."""
+    normalized_title = normalize_search_text(title)
+    normalized_query = normalize_search_text(" ".join(search_terms))
+    compact_phrase_matches = (
+        normalized_query
+        and normalized_query.replace(" ", "")
+        in normalized_title.replace(" ", "")
+    )
+    return (
+        (0,)
+        if normalized_query
+        and (normalized_query in normalized_title or compact_phrase_matches)
+        else (1,)
+    )
