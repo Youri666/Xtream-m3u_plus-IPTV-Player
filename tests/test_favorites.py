@@ -2,10 +2,47 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from iptv_player.storage.favorites import entries_in_favorite_order, set_favorite
+from iptv_player.storage.favorites import (
+    account_favorites_file,
+    entries_in_favorite_order,
+    migrate_legacy_favorites_file,
+    set_favorite,
+)
 
 
 class FavoriteStorageTests(unittest.TestCase):
+    def test_each_account_uses_a_dedicated_favorites_file(self):
+        base_file = Path("data") / "provider_favorites.json"
+        first = account_favorites_file(base_file, "first-account")
+        second = account_favorites_file(base_file, "second-account")
+
+        self.assertEqual(
+            first,
+            Path("data") / "provider_favorites.first-account.json",
+        )
+        self.assertNotEqual(first, second)
+
+    def test_moves_legacy_favorites_to_first_account(self):
+        with tempfile.TemporaryDirectory() as directory:
+            legacy_file = Path(directory) / "favorites.json"
+            dedicated_file = Path(directory) / "provider_favorites.account.json"
+            legacy_file.write_text('{"stream_ids": [10]}', encoding="utf-8")
+
+            selected_file = migrate_legacy_favorites_file(
+                legacy_file, dedicated_file
+            )
+
+            self.assertEqual(selected_file, dedicated_file)
+            self.assertFalse(legacy_file.exists())
+            self.assertEqual(
+                entries_in_favorite_order(
+                    dedicated_file,
+                    "Movies",
+                    [{"stream_id": 10, "favorite": True}],
+                ),
+                [{"stream_id": 10, "favorite": True}],
+            )
+
     def test_add_moves_existing_id_to_end_without_duplicates(self):
         with tempfile.TemporaryDirectory() as directory:
             file_path = Path(directory) / "favorites.json"

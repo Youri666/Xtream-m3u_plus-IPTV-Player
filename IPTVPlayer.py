@@ -44,6 +44,7 @@ from iptv_player.constants import (
 from iptv_player.config import (
     application_resource_path,
     load_account,
+    load_account_id,
     load_startup_account,
     macos_bundle_executable,
     migrate_legacy_player_volume,
@@ -71,7 +72,13 @@ from iptv_player.utils.search import (
     title_matches_search,
 )
 from iptv_player.utils.sorting import ordered_catalog_entries, ordered_season_keys
-from iptv_player.storage import entries_in_favorite_order, set_favorite
+from iptv_player.storage import (
+    account_favorites_file,
+    entries_in_favorite_order,
+    migrate_legacy_favorites_file,
+    set_favorite,
+)
+from iptv_player.provider.cache import account_cache_key
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 from iptv_player.provider.credentials import parse_xtream_m3u_url
 from iptv_player.player_process import run_embedded_player_process
@@ -132,7 +139,11 @@ class IPTVPlayerApp(QMainWindow):
         self.data_directory = writable_data_directory()
         os.makedirs(self.data_directory, exist_ok=True)
         self.user_data_file = path.join(self.data_directory, "userdata.ini")
-        self.favorites_file = path.join(self.data_directory, "favorites.json")
+        self.favorites_base_file = path.join(
+            self.data_directory, "provider_favorites.json"
+        )
+        self.legacy_favorites_file = path.join(self.data_directory, "favorites.json")
+        self.favorites_file = self.legacy_favorites_file
         self.cache_file = path.join(self.data_directory, "provider_catalog_cache.json")
         self.legacy_cache_file = path.join(self.data_directory, "all_cached_data.json")
 
@@ -277,6 +288,7 @@ class IPTVPlayerApp(QMainWindow):
         self.movie_url_format  = ""
         self.series_url_format = ""
         self.active_account_name = ""
+        self.active_account_id = ""
 
         #Create threadpool for data/EPG/image fetching. Single-threaded to keep
         #fetching ordered and gentle on the IPTV server.
@@ -388,6 +400,9 @@ class IPTVPlayerApp(QMainWindow):
     def set_active_account(self, name):
         """Store the active account label and expose it in the window title."""
         self.active_account_name = str(name or "").strip()
+        self.active_account_id = (
+            load_account_id(self.user_data_file, self.active_account_name) or ""
+        )
         title = f"IPTV Player {CURRENT_VERSION}"
         if self.active_account_name:
             title = f"{title} — {self.active_account_name}"
@@ -2654,6 +2669,23 @@ class IPTVPlayerApp(QMainWindow):
             dlg.exec()
 
             return
+
+        provider_key = account_cache_key(self.server, self.username)
+        storage_key = self.active_account_id or provider_key
+        dedicated_favorites_file = account_favorites_file(
+            self.favorites_base_file, storage_key
+        )
+        previous_hashed_favorites_file = account_favorites_file(
+            self.favorites_base_file, provider_key
+        )
+        favorites_migration_source = (
+            previous_hashed_favorites_file
+            if path.isfile(previous_hashed_favorites_file)
+            else self.legacy_favorites_file
+        )
+        self.favorites_file = str(migrate_legacy_favorites_file(
+            favorites_migration_source, dedicated_favorites_file
+        ))
 
         #Start IPTV data fetch thread
         self.fetch_data_thread()

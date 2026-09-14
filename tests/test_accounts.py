@@ -6,6 +6,7 @@ from iptv_player.config.accounts import (
     account_name_error,
     delete_account,
     load_account,
+    load_account_id,
     load_accounts,
     load_startup_account,
     parse_account,
@@ -58,6 +59,7 @@ class AccountStorageTests(unittest.TestCase):
             )
 
             self.assertEqual(list(load_accounts(str(file_path))), ["Living Room"])
+            self.assertEqual(len(load_account_id(str(file_path), "Living Room")), 32)
             self.assertEqual(
                 load_account(str(file_path), "Living Room"),
                 "manual|host|user|password|live|movie|series",

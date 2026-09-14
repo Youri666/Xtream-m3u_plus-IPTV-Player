@@ -39,6 +39,13 @@ def load_account(file_path, name):
     return accounts.get(stored_name) if stored_name else None
 
 
+def load_account_id(file_path, name):
+    """Return the stable internal identifier for a saved account."""
+    config = _read_config(file_path)
+    account_id, _section = _find_account(config, name)
+    return account_id
+
+
 def load_startup_account(file_path):
     """Return the display name of the account selected for automatic startup."""
     config = _read_config(file_path)

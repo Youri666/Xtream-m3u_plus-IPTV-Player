@@ -133,20 +133,28 @@ class FetchDataWorker(QRunnable):
             # files have no metadata and are refreshed once before becoming trusted.
             cached_data = {}
             cache_account_key = self._cache_account_key()
+            cache_file_identifier = (
+                getattr(self.parent, 'active_account_id', '') or cache_account_key
+            )
             dedicated_cache_file = account_cache_file(
-                self.parent.cache_file, cache_account_key
+                self.parent.cache_file, cache_file_identifier
             )
             cache_file_to_load = dedicated_cache_file
             legacy_cache_file = getattr(
                 self.parent, 'legacy_cache_file', self.parent.cache_file
             )
-            if (
-                not path.isfile(cache_file_to_load)
-                and path.isfile(legacy_cache_file)
-            ):
-                # A matching cache from V2/V3 schema 1 remains usable and is copied
-                # into the account-specific location on the next successful write.
-                cache_file_to_load = legacy_cache_file
+            previous_hashed_cache_file = account_cache_file(
+                self.parent.cache_file, cache_account_key
+            )
+            if not path.isfile(cache_file_to_load):
+                # Accept both cache layouts used before account ids became the
+                # shared filename suffix for provider data and favorites.
+                for migration_candidate in (
+                    previous_hashed_cache_file, legacy_cache_file
+                ):
+                    if path.isfile(migration_candidate):
+                        cache_file_to_load = migration_candidate
+                        break
 
             if self.catalog_cache_enabled and path.isfile(cache_file_to_load):
                 print("Cache file is there")
