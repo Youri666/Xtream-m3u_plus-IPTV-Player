@@ -1,3 +1,4 @@
+import os
 from os import path
 import time
 import requests
@@ -174,6 +175,7 @@ class FetchDataWorker(QRunnable):
                     self.catalog_cache_max_age_hours,
                 )
             )
+            dedicated_cache_written = False
 
             if cache_is_fresh:
                 self.signals.progress_bar.emit(0, 80, "Loading provider catalog from cache")
@@ -254,15 +256,20 @@ class FetchDataWorker(QRunnable):
                     )
                     try:
                         write_catalog_cache(dedicated_cache_file, cache_to_write)
+                        dedicated_cache_written = True
                     except OSError as error:
                         # Cache persistence must not discard data already fetched.
                         print(f"Failed writing provider cache: {error}")
-            if (
-                cache_is_fresh
-                and cache_file_to_load != dedicated_cache_file
-            ):
+            if cache_file_to_load != dedicated_cache_file and cache_matches_account:
                 try:
-                    write_catalog_cache(dedicated_cache_file, cached_data)
+                    if cache_is_fresh:
+                        # A valid legacy cache can be moved atomically without
+                        # serializing a potentially large catalog a second time.
+                        os.replace(cache_file_to_load, dedicated_cache_file)
+                    elif dedicated_cache_written:
+                        # The refreshed dedicated cache is safely on disk, so the
+                        # stale legacy source is no longer needed.
+                        os.remove(cache_file_to_load)
                 except OSError as error:
                     print(f"Failed migrating provider cache: {error}")
             self.signals.progress_bar.emit(80, 100, "Provider catalog ready")
