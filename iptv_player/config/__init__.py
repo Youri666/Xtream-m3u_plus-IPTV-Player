@@ -1,6 +1,7 @@
 """Configuration storage and platform path helpers."""
 
 from .accounts import (
+    account_name_error,
     delete_account,
     load_account,
     load_accounts,
@@ -18,6 +19,7 @@ from .paths import (
 )
 
 __all__ = (
+    "account_name_error",
     "application_resource_path",
     "delete_account",
     "load_account",

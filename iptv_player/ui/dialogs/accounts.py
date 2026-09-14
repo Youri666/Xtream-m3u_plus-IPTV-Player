@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import (
 )
 
 from iptv_player.config import (
+    account_name_error,
     delete_account,
     load_account,
     load_accounts,
@@ -367,8 +368,6 @@ class AccountDialog(QtWidgets.QDialog):
             if not name or not server or not username or not password:
                 QtWidgets.QMessageBox.warning(self, "Input Error", "Please fill all fields for Manual Entry.")
                 return
-
-            self.accept()
         else:
             name    = self.name_entry_m3u.text().strip()
             m3u_url = self.m3u_url_entry.text().strip()
@@ -377,7 +376,34 @@ class AccountDialog(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.warning(self, "Input Error", "Please fill all fields for m3u_plus URL Entry.")
                 return
 
-            self.accept()
+        validation_error = account_name_error(name)
+        if validation_error:
+            QtWidgets.QMessageBox.warning(self, "Invalid Account Name", validation_error)
+            return
+
+        existing_names = load_accounts(self.parent.parent.user_data_file)
+        original_name = self.account[1] if self.account else None
+        duplicate_name = next(
+            (
+                existing_name
+                for existing_name in existing_names
+                if existing_name.casefold() == name.casefold()
+                and (
+                    original_name is None
+                    or existing_name.casefold() != original_name.casefold()
+                )
+            ),
+            None,
+        )
+        if duplicate_name:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Duplicate Account Name",
+                f"An account named '{duplicate_name}' already exists.",
+            )
+            return
+
+        self.accept()
 
     def get_credentials(self):
         method = self.method_selector.currentText()

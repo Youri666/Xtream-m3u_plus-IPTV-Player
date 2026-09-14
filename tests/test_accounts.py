@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 from iptv_player.config.accounts import (
+    account_name_error,
     delete_account,
     load_account,
     load_accounts,
@@ -14,6 +15,26 @@ from iptv_player.config.accounts import (
 
 
 class AccountStorageTests(unittest.TestCase):
+    def test_rejects_reserved_or_ini_unsafe_account_names(self):
+        self.assertIsNotNone(account_name_error("None"))
+        self.assertIsNotNone(account_name_error("name=value"))
+        self.assertIsNotNone(account_name_error("name:value"))
+        self.assertIsNotNone(account_name_error("#comment"))
+        self.assertIsNotNone(account_name_error(";comment"))
+        self.assertIsNotNone(account_name_error("two\nlines"))
+        self.assertIsNone(account_name_error("Living Room - Été"))
+
+    def test_storage_rejects_unsafe_account_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "userdata.ini"
+            with self.assertRaises(ValueError):
+                save_account(
+                    str(file_path),
+                    "m3u_plus",
+                    "invalid=name",
+                    ["url", "live", "movie", "series"],
+                )
+
     def test_loads_legacy_lowercase_key_from_mixed_case_startup_name(self):
         with tempfile.TemporaryDirectory() as directory:
             file_path = Path(directory) / "userdata.ini"

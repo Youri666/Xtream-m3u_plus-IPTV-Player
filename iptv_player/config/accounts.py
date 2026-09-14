@@ -47,6 +47,10 @@ def save_startup_account(file_path, name):
 
 def save_account(file_path, method, name, credentials, old_name=None):
     """Create or replace an account and preserve startup selection on rename."""
+    validation_error = account_name_error(name)
+    if validation_error:
+        raise ValueError(validation_error)
+
     config = _read_config(file_path)
     if "Credentials" not in config:
         config["Credentials"] = {}
@@ -107,6 +111,20 @@ def parse_account(serialized_account):
     if len(parts) < field_count + 1:
         return None
     return method, parts[1:field_count + 1]
+
+
+def account_name_error(name):
+    """Return a user-facing validation error for an unsafe account name."""
+    name = str(name or "").strip()
+    if not name:
+        return "Please enter an account name."
+    if name.casefold() == "none":
+        return "The account name 'None' is reserved. Please choose another name."
+    if any(character in name for character in "=:\r\n"):
+        return "Account names cannot contain '=', ':', or line breaks."
+    if name.startswith(("#", ";")):
+        return "Account names cannot start with '#' or ';'."
+    return None
 
 
 def load_startup_account_from_config(config):
