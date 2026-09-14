@@ -129,21 +129,6 @@ def save_sorting_preference(filename, sorting_order):
     write_config_file(filename, config)
 
 
-def load_stream_status_preference(filename):
-    """Load whether live-stream availability probes are enabled."""
-    return _read_boolean(_load_config(filename), "StreamStatus", "enabled", True)
-
-
-def load_detailed_logging_preference(filename):
-    """Load whether additional diagnostic messages are written to log.txt."""
-    return _read_boolean(_load_config(filename), "Logging", "detailed", False)
-
-
-def save_detailed_logging_preference(filename, enabled):
-    """Persist the detailed diagnostic logging preference."""
-    _save_section(filename, "Logging", {"detailed": bool(enabled)})
-
-
 def _load_config(filename):
     """Load user preferences while tolerating a malformed INI file."""
     try:

@@ -9,7 +9,7 @@ import traceback
 
 from PyQt5.QtGui import QFont
 
-from iptv_player.config import load_detailed_logging_preference, writable_data_directory
+from iptv_player.config import load_advanced_preferences, writable_data_directory
 from iptv_player.utils.privacy import redact_log_credentials
 
 
@@ -68,7 +68,7 @@ def install_logging():
     user_data_file = path.join(application_dir, "userdata.ini")
     log_level = (
         logging.DEBUG
-        if load_detailed_logging_preference(user_data_file)
+        if load_advanced_preferences(user_data_file).detailed_logging_enabled
         else logging.INFO
     )
 

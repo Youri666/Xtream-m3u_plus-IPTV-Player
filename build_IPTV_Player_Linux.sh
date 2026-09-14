@@ -73,7 +73,6 @@ PYINSTALLER_ARGS=(
   --add-data "Images/404_not_found.png:Images"
   --add-data "Images/no_image.jpg:Images"
   --add-data "Images/loading-icon.png:Images"
-  --add-data "Images/home_tab_icon.ico:Images"
   --add-data "Images/tv_tab_icon.ico:Images"
   --add-data "Images/movies_tab_icon.ico:Images"
   --add-data "Images/series_tab_icon.ico:Images"

@@ -7,14 +7,11 @@ from iptv_player.config.preferences import (
     PlayerPreference,
     load_auto_update_preference,
     load_content_preferences,
-    load_detailed_logging_preference,
     load_player_preference,
     load_sorting_preference,
-    load_stream_status_preference,
     load_theme_preference,
     save_auto_update_preference,
     save_content_preferences,
-    save_detailed_logging_preference,
     save_player_preference,
     save_sorting_preference,
     save_theme_preference,
@@ -121,23 +118,6 @@ class ApplicationPreferenceTests(unittest.TestCase):
             )
 
             self.assertEqual(load_sorting_preference(filename), "Remember per list")
-
-    def test_stream_status_defaults_to_enabled(self):
-        with tempfile.TemporaryDirectory() as directory:
-            filename = Path(directory) / "userdata.ini"
-            self.assertTrue(load_stream_status_preference(filename))
-
-    def test_detailed_logging_defaults_to_disabled_and_round_trips(self):
-        with tempfile.TemporaryDirectory() as directory:
-            filename = Path(directory) / "userdata.ini"
-            self.assertFalse(load_detailed_logging_preference(filename))
-
-            save_detailed_logging_preference(filename, True)
-            self.assertTrue(load_detailed_logging_preference(filename))
-
-            save_detailed_logging_preference(filename, False)
-            self.assertFalse(load_detailed_logging_preference(filename))
-
 
 if __name__ == "__main__":
     unittest.main()

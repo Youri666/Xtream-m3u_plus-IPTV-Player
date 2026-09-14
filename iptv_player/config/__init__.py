@@ -18,6 +18,11 @@ from .accounts import (
     save_startup_account,
 )
 from .ini import read_config_file, write_config_file
+from .internal_player import (
+    InternalPlayerPreferences,
+    load_internal_player_preferences,
+    save_internal_player_preferences,
+)
 from .migrations import migrate_legacy_player_volume, migrate_user_data_file
 from .paths import (
     application_resource_path,
@@ -29,14 +34,11 @@ from .preferences import (
     PlayerPreference,
     load_auto_update_preference,
     load_content_preferences,
-    load_detailed_logging_preference,
     load_player_preference,
     load_sorting_preference,
-    load_stream_status_preference,
     load_theme_preference,
     save_auto_update_preference,
     save_content_preferences,
-    save_detailed_logging_preference,
     save_player_preference,
     save_sorting_preference,
     save_theme_preference,
@@ -45,6 +47,7 @@ from .preferences import (
 __all__ = (
     "INTERNAL_VLC_COMMAND",
     "AdvancedPreferences",
+    "InternalPlayerPreferences",
     "PlayerPreference",
     "account_name_error",
     "application_resource_path",
@@ -55,10 +58,9 @@ __all__ = (
     "load_accounts",
     "load_auto_update_preference",
     "load_content_preferences",
-    "load_detailed_logging_preference",
+    "load_internal_player_preferences",
     "load_player_preference",
     "load_sorting_preference",
-    "load_stream_status_preference",
     "load_startup_account",
     "load_theme_preference",
     "macos_bundle_executable",
@@ -70,7 +72,7 @@ __all__ = (
     "save_advanced_preferences",
     "save_auto_update_preference",
     "save_content_preferences",
-    "save_detailed_logging_preference",
+    "save_internal_player_preferences",
     "save_player_preference",
     "save_sorting_preference",
     "save_startup_account",

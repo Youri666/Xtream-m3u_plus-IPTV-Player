@@ -42,18 +42,19 @@ from iptv_player.constants import (
     DEFAULT_INTERNAL_VOLUME_STEP_PERCENT,
     DEFAULT_URL_FORMATS,
     GITHUB_REPO,
-    MEDIA_LANGUAGE_OPTIONS,
     REMEMBER_LIST_SORTING,
 )
 from iptv_player.config import (
     AdvancedPreferences,
     INTERNAL_VLC_COMMAND,
+    InternalPlayerPreferences,
     application_resource_path,
     load_account,
     load_account_id,
     load_auto_update_preference,
     load_content_preferences,
     load_advanced_preferences,
+    load_internal_player_preferences,
     load_player_preference,
     load_sorting_preference,
     load_theme_preference,
@@ -64,6 +65,7 @@ from iptv_player.config import (
     save_auto_update_preference,
     save_advanced_preferences,
     save_content_preferences,
+    save_internal_player_preferences,
     save_player_preference,
     save_sorting_preference,
     save_theme_preference,
@@ -356,7 +358,6 @@ class IPTVPlayerApp(QMainWindow):
 
         self.init_search_bars()
 
-        # self.initHomeTab()
 
         self.init_settings_tab()
 
@@ -485,7 +486,6 @@ class IPTVPlayerApp(QMainWindow):
             'path_to_404_img': '404_not_found.png',
             'path_to_yt_img': 'yt_icon_rgb.png',
             'path_to_tmdb_img': 'primary_full-TMDB.svg',
-            'path_to_home_icon': 'home_tab_icon.ico',
             'path_to_live_icon': 'tv_tab_icon.ico',
             'path_to_movies_icon': 'movies_tab_icon.ico',
             'path_to_series_icon': 'series_tab_icon.ico',
@@ -663,7 +663,6 @@ class IPTVPlayerApp(QMainWindow):
         self.tab_icon_size = QSize(24, 24)
 
         #Create tab icons
-        self.home_icon              = QIcon(self.path_to_home_icon)
         self.live_icon              = QIcon(self.path_to_live_icon)
         self.movies_icon            = QIcon(self.path_to_movies_icon)
         self.series_icon            = QIcon(self.path_to_series_icon)
@@ -711,7 +710,6 @@ class IPTVPlayerApp(QMainWindow):
         """Refresh monochrome icons after the application palette changes."""
         color = QColor("#f2f2f2" if dark else "#202020")
         themed_paths = {
-            'home_icon': self.path_to_home_icon,
             'live_icon': self.path_to_live_icon,
             'movies_icon': self.path_to_movies_icon,
             'series_icon': self.path_to_series_icon,
@@ -772,29 +770,23 @@ class IPTVPlayerApp(QMainWindow):
         self.tab_widget = QTabWidget()
 
         #Create tabs
-        home_tab          = QWidget()
         self.live_tab     = QWidget()
         self.movies_tab   = QWidget()
         self.series_tab   = QWidget()
-        favorites_tab     = QWidget()
         self.info_tab     = QWidget()
         settings_tab      = QWidget()
 
         #Create layouts for tabs
-        self.home_tab_layout        = QVBoxLayout(home_tab)
         self.live_tab_layout        = QVBoxLayout(self.live_tab)
         self.movies_tab_layout      = QVBoxLayout(self.movies_tab)
         self.series_tab_layout      = QVBoxLayout(self.series_tab)
-        self.favorites_tab_layout   = QGridLayout(favorites_tab)
         self.info_tab_layout        = QVBoxLayout(self.info_tab)
         self.settings_layout        = QGridLayout(settings_tab)
 
         #Add created tabs to tab widget with their names
-        # self.tab_widget.addTab(home_tab,        self.home_icon,         "Home")
         self.tab_widget.addTab(self.live_tab,   self.live_icon,         "LIVE")
         self.tab_widget.addTab(self.movies_tab, self.movies_icon,       "Movies")
         self.tab_widget.addTab(self.series_tab, self.series_icon,       "Series")
-        # self.tab_widget.addTab(favorites_tab,   self.favorites_icon,    "Favorites")
         self.tab_widget.addTab(self.info_tab,   self.info_icon,         "Info")
         self.tab_widget.addTab(settings_tab,    self.settings_icon,     "Settings")
         self.tab_widget.currentChanged.connect(self._on_current_tab_changed)
@@ -1442,11 +1434,6 @@ class IPTVPlayerApp(QMainWindow):
         self.category_list_movies   = KeyboardNavigableListWidget()
         self.category_list_series   = KeyboardNavigableListWidget()
 
-        #Enable sorting
-        # self.category_list_live.setSortingEnabled(True)
-        # self.category_list_movies.setSortingEnabled(True)
-        # self.category_list_series.setSortingEnabled(True)
-
         #Connect functions to category list events
         self.category_list_live.itemClicked.connect(self.category_item_clicked)
         self.category_list_movies.itemClicked.connect(self.category_item_clicked)
@@ -1490,11 +1477,6 @@ class IPTVPlayerApp(QMainWindow):
         self.streaming_list_live      = KeyboardNavigableListWidget()
         self.streaming_list_movies    = KeyboardNavigableListWidget()
         self.streaming_list_series    = KeyboardNavigableListWidget()
-
-        #Enable sorting
-        # self.streaming_list_live.setSortingEnabled(True)
-        # self.streaming_list_movies.setSortingEnabled(True)
-        # self.streaming_list_series.setSortingEnabled(True)
 
         #Set that lists load items in batches to prevent screen freezing
         self.streaming_list_live.setLayoutMode(QListView.Batched)
@@ -1560,35 +1542,6 @@ class IPTVPlayerApp(QMainWindow):
         self.live_info_box   = LiveInfoBox(self)
         self.movies_info_box = MovieInfoBox(self)
         self.series_info_box = SeriesInfoBox(self)
-
-    def init_home_tab(self):
-        #Create lists to show previously watched content
-        self.live_history_list      = QListWidget()
-        self.movie_history_list     = QListWidget()
-        self.series_history_list    = QListWidget()
-
-        #Set that items are viewed from left to right
-        self.live_history_list.setFlow(QListView.LeftToRight)
-        self.movie_history_list.setFlow(QListView.LeftToRight)
-        self.series_history_list.setFlow(QListView.LeftToRight)
-
-        #Create labels for lists
-        self.live_history_lbl   = QLabel("Previously watched TV")
-        self.movie_history_lbl  = QLabel("Previously watched movies")
-        self.series_history_lbl = QLabel("Previously watched series")
-
-        #Set fonts
-        self.live_history_lbl.setFont(QFont('Segoe UI', 14, QFont.Bold))
-        self.movie_history_lbl.setFont(QFont('Segoe UI', 14, QFont.Bold))
-        self.series_history_lbl.setFont(QFont('Segoe UI', 14, QFont.Bold))
-
-        #Add widgets to home tab
-        self.home_tab_layout.addWidget(self.live_history_lbl)
-        self.home_tab_layout.addWidget(self.live_history_list)
-        self.home_tab_layout.addWidget(self.movie_history_lbl)
-        self.home_tab_layout.addWidget(self.movie_history_list)
-        self.home_tab_layout.addWidget(self.series_history_lbl)
-        self.home_tab_layout.addWidget(self.series_history_list)
 
     def load_default_sorting_order(self):
         sorting_order = load_sorting_preference(self.user_data_file)
@@ -2054,69 +2007,28 @@ class IPTVPlayerApp(QMainWindow):
 
     def save_internal_player_settings(self):
         """Persist internal-player controls without replacing unrelated settings."""
-        config = configparser.ConfigParser()
         try:
-            config.read(self.user_data_file)
-        except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
-        # Preserve the volume written by the isolated player process.
-        saved_volume = config.get('InternalPlayer', 'volume', fallback='80')
-        config['InternalPlayer'] = {
-            'seek_step_seconds': str(self.internal_seek_step_seconds),
-            'volume_step_percent': str(self.internal_volume_step_percent),
-            'speed_step': str(self.internal_speed_step),
-            'audio_language': self.internal_audio_language,
-            'subtitle_language': self.internal_subtitle_language,
-            'volume': saved_volume
-        }
-        try:
-            write_config_file(self.user_data_file, config)
+            save_internal_player_preferences(
+                self.user_data_file,
+                InternalPlayerPreferences(
+                    seek_step_seconds=self.internal_seek_step_seconds,
+                    volume_step_percent=self.internal_volume_step_percent,
+                    speed_step=self.internal_speed_step,
+                    audio_language=self.internal_audio_language,
+                    subtitle_language=self.internal_subtitle_language,
+                ),
+            )
         except OSError as error:
             print(f"Could not save internal player settings: {error}")
 
     def load_default_internal_player_settings(self):
         """Load bounded control steps so manual INI edits remain safe."""
-        config = configparser.ConfigParser()
-        try:
-            config.read(self.user_data_file)
-        except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
-
-        try:
-            seek_seconds = config.getint(
-                'InternalPlayer', 'seek_step_seconds',
-                fallback=DEFAULT_INTERNAL_SEEK_STEP_SECONDS
-            )
-        except (ValueError, configparser.Error):
-            seek_seconds = DEFAULT_INTERNAL_SEEK_STEP_SECONDS
-        try:
-            volume_percent = config.getint(
-                'InternalPlayer', 'volume_step_percent',
-                fallback=DEFAULT_INTERNAL_VOLUME_STEP_PERCENT
-            )
-        except (ValueError, configparser.Error):
-            volume_percent = DEFAULT_INTERNAL_VOLUME_STEP_PERCENT
-        try:
-            speed_step = config.getfloat(
-                'InternalPlayer', 'speed_step',
-                fallback=DEFAULT_INTERNAL_SPEED_STEP
-            )
-        except (ValueError, configparser.Error):
-            speed_step = DEFAULT_INTERNAL_SPEED_STEP
-
-        self.internal_seek_step_seconds = max(1, min(seek_seconds, 300))
-        self.internal_volume_step_percent = max(1, min(volume_percent, 25))
-        self.internal_speed_step = max(0.05, min(round(speed_step, 2), 1.0))
-        valid_languages = {code for _, code in MEDIA_LANGUAGE_OPTIONS}
-        audio_language = config.get('InternalPlayer', 'audio_language', fallback='')
-        subtitle_language = config.get('InternalPlayer', 'subtitle_language', fallback='')
-        self.internal_audio_language = (
-            audio_language if audio_language in valid_languages else ''
-        )
-        self.internal_subtitle_language = (
-            subtitle_language
-            if subtitle_language in valid_languages | {'disabled'} else ''
-        )
+        preferences = load_internal_player_preferences(self.user_data_file)
+        self.internal_seek_step_seconds = preferences.seek_step_seconds
+        self.internal_volume_step_percent = preferences.volume_step_percent
+        self.internal_speed_step = preferences.speed_step
+        self.internal_audio_language = preferences.audio_language
+        self.internal_subtitle_language = preferences.subtitle_language
 
     def apply_network_settings(self, user_agent, connection_timeout, read_timeout,
                              live_status_timeout, live_status_retries,
@@ -2427,32 +2339,6 @@ class IPTVPlayerApp(QMainWindow):
             self.set_progress_bar(0, "Reloading enabled content...")
             self.fetch_data_thread()
     
-    def toggle_cache_on_startup(self, state):
-        if state == Qt.Checked:
-            print("checked")
-        else:
-            print("unchecked")
-
-    def open_m3u_plus_dialog(self):
-        text, ok = QtWidgets.QInputDialog.getText(self, 'M3u_plus Login', 'Enter m3u_plus URL:')
-        if ok and text:
-            m3u_plus_url = text.strip()
-            self.extract_credentials_from_m3u_plus_url(m3u_plus_url)
-            self.login()
-
-    def update_font_size(self, value):
-        self.default_font_size = value
-        for tab_name, list_widget in self.streaming_list_widgets.items():
-            for i in range(list_widget.count()):
-                item = list_widget.item(i)
-                font = item.font()
-                font.setPointSize(value)
-                item.setFont(font)
-
-        font = QFont()
-        font.setPointSize(value)
-        self.iptv_info_text.setFont(font)
-
     def extract_credentials_from_m3u_plus_url(self, url):
         # Parses an Xtream get.php URL into (server, username, password). The previous
         # regex required `&type=m3u_plus` to appear in exactly that position and contained
@@ -2501,7 +2387,6 @@ class IPTVPlayerApp(QMainWindow):
     def set_progress_text(self, text):
         self.progress_bar.setFormat(text)
         QtWidgets.qApp.processEvents()
-        # QtWidgets.qApp.sendPostedEvents()
 
     def set_progress_state(self, state):
         """Apply a stable visual state without relying on message wording."""
@@ -3716,7 +3601,7 @@ class IPTVPlayerApp(QMainWindow):
             #Try to get stream type from item data
             try:
                 stream_type = clicked_item_data['stream_type']
-            except:
+            except (KeyError, TypeError):
                 stream_type = ''
 
             #Prevent loading the same series navigation levels multiple times
@@ -3857,8 +3742,6 @@ class IPTVPlayerApp(QMainWindow):
                 stream_id=episode_id,
                 container_extension=container_extension
             )
-            # playable_url = f"{self.server}/series/{self.username}/{self.password}/{episode_id}.{container_extension}"
-
             #Add new 'url' key to episode data
             episode['url'] = playable_url
 
@@ -4318,7 +4201,6 @@ class IPTVPlayerApp(QMainWindow):
 
             case _:
                 search_bar.insert(e.text())
-                # e.accept()
 
     def search_in_list(self, list_content_type, stream_type, text):
         try:
