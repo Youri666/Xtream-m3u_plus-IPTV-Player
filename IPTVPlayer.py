@@ -10,6 +10,7 @@ import json
 import queue
 import threading
 import uuid
+from collections import Counter
 from multiprocessing.connection import Listener
 from datetime import datetime
 from PyQt5.QtGui import QIcon, QFont, QPixmap, QColor, QDesktopServices, QPainter
@@ -198,6 +199,11 @@ class IPTVPlayerApp(QMainWindow):
             'LIVE': [],
             'Movies': [],
             'Series': []
+        }
+        self.category_item_counts = {
+            'LIVE': {},
+            'Movies': {},
+            'Series': {},
         }
         self.currently_loaded_streams = {
             'LIVE': [],
@@ -907,6 +913,40 @@ class IPTVPlayerApp(QMainWindow):
             and str(entry.get('category_id')) in visible_category_ids
         ]
 
+    def _category_display_text(self, stream_type, category_name, category_id=None):
+        """Return a category label with its locally known catalog size."""
+        if category_name == self.all_categories_text:
+            count = len(self._entries_in_visible_categories(stream_type))
+        elif category_name == self.fav_categories_text:
+            count = len(self._favorites_in_user_order(stream_type))
+        else:
+            count = self.category_item_counts[stream_type].get(str(category_id), 0)
+        return f"{category_name} ({count})"
+
+    def _new_category_item(self, stream_type, category_data):
+        """Create a category row while keeping its undecorated name in item data."""
+        category_name = category_data.get('category_name', '')
+        category_id = category_data.get('category_id')
+        item = QListWidgetItem(
+            self._category_display_text(stream_type, category_name, category_id)
+        )
+        item.setData(Qt.UserRole, category_data)
+        return item
+
+    def _refresh_category_count_labels(self, stream_type):
+        """Refresh visible category counts without rebuilding the list."""
+        list_widget = self.category_list_widgets[stream_type]
+        for row in range(list_widget.count()):
+            item = list_widget.item(row)
+            category_data = item.data(Qt.UserRole)
+            if not isinstance(category_data, dict):
+                continue
+            item.setText(self._category_display_text(
+                stream_type,
+                category_data.get('category_name', ''),
+                category_data.get('category_id'),
+            ))
+
     def _refresh_visible_categories(self, stream_type):
         """Rebuild one category column and preserve its selection when possible."""
         previous_name, previous_id = self._selected_category(stream_type)
@@ -931,7 +971,7 @@ class IPTVPlayerApp(QMainWindow):
             item = category_list.item(row)
             item_data = item.data(Qt.UserRole) or {}
             if previous_name in (self.all_categories_text, self.fav_categories_text):
-                matches_previous = item.text() == previous_name
+                matches_previous = item_data.get('category_name') == previous_name
             else:
                 matches_previous = (
                     str(item_data.get('category_id', '')) == str(previous_id)
@@ -948,9 +988,13 @@ class IPTVPlayerApp(QMainWindow):
         # If the active category was just hidden, switch to All so the stream list
         # cannot remain filled with content from a category no longer displayed.
         if not search_text:
-            all_items = category_list.findItems(
-                self.all_categories_text, Qt.MatchExactly
-            )
+            all_items = [
+                category_list.item(row)
+                for row in range(category_list.count())
+                if (category_list.item(row).data(Qt.UserRole) or {}).get(
+                    'category_name'
+                ) == self.all_categories_text
+            ]
             if all_items:
                 category_list.setCurrentItem(all_items[0])
                 category_list.itemClicked.emit(all_items[0])
@@ -1147,8 +1191,13 @@ class IPTVPlayerApp(QMainWindow):
             #Remove 'All' and 'Favorites' category items
             if list_content_type == 'category':
                 matches = []
-                for text in [self.all_categories_text, self.fav_categories_text]:
-                    matches.extend(list_widget.findItems(text, Qt.MatchExactly))
+                for row in range(list_widget.count()):
+                    item = list_widget.item(row)
+                    item_data = item.data(Qt.UserRole) or {}
+                    if item_data.get('category_name') in (
+                        self.all_categories_text, self.fav_categories_text
+                    ):
+                        matches.append(item)
 
                 for item in matches:
                     idx = list_widget.row(item)
@@ -1164,9 +1213,7 @@ class IPTVPlayerApp(QMainWindow):
                     self.category_list_widgets[stream_type].clear()
 
                     for entry in self.currently_loaded_categories[stream_type]:
-                        item = QListWidgetItem(entry['category_name'])
-                        item.setData(Qt.UserRole, entry)
-
+                        item = self._new_category_item(stream_type, entry)
                         self.category_list_widgets[stream_type].addItem(item)
 
                 elif list_content_type == 'streaming':
@@ -1180,12 +1227,14 @@ class IPTVPlayerApp(QMainWindow):
 
             if list_content_type == 'category':
                 #Add 'All' and 'Favorites' categories to top
-                itemAll = QListWidgetItem(self.all_categories_text)
-                itemAll.setData(Qt.UserRole, {'category_name': self.all_categories_text})
+                itemAll = self._new_category_item(
+                    stream_type, {'category_name': self.all_categories_text}
+                )
                 self.category_list_widgets[stream_type].insertItem(0, itemAll)
 
-                itemFav = QListWidgetItem(self.fav_categories_text)
-                itemFav.setData(Qt.UserRole, {'category_name': self.fav_categories_text})
+                itemFav = self._new_category_item(
+                    stream_type, {'category_name': self.fav_categories_text}
+                )
                 self.category_list_widgets[stream_type].insertItem(1, itemFav)
         finally:
             list_widget.setUpdatesEnabled(True)
@@ -1527,8 +1576,8 @@ class IPTVPlayerApp(QMainWindow):
         if selected_item is None:
             return self.all_categories_text, None
 
-        category_name = selected_item.text()
         category_data = selected_item.data(Qt.UserRole) or {}
+        category_name = category_data.get('category_name', selected_item.text())
         return category_name, category_data.get('category_id')
 
     def _sorting_for_category(self, stream_type, category_name, category_id=None):
@@ -2752,6 +2801,13 @@ class IPTVPlayerApp(QMainWindow):
         self.categories_per_stream_type = categories_per_stream_type
         self.entries_per_stream_type    = entries_per_stream_type
 
+        for stream_type, entries in self.entries_per_stream_type.items():
+            self.category_item_counts[stream_type] = Counter(
+                str(entry.get('category_id'))
+                for entry in entries
+                if entry.get('category_id') is not None
+            )
+
         # A refreshed provider snapshot invalidates every prepared category view.
         for stream_cache in self.category_view_cache.values():
             stream_cache.clear()
@@ -2809,8 +2865,7 @@ class IPTVPlayerApp(QMainWindow):
             num_of_categories = len(visible_categories)
             prev_perc = 0
             for idx, category_item in enumerate(visible_categories):
-                item = QListWidgetItem(category_item['category_name'])
-                item.setData(Qt.UserRole, category_item)
+                item = self._new_category_item(stream_type, category_item)
                 # item.setIcon(channel_icon)
 
                 #Add item to list
@@ -3161,6 +3216,8 @@ class IPTVPlayerApp(QMainWindow):
             if active_key and active_key[0] == 'favorites':
                 self.active_category_view_key[stream_type] = None
 
+            self._refresh_category_count_labels(stream_type)
+
         except Exception as e:
             self.animate_progress(0, 100, "Failed adding to favorites", "error")
 
@@ -3241,8 +3298,10 @@ class IPTVPlayerApp(QMainWindow):
             #Save to previous clicked
             self.prev_clicked_category_item[stream_type] = selected_item
 
-            selected_item_text = selected_item.text()
-            selected_item_data = selected_item.data(Qt.UserRole)
+            selected_item_data = selected_item.data(Qt.UserRole) or {}
+            selected_item_text = selected_item_data.get(
+                'category_name', selected_item.text()
+            )
 
             #Check if All and Favorites category are not selected
             if (selected_item_text != self.all_categories_text and selected_item_text != self.fav_categories_text):
@@ -4295,19 +4354,20 @@ class IPTVPlayerApp(QMainWindow):
                 try:
                     list_widget.clear()
                     for entry in matching_entries:
-                        item = QListWidgetItem(entry['category_name'])
-                        item.setData(Qt.UserRole, entry)
+                        item = self._new_category_item(stream_type, entry)
                         list_widget.addItem(item)
 
                     #if search bar is empty
                     if not search_terms:
                         # Add 'All' and 'Favorites' categories to top
-                        itemAll = QListWidgetItem(self.all_categories_text)
-                        itemAll.setData(Qt.UserRole, {'category_name': self.all_categories_text})
+                        itemAll = self._new_category_item(
+                            stream_type, {'category_name': self.all_categories_text}
+                        )
                         list_widget.insertItem(0, itemAll)
 
-                        itemFav = QListWidgetItem(self.fav_categories_text)
-                        itemFav.setData(Qt.UserRole, {'category_name': self.fav_categories_text})
+                        itemFav = self._new_category_item(
+                            stream_type, {'category_name': self.fav_categories_text}
+                        )
                         list_widget.insertItem(1, itemFav)
 
                     #Check if no search results found
