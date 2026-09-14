@@ -41,13 +41,18 @@ from iptv_player.constants import (
     REMEMBER_CATEGORY_SORTING,
 )
 from iptv_player.config import (
+    INTERNAL_VLC_COMMAND,
     application_resource_path,
     load_account,
     load_account_id,
+    load_auto_update_preference,
+    load_player_preference,
     load_startup_account,
     migrate_legacy_player_volume,
     migrate_user_data_file,
     parse_account,
+    save_auto_update_preference,
+    save_player_preference,
     writable_data_directory,
     write_config_file,
 )
@@ -2284,46 +2289,19 @@ class IPTVPlayerApp(QMainWindow):
                 self.animate_progress(0, 100, "Failed checking for updates", "error")
 
     def toggle_auto_update(self, state):
-        checked = bool(state)
-
-        config = configparser.ConfigParser()
-        config.read(self.user_data_file)
-
-        config['Updater'] = {'auto-update-checker': checked}
-
-        write_config_file(self.user_data_file, config)
+        save_auto_update_preference(self.user_data_file, bool(state))
 
     def load_default_auto_update(self):
-        #Read userdata file
-        config = configparser.ConfigParser()
-        try:
-            config.read(self.user_data_file)
-        except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
-
-        #Check if updater is in config
-        if config.has_option('Updater', 'auto-update-checker'):
-            if config['Updater']['auto-update-checker'] == 'True':
-                #Set checkbox checked
-                self.auto_update_checkbox.setCheckState(Qt.Checked)
-
-                #If auto update checker is enabled, check for update
-                self.check_for_updates(False)
-
-        #If not enable the auto-update-checker by default
-        else:
-            #Write default value to userdata file
-            config['Updater'] = {'auto-update-checker': True}
-
+        enabled = load_auto_update_preference(self.user_data_file)
+        if enabled is None:
+            enabled = True
             try:
-                write_config_file(self.user_data_file, config)
+                save_auto_update_preference(self.user_data_file, enabled)
             except OSError as e:
                 print(f"Could not write user data file: {e}")
 
-            #Set checkbox checked
+        if enabled:
             self.auto_update_checkbox.setCheckState(Qt.Checked)
-
-            #Check for updates
             self.check_for_updates(False)
 
     def init_progress_bar(self):
@@ -3916,7 +3894,7 @@ class IPTVPlayerApp(QMainWindow):
                 # Embedded VLC marker — short-circuit before constructing any subprocess
                 # command. The marker is set when the user picks "Embedded VLC" in
                 # Settings (so we don't store a real path that could be invoked by accident).
-                if self.external_player_command == "<embedded-vlc>":
+                if self.external_player_command == INTERNAL_VLC_COMMAND:
                     self._play_embedded(url)
                     return
 
@@ -4029,7 +4007,7 @@ class IPTVPlayerApp(QMainWindow):
             self._show_internal_vlc_unavailable(fallback_command)
             return
 
-        self.external_player_command = "<embedded-vlc>"
+        self.external_player_command = INTERNAL_VLC_COMMAND
         self.save_external_player_command()
         self._refresh_current_player_label()
         self.animate_progress(0, 100, "Internal VLC player enabled")
@@ -4069,7 +4047,7 @@ class IPTVPlayerApp(QMainWindow):
         # activation handlers and reopen the external-player chooser at startup.
         self.internal_player_radio.blockSignals(True)
         self.external_player_radio.blockSignals(True)
-        if cmd == "<embedded-vlc>":
+        if cmd == INTERNAL_VLC_COMMAND:
             self.current_player_label.setText(
                 "Active player: Internal VLC (using the installed VLC engine)"
             )
@@ -4498,27 +4476,21 @@ class IPTVPlayerApp(QMainWindow):
             print(f"search in list failed: {e}")
 
     def load_external_player_command(self):
-        config = configparser.ConfigParser()
-        try:
-            config.read(self.user_data_file)
-        except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
-
-        if config.has_option('ExternalPlayer', 'Command'):
-            command = config['ExternalPlayer'].get('Command', '')
-            remembered_command = config['ExternalPlayer'].get('LastExternalCommand', '')
-            if command and command != "<embedded-vlc>":
-                remembered_command = command
+        preference = load_player_preference(self.user_data_file)
+        if preference.configured:
+            command = preference.command
+            remembered_command = preference.last_external_command
             self.last_external_player_command = remembered_command
 
             # VLC may have been removed after Internal VLC was selected. Validate
             # the saved choice before restoring it and reuse the last external player
             # when possible.
-            if command == "<embedded-vlc>" and not EmbeddedPlayerWindow.is_available():
+            if command == INTERNAL_VLC_COMMAND and not EmbeddedPlayerWindow.is_available():
                 command = remembered_command or ""
-                config['ExternalPlayer']['Command'] = command
                 try:
-                    write_config_file(self.user_data_file, config)
+                    save_player_preference(
+                        self.user_data_file, command, remembered_command
+                    )
                 except OSError as error:
                     print(f"Could not save media player fallback: {error}")
                 QTimer.singleShot(
@@ -4534,13 +4506,12 @@ class IPTVPlayerApp(QMainWindow):
         # command empty so the user is nudged toward "Choose Media Player".
         try:
             if EmbeddedPlayerWindow.is_available():
-                default_cmd = "<embedded-vlc>"
+                default_cmd = INTERNAL_VLC_COMMAND
                 # Persist the choice so the user can see "Active player: Internal VLC"
                 # in Settings without having to click anything.
-                config['ExternalPlayer'] = {'Command': default_cmd}
                 self.last_external_player_command = ""
                 try:
-                    write_config_file(self.user_data_file, config)
+                    save_player_preference(self.user_data_file, default_cmd)
                 except OSError:
                     pass
                 return default_cmd
@@ -4552,24 +4523,21 @@ class IPTVPlayerApp(QMainWindow):
         return ""
 
     def save_external_player_command(self):
-        config = configparser.ConfigParser()
-        try:
-            config.read(self.user_data_file)
-        except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
-
         # Store the active mode and the last external executable separately. Switching
         # to Internal VLC must not erase the path the user may want to select again.
-        if self.external_player_command and self.external_player_command != "<embedded-vlc>":
+        if (
+            self.external_player_command
+            and self.external_player_command != INTERNAL_VLC_COMMAND
+        ):
             self.last_external_player_command = self.external_player_command
         remembered_command = getattr(self, "last_external_player_command", "") or ""
-        config['ExternalPlayer'] = {
-            'Command': self.external_player_command,
-            'LastExternalCommand': remembered_command
-        }
 
         try:
-            write_config_file(self.user_data_file, config)
+            save_player_preference(
+                self.user_data_file,
+                self.external_player_command,
+                remembered_command,
+            )
         except OSError as e:
             print(f"Could not write user data file: {e}")
 
