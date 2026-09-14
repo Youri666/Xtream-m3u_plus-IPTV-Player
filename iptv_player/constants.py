@@ -1,7 +1,7 @@
 """Application metadata and defaults shared across IPTV Player modules."""
 
 CURRENT_VERSION = "V3.0.0"
-CURRENT_CONFIG_SCHEMA_VERSION = 1
+CURRENT_CONFIG_SCHEMA_VERSION = 2
 GITHUB_REPO = "Youri666/Xtream-m3u_plus-IPTV-Player"
 
 REMEMBER_CATEGORY_SORTING = "Remember per category"

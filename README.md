@@ -63,7 +63,7 @@ Download the latest version here: [Latest releases](https://github.com/Youri666/
 
 ```ini
 [Application]
-config_schema_version = 1
+config_schema_version = 2
 ```
 
 `config_schema_version` identifies the structure and meaning of the persisted data.

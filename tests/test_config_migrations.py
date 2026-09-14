@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from iptv_player.config.accounts import load_accounts, load_startup_account
 from iptv_player.config.migrations import (
     migrate_legacy_player_volume,
     migrate_user_data_file,
@@ -26,18 +27,42 @@ class ConfigurationMigrationTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            migrate_user_data_file(str(file_path), URL_FORMATS, 1)
+            migrate_user_data_file(str(file_path), URL_FORMATS, 2)
 
             config = configparser.ConfigParser()
             config.read(file_path)
             self.assertEqual(
-                config["Credentials"]["Example"],
+                load_accounts(str(file_path))["Example"],
                 "manual|host|user|password|live-format|movie-format|series-format",
             )
+            self.assertNotIn("Credentials", config)
             self.assertTrue(config.getboolean("Content", "LIVE"))
             self.assertFalse(config.getboolean("Content", "Movies"))
             self.assertFalse(config.getboolean("Content", "Series"))
-            self.assertEqual(config.getint("Application", "config_schema_version"), 1)
+            self.assertEqual(config.getint("Application", "config_schema_version"), 2)
+
+    def test_migrates_account_names_and_startup_selection_to_stable_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "userdata.ini"
+            file_path.write_text(
+                "[Credentials]\n"
+                "maestro test=manual|host|user|password|live|movie|series\n"
+                "Second Provider=m3u_plus|url|live|movie|series\n\n"
+                "[Startup credentials]\n"
+                "startup_credentials=Maestro Test\n",
+                encoding="utf-8",
+            )
+
+            migrate_user_data_file(str(file_path), URL_FORMATS, 2)
+            first_result = file_path.read_text(encoding="utf-8")
+            migrate_user_data_file(str(file_path), URL_FORMATS, 2)
+
+            self.assertEqual(
+                list(load_accounts(str(file_path))),
+                ["Maestro Test", "Second Provider"],
+            )
+            self.assertEqual(load_startup_account(str(file_path)), "Maestro Test")
+            self.assertEqual(first_result, file_path.read_text(encoding="utf-8"))
 
     def test_preserves_newer_schema_versions(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -47,7 +72,7 @@ class ConfigurationMigrationTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            migrate_user_data_file(str(file_path), URL_FORMATS, 1)
+            migrate_user_data_file(str(file_path), URL_FORMATS, 2)
 
             config = configparser.ConfigParser()
             config.read(file_path)

@@ -15,14 +15,11 @@ from iptv_player.config.accounts import (
 
 
 class AccountStorageTests(unittest.TestCase):
-    def test_rejects_reserved_or_ini_unsafe_account_names(self):
+    def test_rejects_only_reserved_or_multiline_account_names(self):
         self.assertIsNotNone(account_name_error("None"))
-        self.assertIsNotNone(account_name_error("name=value"))
-        self.assertIsNotNone(account_name_error("name:value"))
-        self.assertIsNotNone(account_name_error("#comment"))
-        self.assertIsNotNone(account_name_error(";comment"))
         self.assertIsNotNone(account_name_error("two\nlines"))
         self.assertIsNone(account_name_error("Living Room - Été"))
+        self.assertIsNone(account_name_error("Provider = Main: #1"))
 
     def test_storage_rejects_unsafe_account_name(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -31,7 +28,7 @@ class AccountStorageTests(unittest.TestCase):
                 save_account(
                     str(file_path),
                     "m3u_plus",
-                    "invalid=name",
+                    "invalid\nname",
                     ["url", "live", "movie", "series"],
                 )
 
@@ -65,6 +62,20 @@ class AccountStorageTests(unittest.TestCase):
                 load_account(str(file_path), "Living Room"),
                 "manual|host|user|password|live|movie|series",
             )
+
+    def test_name_punctuation_is_stored_as_display_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "userdata.ini"
+            name = "Provider = Main: #1"
+
+            save_account(
+                str(file_path),
+                "m3u_plus",
+                name,
+                ["url", "live", "movie", "series"],
+            )
+
+            self.assertEqual(list(load_accounts(str(file_path))), [name])
 
     def test_rename_updates_startup_account(self):
         with tempfile.TemporaryDirectory() as directory:

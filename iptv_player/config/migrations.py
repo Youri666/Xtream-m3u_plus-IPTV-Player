@@ -2,6 +2,7 @@
 
 import configparser
 import os
+import uuid
 from os import path
 
 from iptv_player.config.ini import write_config_file
@@ -9,6 +10,7 @@ from iptv_player.config.ini import write_config_file
 
 def migrate_user_data_file(file_path, default_url_formats, current_schema_version):
     """Upgrade a user configuration without changing established preferences."""
+    legacy_account_names = _read_legacy_account_names(file_path)
     config = configparser.ConfigParser()
     try:
         config.read(file_path)
@@ -31,6 +33,9 @@ def migrate_user_data_file(file_path, default_url_formats, current_schema_versio
 
     if stored_schema_version < 1:
         _migrate_content_switches(config)
+
+    if stored_schema_version < 2:
+        _migrate_accounts_to_stable_ids(config, legacy_account_names)
 
     if "Application" not in config:
         config["Application"] = {}
@@ -102,3 +107,54 @@ def _migrate_content_switches(config):
     content.setdefault("LIVE", "True")
     content.setdefault("Movies", str(legacy_vods_enabled))
     content.setdefault("Series", str(legacy_vods_enabled))
+
+
+def _migrate_accounts_to_stable_ids(config, legacy_account_names):
+    """Move user-facing account labels out of INI option keys."""
+    if "Credentials" not in config:
+        return
+
+    startup_name = config.get(
+        "Startup credentials", "startup_credentials", fallback="None"
+    )
+    startup_account_id = ""
+    for parsed_name, serialized_account in list(config["Credentials"].items()):
+        stored_name = legacy_account_names.get(parsed_name.casefold(), parsed_name)
+        display_name = (
+            startup_name
+            if stored_name.casefold() == startup_name.casefold()
+            else stored_name
+        )
+        account_id = uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"iptv-player:{stored_name.casefold()}:{serialized_account}",
+        ).hex
+        section_name = f"Account:{account_id}"
+        if section_name not in config:
+            config.add_section(section_name)
+        config[section_name]["name"] = display_name
+        config[section_name]["credentials"] = serialized_account
+        if stored_name.casefold() == startup_name.casefold():
+            startup_account_id = account_id
+
+    config.remove_section("Credentials")
+    if "Startup credentials" not in config:
+        config["Startup credentials"] = {}
+    config["Startup credentials"].pop("startup_credentials", None)
+    config["Startup credentials"]["startup_account_id"] = startup_account_id
+
+
+def _read_legacy_account_names(file_path):
+    """Read legacy credential keys once without ConfigParser lowercasing them."""
+    case_preserving_config = configparser.ConfigParser()
+    case_preserving_config.optionxform = str
+    try:
+        case_preserving_config.read(file_path)
+    except (configparser.Error, UnicodeDecodeError):
+        return {}
+    if "Credentials" not in case_preserving_config:
+        return {}
+    return {
+        name.casefold(): name
+        for name in case_preserving_config["Credentials"]
+    }
