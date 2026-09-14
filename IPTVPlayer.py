@@ -399,6 +399,7 @@ class IPTVPlayerApp(QMainWindow):
 
     def set_active_account(self, name):
         """Store the active account label and expose it in the window title."""
+        self._reset_provider_view_state()
         self.active_account_name = str(name or "").strip()
         self.active_account_id = (
             load_account_id(self.user_data_file, self.active_account_name) or ""
@@ -407,6 +408,40 @@ class IPTVPlayerApp(QMainWindow):
         if self.active_account_name:
             title = f"{title} — {self.active_account_name}"
         self.setWindowTitle(title)
+        self._load_hidden_categories()
+        self._load_account_sort_preferences()
+
+    def _reset_provider_view_state(self):
+        """Discard every catalog and Qt item reference before changing accounts."""
+        if not hasattr(self, 'category_list_widgets'):
+            return
+        for item_cache in self.category_item_cache.values():
+            item_cache.clear()
+        for stream_cache in self.category_view_cache.values():
+            stream_cache.clear()
+        for stream_type in self.active_category_view_key:
+            self.active_category_view_key[stream_type] = None
+            self.prev_clicked_category_item[stream_type] = 0
+            self.currently_loaded_categories[stream_type] = []
+            self.currently_loaded_streams[stream_type] = []
+            self.category_item_counts[stream_type] = {}
+        self.currently_loaded_streams['Seasons'] = []
+        self.currently_loaded_streams['Episodes'] = []
+        self.prev_clicked_streaming_item = 0
+        self.prev_double_clicked_streaming_item = 0
+        self.series_navigation_level = 0
+        for search_bar in (
+            *self.category_search_bars.values(),
+            *self.streaming_search_bars.values(),
+        ):
+            search_bar.blockSignals(True)
+            search_bar.clear()
+            search_bar.blockSignals(False)
+        for list_widget in (
+            *self.category_list_widgets.values(),
+            *self.streaming_list_widgets.values(),
+        ):
+            list_widget.clear()
 
     def _init_resource_paths(self):
         """Resolve all packaged image assets from one declarative mapping."""
@@ -1016,27 +1051,32 @@ class IPTVPlayerApp(QMainWindow):
                 category_list.itemClicked.emit(all_items[0])
 
     def _load_hidden_categories(self):
-        """Load independent LIVE, Movies, and Series exclusions from userdata.ini."""
+        """Load category exclusions belonging to the active IPTV account."""
+        self.hidden_category_ids = {
+            'LIVE': set(), 'Movies': set(), 'Series': set()
+        }
+        if not self.active_account_id:
+            return
         config = configparser.ConfigParser()
         try:
             config.read(self.user_data_file)
         except (configparser.Error, UnicodeDecodeError):
             return
 
-        if 'Hidden categories' not in config:
+        section_name = f'Account:{self.active_account_id}'
+        if section_name not in config:
             return
-
-        for stream_type in self.hidden_category_ids:
-            try:
-                hidden_ids = json.loads(
-                    config['Hidden categories'].get(stream_type, '[]')
-                )
-            except (TypeError, ValueError):
-                hidden_ids = []
-            if isinstance(hidden_ids, list):
-                self.hidden_category_ids[stream_type] = {
-                    str(category_id) for category_id in hidden_ids
-                }
+        try:
+            saved = json.loads(config[section_name].get('hidden_categories', '{}'))
+        except (TypeError, ValueError):
+            saved = {}
+        if isinstance(saved, dict):
+            for stream_type in self.hidden_category_ids:
+                hidden_ids = saved.get(stream_type, [])
+                if isinstance(hidden_ids, list):
+                    self.hidden_category_ids[stream_type] = {
+                        str(category_id) for category_id in hidden_ids
+                    }
 
     def _save_hidden_categories(self):
         """Persist category exclusions while preserving every unrelated setting."""
@@ -1046,10 +1086,15 @@ class IPTVPlayerApp(QMainWindow):
         except (configparser.Error, UnicodeDecodeError):
             config = configparser.ConfigParser()
 
-        config['Hidden categories'] = {
-            stream_type: json.dumps(sorted(hidden_ids), separators=(',', ':'))
+        if not self.active_account_id:
+            return
+        section_name = f'Account:{self.active_account_id}'
+        if section_name not in config:
+            return
+        config[section_name]['hidden_categories'] = json.dumps({
+            stream_type: sorted(hidden_ids)
             for stream_type, hidden_ids in self.hidden_category_ids.items()
-        }
+        }, separators=(',', ':'))
         try:
             write_config_file(self.user_data_file, config)
         except OSError as e:
@@ -1518,21 +1563,37 @@ class IPTVPlayerApp(QMainWindow):
                 self.remember_category_sorting = False
 
     def _load_category_sort_preferences(self, config):
-        """Load per-category sorting choices while tolerating malformed user data."""
-        if 'Category sorting' not in config:
-            return
+        """Reset category sorting before an account-specific load."""
+        self.category_sort_preferences = {
+            'LIVE': {}, 'Movies': {}, 'Series': {}
+        }
+        self.category_list_sort_preferences = {}
+        self.category_sort_fallback = self._sorting_preference_value(
+            self.sorting_enabled, self.sorting_order
+        )
 
-        saved_fallback = config['Category sorting'].get('fallback', 'a_z')
+    def _load_account_sort_preferences(self):
+        """Load category sorting choices belonging to the active account."""
+        self._load_category_sort_preferences(None)
+        if not self.active_account_id:
+            return
+        config = configparser.ConfigParser()
+        config.read(self.user_data_file)
+        section_name = f'Account:{self.active_account_id}'
+        if section_name not in config:
+            return
+        try:
+            saved = json.loads(config[section_name].get('category_sorting', '{}'))
+        except (TypeError, ValueError):
+            saved = {}
+        if not isinstance(saved, dict):
+            return
+        saved_fallback = saved.get('fallback', 'a_z')
         if saved_fallback in ('a_z', 'z_a', 'disabled'):
             self.category_sort_fallback = saved_fallback
 
         for stream_type in self.category_sort_preferences:
-            encoded_preferences = config['Category sorting'].get(stream_type, '{}')
-            try:
-                preferences = json.loads(encoded_preferences)
-            except (TypeError, ValueError):
-                preferences = {}
-
+            preferences = saved.get('preferences', {}).get(stream_type, {})
             if isinstance(preferences, dict):
                 self.category_sort_preferences[stream_type] = {
                     str(key): value
@@ -1540,9 +1601,9 @@ class IPTVPlayerApp(QMainWindow):
                     if value in ('a_z', 'z_a', 'disabled')
                 }
 
-            category_list_preference = config['Category sorting'].get(
-                f'{stream_type}_category_list', ''
-            )
+            category_list_preference = saved.get(
+                'category_lists', {}
+            ).get(stream_type, '')
             if category_list_preference in ('a_z', 'z_a', 'disabled'):
                 self.category_list_sort_preferences[stream_type] = (
                     category_list_preference
@@ -1556,13 +1617,16 @@ class IPTVPlayerApp(QMainWindow):
         except (configparser.Error, UnicodeDecodeError):
             config = configparser.ConfigParser()
 
-        config['Category sorting'] = {
-            stream_type: json.dumps(preferences, separators=(',', ':'))
-            for stream_type, preferences in self.category_sort_preferences.items()
-        }
-        config['Category sorting']['fallback'] = self.category_sort_fallback
-        for stream_type, preference in self.category_list_sort_preferences.items():
-            config['Category sorting'][f'{stream_type}_category_list'] = preference
+        if not self.active_account_id:
+            return
+        section_name = f'Account:{self.active_account_id}'
+        if section_name not in config:
+            return
+        config[section_name]['category_sorting'] = json.dumps({
+            'fallback': self.category_sort_fallback,
+            'preferences': self.category_sort_preferences,
+            'category_lists': self.category_list_sort_preferences,
+        }, separators=(',', ':'))
 
         try:
             write_config_file(self.user_data_file, config)

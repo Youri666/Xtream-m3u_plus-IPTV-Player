@@ -1,6 +1,7 @@
 """Ordered migrations for persisted IPTV Player settings."""
 
 import configparser
+import json
 import os
 import uuid
 from os import path
@@ -36,6 +37,9 @@ def migrate_user_data_file(file_path, default_url_formats, current_schema_versio
 
     if stored_schema_version < 2:
         _migrate_accounts_to_stable_ids(config, legacy_account_names)
+
+    if stored_schema_version < 3:
+        _migrate_category_preferences_to_startup_account(config)
 
     if "Application" not in config:
         config["Application"] = {}
@@ -158,3 +162,56 @@ def _read_legacy_account_names(file_path):
         name.casefold(): name
         for name in case_preserving_config["Credentials"]
     }
+
+
+def _migrate_category_preferences_to_startup_account(config):
+    """Attach former global category settings to the startup or sole account."""
+    account_sections = [
+        section_name
+        for section_name in config.sections()
+        if section_name.startswith("Account:")
+    ]
+    startup_id = config.get(
+        "Startup credentials", "startup_account_id", fallback=""
+    )
+    target_section = f"Account:{startup_id}" if startup_id else ""
+    if target_section not in config and account_sections:
+        target_section = account_sections[0]
+    if target_section not in config:
+        return
+
+    if "Hidden categories" in config:
+        hidden_categories = {}
+        for stream_type in ("LIVE", "Movies", "Series"):
+            try:
+                value = json.loads(
+                    config["Hidden categories"].get(stream_type, "[]")
+                )
+            except (TypeError, ValueError):
+                value = []
+            hidden_categories[stream_type] = value if isinstance(value, list) else []
+        config[target_section]["hidden_categories"] = json.dumps(
+            hidden_categories, separators=(",", ":")
+        )
+        config.remove_section("Hidden categories")
+
+    if "Category sorting" in config:
+        preferences = {}
+        category_lists = {}
+        for stream_type in ("LIVE", "Movies", "Series"):
+            try:
+                value = json.loads(
+                    config["Category sorting"].get(stream_type, "{}")
+                )
+            except (TypeError, ValueError):
+                value = {}
+            preferences[stream_type] = value if isinstance(value, dict) else {}
+            category_lists[stream_type] = config["Category sorting"].get(
+                f"{stream_type}_category_list", ""
+            )
+        config[target_section]["category_sorting"] = json.dumps({
+            "fallback": config["Category sorting"].get("fallback", "a_z"),
+            "preferences": preferences,
+            "category_lists": category_lists,
+        }, separators=(",", ":"))
+        config.remove_section("Category sorting")
