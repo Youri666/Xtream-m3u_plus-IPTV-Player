@@ -12,10 +12,13 @@ class ExternalPlayerNotExecutableError(PermissionError):
     """Indicate that the selected Linux player cannot be executed."""
 
 
-def external_player_command(player, stream_url, user_agent="", platform=None):
+def external_player_command(
+    player, stream_url, user_agent="", title="", platform=None
+):
     """Build the platform-specific command used to open a stream."""
     platform = platform or sys.platform
     user_agent = (user_agent or "").strip()
+    title = (title or "").strip()
     player_lower = player.lower()
 
     if platform.startswith("linux"):
@@ -24,8 +27,11 @@ def external_player_command(player, stream_url, user_agent="", platform=None):
                 f"Selected player is not executable: {player}"
             )
         command = [player]
-        if player_lower.endswith("vlc") and user_agent:
-            command.append(f"--http-user-agent={user_agent}")
+        if player_lower.endswith("vlc"):
+            if user_agent:
+                command.append(f"--http-user-agent={user_agent}")
+            if title:
+                command.append(f"--meta-title={title}")
         elif player_lower.endswith(("mpv", "mpv.com")) and user_agent:
             command.append(f"--user-agent={user_agent}")
         command.append(stream_url)
@@ -48,7 +54,14 @@ def external_player_command(player, stream_url, user_agent="", platform=None):
             user_agent_argument = (
                 f' --http-user-agent="{user_agent}"' if user_agent else ""
             )
-            return f"{quoted_player}{user_agent_argument} {quoted_url}"
+            title_argument = (
+                " " + subprocess.list2cmdline([f"--meta-title={title}"])
+                if title else ""
+            )
+            return (
+                f"{quoted_player}{user_agent_argument}{title_argument} "
+                f"{quoted_url}"
+            )
         return f"{quoted_player} {quoted_url}"
 
     if platform.startswith("darwin"):
@@ -56,17 +69,26 @@ def external_player_command(player, stream_url, user_agent="", platform=None):
         if player_lower.endswith(".app") and path.isdir(player):
             executable = macos_bundle_executable(player)
         command = [executable]
-        if path.basename(executable).lower() == "vlc" and user_agent:
-            command.append(f"--http-user-agent={user_agent}")
+        if path.basename(executable).lower() == "vlc":
+            if user_agent:
+                command.append(f"--http-user-agent={user_agent}")
+            if title:
+                command.append(f"--meta-title={title}")
         command.append(stream_url)
         return command
 
     return [player, stream_url]
 
 
-def launch_external_player(player, stream_url, user_agent="", platform=None):
+def launch_external_player(
+    player, stream_url, user_agent="", title="", platform=None
+):
     """Launch an external media player and return its process handle."""
     command = external_player_command(
-        player, stream_url, user_agent=user_agent, platform=platform
+        player,
+        stream_url,
+        user_agent=user_agent,
+        title=title,
+        platform=platform,
     )
     return subprocess.Popen(command)

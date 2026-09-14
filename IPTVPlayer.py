@@ -3771,7 +3771,10 @@ class IPTVPlayerApp(QMainWindow):
                         return
 
                     if 'live' in stream_type or 'movie' in stream_type:
-                        self.play_item(clicked_item_data['url'])
+                        self.play_item(
+                            clicked_item_data['url'],
+                            clicked_item_data.get('name', clicked_item_text),
+                        )
 
                     elif 'series' in stream_type:
                         self.series_navigation_level = 1
@@ -3793,7 +3796,10 @@ class IPTVPlayerApp(QMainWindow):
                         
                     else:
                         #Play episode
-                        self.play_item(clicked_item_data['url'])
+                        self.play_item(
+                            clicked_item_data['url'],
+                            clicked_item_data.get('title', clicked_item_text),
+                        )
 
         except Exception as e:
             print(f"failed item double click: {e}")
@@ -3903,7 +3909,7 @@ class IPTVPlayerApp(QMainWindow):
 
         self.animate_progress(0, 100, "Loading finished")
 
-    def play_item(self, url):
+    def play_item(self, url, title=""):
         if not url:
             self.animate_progress(0, 100, "Stream URL not found", "error")
 
@@ -3936,6 +3942,7 @@ class IPTVPlayerApp(QMainWindow):
                     self.external_player_command,
                     url,
                     user_agent=self.current_user_agent,
+                    title=title,
                 )
 
             except ExternalPlayerNotExecutableError:

@@ -25,6 +25,21 @@ class ExternalPlayerCommandTests(unittest.TestCase):
             '--http-user-agent="IPTV Player" "http://example.test/live/1"',
         )
 
+    def test_windows_vlc_receives_media_title(self):
+        command = external_player_command(
+            r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+            "http://example.test/series/1234.mkv",
+            title="DAN DA DAN - Episode 02",
+            platform="win32",
+        )
+
+        self.assertEqual(
+            command,
+            '"C:\\Program Files\\VideoLAN\\VLC\\vlc.exe" '
+            '"--meta-title=DAN DA DAN - Episode 02" '
+            '"http://example.test/series/1234.mkv"',
+        )
+
     def test_windows_generic_player_uses_only_executable_and_url(self):
         command = external_player_command(
             r"C:\Players\player.exe",
@@ -63,6 +78,24 @@ class ExternalPlayerCommandTests(unittest.TestCase):
             ],
         )
 
+    def test_linux_vlc_receives_media_title(self):
+        with patch("iptv_player.external_player.os.access", return_value=True):
+            command = external_player_command(
+                "/usr/bin/vlc",
+                "http://example.test/movie/1234.mkv",
+                title="Original movie title",
+                platform="linux",
+            )
+
+        self.assertEqual(
+            command,
+            [
+                "/usr/bin/vlc",
+                "--meta-title=Original movie title",
+                "http://example.test/movie/1234.mkv",
+            ],
+        )
+
     def test_macos_resolves_application_bundle_executable(self):
         with tempfile.TemporaryDirectory() as directory:
             bundle = Path(directory) / "VLC.app"
@@ -75,6 +108,7 @@ class ExternalPlayerCommandTests(unittest.TestCase):
                     str(bundle),
                     "http://example.test/live/1",
                     "IPTV Player",
+                    title="Original channel title",
                     platform="darwin",
                 )
 
@@ -83,6 +117,7 @@ class ExternalPlayerCommandTests(unittest.TestCase):
             [
                 "/Applications/VLC.app/Contents/MacOS/VLC",
                 "--http-user-agent=IPTV Player",
+                "--meta-title=Original channel title",
                 "http://example.test/live/1",
             ],
         )
