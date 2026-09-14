@@ -1,14 +1,15 @@
 import configparser
-import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from iptv_player.config.accounts import load_accounts, load_startup_account
 from iptv_player.config.migrations import (
     migrate_legacy_player_volume,
     migrate_user_data_file,
 )
+from iptv_player.storage import load_provider_preferences
 
 
 URL_FORMATS = {
@@ -28,7 +29,7 @@ class ConfigurationMigrationTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            migrate_user_data_file(str(file_path), URL_FORMATS, 3)
+            migrate_user_data_file(str(file_path), URL_FORMATS, 4)
 
             config = configparser.ConfigParser()
             config.read(file_path)
@@ -40,7 +41,7 @@ class ConfigurationMigrationTests(unittest.TestCase):
             self.assertTrue(config.getboolean("Content", "LIVE"))
             self.assertFalse(config.getboolean("Content", "Movies"))
             self.assertFalse(config.getboolean("Content", "Series"))
-            self.assertEqual(config.getint("Application", "config_schema_version"), 3)
+            self.assertEqual(config.getint("Application", "config_schema_version"), 4)
 
     def test_migrates_account_names_and_startup_selection_to_stable_ids(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -59,27 +60,65 @@ class ConfigurationMigrationTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            migrate_user_data_file(str(file_path), URL_FORMATS, 3)
+            migrate_user_data_file(str(file_path), URL_FORMATS, 4)
             first_result = file_path.read_text(encoding="utf-8")
-            migrate_user_data_file(str(file_path), URL_FORMATS, 3)
+            migrated = configparser.ConfigParser()
+            migrated.read(file_path)
+            startup_id = migrated["Startup credentials"]["startup_account_id"]
+            preferences_file = (
+                Path(directory) / f"provider_preferences.{startup_id}.json"
+            )
+            first_preferences = preferences_file.read_text(encoding="utf-8")
+
+            migrate_user_data_file(str(file_path), URL_FORMATS, 4)
 
             self.assertEqual(
                 list(load_accounts(str(file_path))),
                 ["Maestro Test", "Second Provider"],
             )
             self.assertEqual(load_startup_account(str(file_path)), "Maestro Test")
-            migrated = configparser.ConfigParser()
-            migrated.read(file_path)
-            startup_id = migrated["Startup credentials"]["startup_account_id"]
             account_section = migrated[f"Account:{startup_id}"]
+            self.assertNotIn("hidden_categories", account_section)
+            self.assertNotIn("category_sorting", account_section)
+            preferences = load_provider_preferences(preferences_file)
             self.assertEqual(
-                json.loads(account_section["hidden_categories"])["LIVE"], ["12"]
+                preferences["hidden_categories"]["LIVE"], ["12"]
             )
             self.assertEqual(
-                json.loads(account_section["category_sorting"])["fallback"],
+                preferences["category_sorting"]["fallback"],
                 "z_a",
             )
             self.assertEqual(first_result, file_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                first_preferences, preferences_file.read_text(encoding="utf-8")
+            )
+
+    def test_retries_provider_preference_migration_after_write_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "userdata.ini"
+            file_path.write_text(
+                "[Application]\nconfig_schema_version=3\n\n"
+                "[Account:account123]\n"
+                "name=Example\n"
+                "credentials=manual|host|user|password|live|movie|series\n"
+                'hidden_categories={"LIVE":["12"]}\n',
+                encoding="utf-8",
+            )
+
+            with patch(
+                "iptv_player.config.migrations.save_provider_preferences",
+                side_effect=OSError("read-only destination"),
+            ):
+                migrate_user_data_file(str(file_path), URL_FORMATS, 4)
+
+            config = configparser.ConfigParser()
+            config.read(file_path)
+            self.assertEqual(
+                config.getint("Application", "config_schema_version"), 3
+            )
+            self.assertTrue(
+                config.has_option("Account:account123", "hidden_categories")
+            )
 
     def test_preserves_newer_schema_versions(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -89,7 +128,7 @@ class ConfigurationMigrationTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            migrate_user_data_file(str(file_path), URL_FORMATS, 3)
+            migrate_user_data_file(str(file_path), URL_FORMATS, 4)
 
             config = configparser.ConfigParser()
             config.read(file_path)

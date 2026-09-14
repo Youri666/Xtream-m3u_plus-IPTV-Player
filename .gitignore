@@ -13,6 +13,7 @@ lib/
 IPTV screenshots/
 favorites.json
 provider_favorites.*.json
+provider_preferences.*.json
 dist/
 vlc_log.txt
 /.idea/

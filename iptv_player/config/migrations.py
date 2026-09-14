@@ -5,8 +5,14 @@ import json
 import os
 import uuid
 from os import path
+from pathlib import Path
 
 from iptv_player.config.ini import write_config_file
+from iptv_player.storage.provider_preferences import (
+    load_provider_preferences,
+    provider_preferences_file,
+    save_provider_preferences,
+)
 
 
 def migrate_user_data_file(file_path, default_url_formats, current_schema_version):
@@ -41,11 +47,20 @@ def migrate_user_data_file(file_path, default_url_formats, current_schema_versio
     if stored_schema_version < 3:
         _migrate_category_preferences_to_startup_account(config)
 
+    target_schema_version = current_schema_version
+    if (
+        current_schema_version >= 4
+        and stored_schema_version < 4
+        and not _migrate_account_preferences_to_files(config, file_path)
+    ):
+        # Keep the migration pending so it is retried on the next launch.
+        target_schema_version = min(target_schema_version, 3)
+
     if "Application" not in config:
         config["Application"] = {}
     config.remove_option("Application", "last_run_version")
     config["Application"]["config_schema_version"] = str(
-        max(stored_schema_version, current_schema_version)
+        max(stored_schema_version, target_schema_version)
     )
 
     try:
@@ -215,3 +230,52 @@ def _migrate_category_preferences_to_startup_account(config):
             "category_lists": category_lists,
         }, separators=(",", ":"))
         config.remove_section("Category sorting")
+
+
+def _migrate_account_preferences_to_files(config, user_data_file):
+    """Move category preferences from account sections to account JSON files."""
+    base_filename = Path(user_data_file).with_name("provider_preferences.json")
+    for section_name in config.sections():
+        if not section_name.startswith("Account:"):
+            continue
+
+        has_hidden = config.has_option(section_name, "hidden_categories")
+        has_sorting = config.has_option(section_name, "category_sorting")
+        if not has_hidden and not has_sorting:
+            continue
+
+        account_id = section_name.partition(":")[2]
+        filename = provider_preferences_file(base_filename, account_id)
+        current = load_provider_preferences(filename)
+        hidden_categories = current["hidden_categories"]
+        category_sorting = current["category_sorting"]
+
+        if has_hidden:
+            hidden_categories = _read_json_mapping_option(
+                config, section_name, "hidden_categories"
+            )
+        if has_sorting:
+            category_sorting = _read_json_mapping_option(
+                config, section_name, "category_sorting"
+            )
+
+        try:
+            save_provider_preferences(
+                filename, hidden_categories, category_sorting
+            )
+        except (OSError, TypeError, ValueError) as error:
+            print(f"Could not migrate category preferences: {error}")
+            return False
+
+        config.remove_option(section_name, "hidden_categories")
+        config.remove_option(section_name, "category_sorting")
+    return True
+
+
+def _read_json_mapping_option(config, section_name, option_name):
+    """Decode a JSON mapping stored in an INI option."""
+    try:
+        value = json.loads(config.get(section_name, option_name, fallback="{}"))
+    except (TypeError, ValueError, configparser.Error):
+        return {}
+    return value if isinstance(value, dict) else {}

@@ -75,7 +75,10 @@ from iptv_player.utils.sorting import ordered_catalog_entries, ordered_season_ke
 from iptv_player.storage import (
     account_favorites_file,
     entries_in_favorite_order,
+    load_provider_preferences,
     migrate_legacy_favorites_file,
+    provider_preferences_file,
+    save_provider_preferences,
     set_favorite,
 )
 from iptv_player.provider.cache import account_cache_key
@@ -144,6 +147,10 @@ class IPTVPlayerApp(QMainWindow):
         )
         self.legacy_favorites_file = path.join(self.data_directory, "favorites.json")
         self.favorites_file = self.legacy_favorites_file
+        self.provider_preferences_base_file = path.join(
+            self.data_directory, "provider_preferences.json"
+        )
+        self.provider_preferences_file = ""
         self.cache_file = path.join(self.data_directory, "provider_catalog_cache.json")
         self.legacy_cache_file = path.join(self.data_directory, "all_cached_data.json")
 
@@ -403,6 +410,12 @@ class IPTVPlayerApp(QMainWindow):
         self.active_account_name = str(name or "").strip()
         self.active_account_id = (
             load_account_id(self.user_data_file, self.active_account_name) or ""
+        )
+        self.provider_preferences_file = (
+            str(provider_preferences_file(
+                self.provider_preferences_base_file, self.active_account_id
+            ))
+            if self.active_account_id else ""
         )
         title = f"IPTV Player {CURRENT_VERSION}"
         if self.active_account_name:
@@ -1055,21 +1068,11 @@ class IPTVPlayerApp(QMainWindow):
         self.hidden_category_ids = {
             'LIVE': set(), 'Movies': set(), 'Series': set()
         }
-        if not self.active_account_id:
+        if not self.provider_preferences_file:
             return
-        config = configparser.ConfigParser()
-        try:
-            config.read(self.user_data_file)
-        except (configparser.Error, UnicodeDecodeError):
-            return
-
-        section_name = f'Account:{self.active_account_id}'
-        if section_name not in config:
-            return
-        try:
-            saved = json.loads(config[section_name].get('hidden_categories', '{}'))
-        except (TypeError, ValueError):
-            saved = {}
+        saved = load_provider_preferences(
+            self.provider_preferences_file
+        ).get('hidden_categories', {})
         if isinstance(saved, dict):
             for stream_type in self.hidden_category_ids:
                 hidden_ids = saved.get(stream_type, [])
@@ -1079,24 +1082,20 @@ class IPTVPlayerApp(QMainWindow):
                     }
 
     def _save_hidden_categories(self):
-        """Persist category exclusions while preserving every unrelated setting."""
-        config = configparser.ConfigParser()
-        try:
-            config.read(self.user_data_file)
-        except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
-
-        if not self.active_account_id:
+        """Persist category exclusions for the active IPTV account."""
+        if not self.provider_preferences_file:
             return
-        section_name = f'Account:{self.active_account_id}'
-        if section_name not in config:
-            return
-        config[section_name]['hidden_categories'] = json.dumps({
+        current = load_provider_preferences(self.provider_preferences_file)
+        hidden_categories = {
             stream_type: sorted(hidden_ids)
             for stream_type, hidden_ids in self.hidden_category_ids.items()
-        }, separators=(',', ':'))
+        }
         try:
-            write_config_file(self.user_data_file, config)
+            save_provider_preferences(
+                self.provider_preferences_file,
+                hidden_categories,
+                current.get('category_sorting', {}),
+            )
         except OSError as e:
             print(f"Could not save hidden categories: {e}")
 
@@ -1575,17 +1574,11 @@ class IPTVPlayerApp(QMainWindow):
     def _load_account_sort_preferences(self):
         """Load category sorting choices belonging to the active account."""
         self._load_category_sort_preferences(None)
-        if not self.active_account_id:
+        if not self.provider_preferences_file:
             return
-        config = configparser.ConfigParser()
-        config.read(self.user_data_file)
-        section_name = f'Account:{self.active_account_id}'
-        if section_name not in config:
-            return
-        try:
-            saved = json.loads(config[section_name].get('category_sorting', '{}'))
-        except (TypeError, ValueError):
-            saved = {}
+        saved = load_provider_preferences(
+            self.provider_preferences_file
+        ).get('category_sorting', {})
         if not isinstance(saved, dict):
             return
         saved_fallback = saved.get('fallback', 'a_z')
@@ -1610,26 +1603,22 @@ class IPTVPlayerApp(QMainWindow):
                 )
 
     def _save_category_sort_preferences(self):
-        """Store durable sorting preferences in INI; IPTV cache remains disposable."""
-        config = configparser.ConfigParser()
-        try:
-            config.read(self.user_data_file)
-        except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
-
-        if not self.active_account_id:
+        """Store category sorting preferences for the active IPTV account."""
+        if not self.provider_preferences_file:
             return
-        section_name = f'Account:{self.active_account_id}'
-        if section_name not in config:
-            return
-        config[section_name]['category_sorting'] = json.dumps({
+        current = load_provider_preferences(self.provider_preferences_file)
+        category_sorting = {
             'fallback': self.category_sort_fallback,
             'preferences': self.category_sort_preferences,
             'category_lists': self.category_list_sort_preferences,
-        }, separators=(',', ':'))
+        }
 
         try:
-            write_config_file(self.user_data_file, config)
+            save_provider_preferences(
+                self.provider_preferences_file,
+                current.get('hidden_categories', {}),
+                category_sorting,
+            )
         except OSError as e:
             print(f"Could not save category sorting preferences: {e}")
 
