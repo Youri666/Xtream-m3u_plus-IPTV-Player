@@ -4618,26 +4618,45 @@ class IPTVPlayerApp(QMainWindow):
         # when they try to play something.
         if not EmbeddedPlayerWindow.is_available():
             self.set_progress_bar(100, "Internal VLC player unavailable", "error")
-            error_dialog = QMessageBox(self)
-            error_dialog.setIcon(QMessageBox.Warning)
-            error_dialog.setWindowTitle("Internal VLC unavailable")
-            error_dialog.setText(
-                "The internal player uses VLC installed on this computer, but a "
-                "compatible VLC installation could not be found.\n\n"
-                "Install the latest VLC version from https://www.videolan.org/vlc/, "
-                "restart this application, and try again.\n\n"
-                "Alternatively, select External player and choose another installed "
-                "media player."
+            fallback_command = (
+                getattr(self, "last_external_player_command", "") or ""
             )
-            error_dialog.setStandardButtons(QMessageBox.Ok)
-            error_dialog.exec_()
+            self.external_player_command = fallback_command
+            self.save_external_player_command()
             self._refresh_current_player_label()
+            self._show_internal_vlc_unavailable(fallback_command)
             return
 
         self.external_player_command = "<embedded-vlc>"
         self.save_external_player_command()
         self._refresh_current_player_label()
         self.animate_progress(0, 100, "Internal VLC player enabled")
+
+    def _show_internal_vlc_unavailable(self, fallback_command=""):
+        """Explain the VLC requirement and any automatic external fallback."""
+        if fallback_command:
+            fallback_message = (
+                "IPTV Player has switched to your previously selected external "
+                "media player."
+            )
+        else:
+            fallback_message = (
+                "No external media player has been selected yet. Select External "
+                "player in Settings and choose an installed media player."
+            )
+
+        error_dialog = QMessageBox(self)
+        error_dialog.setIcon(QMessageBox.Warning)
+        error_dialog.setWindowTitle("Internal VLC unavailable")
+        error_dialog.setText(
+            "Internal VLC requires a compatible VLC installation on this "
+            "computer, but VLC could not be found.\n\n"
+            "Install the latest VLC version from https://www.videolan.org/vlc/, "
+            "restart IPTV Player, and try again.\n\n"
+            f"{fallback_message}"
+        )
+        error_dialog.setStandardButtons(QMessageBox.Ok)
+        error_dialog.exec_()
 
     def _refresh_current_player_label(self):
         if not hasattr(self, "current_player_label"):
@@ -5073,6 +5092,24 @@ class IPTVPlayerApp(QMainWindow):
             if command and command != "<embedded-vlc>":
                 remembered_command = command
             self.last_external_player_command = remembered_command
+
+            # VLC may have been removed after Internal VLC was selected. Validate
+            # the saved choice before restoring it and reuse the last external player
+            # when possible.
+            if command == "<embedded-vlc>" and not EmbeddedPlayerWindow.is_available():
+                command = remembered_command or ""
+                config['ExternalPlayer']['Command'] = command
+                try:
+                    with open(self.user_data_file, 'w') as config_file:
+                        config.write(config_file)
+                except OSError as error:
+                    print(f"Could not save media player fallback: {error}")
+                QTimer.singleShot(
+                    0,
+                    lambda fallback=command: self._show_internal_vlc_unavailable(
+                        fallback
+                    ),
+                )
             return command
 
         # First-run default: prefer the internal libvlc-backed player when it's
@@ -5095,6 +5132,7 @@ class IPTVPlayerApp(QMainWindow):
             pass
 
         self.last_external_player_command = ""
+        QTimer.singleShot(0, self._show_internal_vlc_unavailable)
         return ""
 
     def save_external_player_command(self):
