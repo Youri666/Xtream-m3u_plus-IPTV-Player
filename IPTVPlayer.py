@@ -5,7 +5,6 @@ import time
 import requests
 import subprocess
 import configparser
-import re
 import json
 import queue
 import threading
@@ -88,6 +87,7 @@ from iptv_player.external_player import (
     ExternalPlayerNotExecutableError,
     launch_external_player,
 )
+from iptv_player.updater import fetch_latest_release, is_newer_version
 from iptv_player.provider.network import (
     DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL,
     DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS,
@@ -2228,39 +2228,23 @@ class IPTVPlayerApp(QMainWindow):
         except Exception as e:
             print(f"Failed loading default timeout values: {e}")
 
-    def _version_tuple(self, v):
-        # "V1.03.02" -> (1, 3, 2). Used so the update checker doesn't prompt when
-        # the current build is AHEAD of upstream (e.g. an unreleased fork build).
-        return tuple(int(x) for x in re.findall(r'\d+', v or ""))
-
     def check_for_updates(self, enable_update_msg):
         try:
             print("Checking for updates")
-
-            #Create github api url to fetch data from
-            git_api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-
-            #Request data from url. Pair a small read-timeout with the connection timeout —
-            #without one a slow GitHub response can block the main thread indefinitely
-            #(the previous code only set the connection timeout).
-            git_resp = requests.get(
-                git_api_url, timeout=(NETWORK_SETTINGS.connection_timeout, 5)
+            release = fetch_latest_release(
+                GITHUB_REPO, NETWORK_SETTINGS.connection_timeout
             )
-
-            #Get data and latest version
-            data = git_resp.json()
-            latest_version = data['tag_name']
 
             #Only prompt when upstream is strictly newer than what we're running —
             #avoids a spurious "update available" dialog for fork/dev builds that
             #carry a higher version number.
-            if self._version_tuple(latest_version) > self._version_tuple(CURRENT_VERSION):
+            if is_newer_version(release.version, CURRENT_VERSION):
                 #If not up to date ask if user wants to go to download page
                 update_dialog = QMessageBox(self)
                 update_dialog.setIcon(QMessageBox.Question)
                 update_dialog.setWindowTitle('Update Available')
                 update_dialog.setText(
-                    f"A new version ({latest_version}) is available.\n"
+                    f"A new version ({release.version}) is available.\n"
                     "Do you want to visit the download page?"
                 )
                 update_dialog.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
@@ -2270,9 +2254,7 @@ class IPTVPlayerApp(QMainWindow):
 
                 #If user wants to go to download page, open latest version page
                 if reply == QMessageBox.Yes:
-                    latest_version_url = data['html_url']
-
-                    QDesktopServices.openUrl(QUrl(latest_version_url))
+                    QDesktopServices.openUrl(QUrl(release.download_page))
 
             #Current version is up to date
             elif enable_update_msg:
