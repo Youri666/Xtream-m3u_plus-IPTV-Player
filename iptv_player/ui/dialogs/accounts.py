@@ -13,6 +13,7 @@ from iptv_player.config import (
     load_account,
     load_accounts,
     load_startup_account,
+    parse_account,
     save_account,
     save_startup_account,
 )
@@ -91,6 +92,9 @@ class AccountManager(QtWidgets.QDialog):
 
         if selected_item:
             name = selected_item.text()
+            editing_active_account = (
+                getattr(self.parent, "active_account_name", "") == name
+            )
             account_data = load_account(self.parent.user_data_file, name)
             if account_data is not None:
                 parts = account_data.split('|')
@@ -113,6 +117,10 @@ class AccountManager(QtWidgets.QDialog):
                         }
                         self.save_credentials(credentials_dict)
                         self.load_saved_accounts()
+                        if editing_active_account:
+                            # Reapply changed URLs and credentials immediately so
+                            # the in-memory catalog never keeps stale stream links.
+                            self._activate_account(updated_name)
 
     def add_account(self):
         dialog = AccountDialog(self, AccountDialog.MODE_ADD)
@@ -146,36 +154,56 @@ class AccountManager(QtWidgets.QDialog):
     def select_account(self):
         selected_item = self.accounts_list.currentItem()
 
-        if selected_item:
-            name = selected_item.text()
+        if selected_item and self._activate_account(selected_item.text()):
+            self.accept()
 
-            data = load_account(self.parent.user_data_file, name)
-            if data is not None:
+    def _activate_account(self, name):
+        """Load one saved account into the application and refresh its catalog."""
+        parsed_account = parse_account(
+            load_account(self.parent.user_data_file, name)
+        )
+        if parsed_account is None:
+            return False
+        method, fields = parsed_account
 
-                if data.startswith('manual|'):
-                    _, server, username, password, live_url_format, movie_url_format, series_url_format = data.split('|')
-                    
-                    self.parent.server            = server
-                    self.parent.username          = username
-                    self.parent.password          = password
-                    self.parent.live_url_format   = live_url_format
-                    self.parent.movie_url_format  = movie_url_format
-                    self.parent.series_url_format = series_url_format
+        if method == "manual":
+            (
+                server,
+                username,
+                password,
+                live_url_format,
+                movie_url_format,
+                series_url_format,
+            ) = fields
 
-                    self.parent.login()
+            self.parent.server = server
+            self.parent.username = username
+            self.parent.password = password
+            self.parent.live_url_format = live_url_format
+            self.parent.movie_url_format = movie_url_format
+            self.parent.series_url_format = series_url_format
+            self.parent.active_account_name = name
+            self.parent.login()
+            return True
 
-                elif data.startswith('m3u_plus|'):
-                    _, m3u_url, live_url_format, movie_url_format, series_url_format = data.split('|')
+        if method == "m3u_plus":
+            (
+                m3u_url,
+                live_url_format,
+                movie_url_format,
+                series_url_format,
+            ) = fields
 
-                    self.parent.live_url_format   = live_url_format
-                    self.parent.movie_url_format  = movie_url_format
-                    self.parent.series_url_format = series_url_format
+            self.parent.live_url_format = live_url_format
+            self.parent.movie_url_format = movie_url_format
+            self.parent.series_url_format = series_url_format
 
-                    #Get credentials from M3U plus url and check if valid
-                    if self.parent.extract_credentials_from_m3u_plus_url(m3u_url):
-                        self.parent.login()
+            if self.parent.extract_credentials_from_m3u_plus_url(m3u_url):
+                self.parent.active_account_name = name
+                self.parent.login()
+                return True
 
-                self.accept()
+        return False
 
     def double_click_account(self, item):
         self.select_account()

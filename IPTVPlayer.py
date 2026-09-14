@@ -42,9 +42,12 @@ from iptv_player.constants import (
 )
 from iptv_player.config import (
     application_resource_path,
+    load_account,
+    load_startup_account,
     macos_bundle_executable,
     migrate_legacy_player_volume,
     migrate_user_data_file,
+    parse_account,
     writable_data_directory,
     write_config_file,
 )
@@ -262,6 +265,7 @@ class IPTVPlayerApp(QMainWindow):
         self.live_url_format   = ""
         self.movie_url_format  = ""
         self.series_url_format = ""
+        self.active_account_name = ""
 
         #Create threadpool for data/EPG/image fetching. Single-threaded to keep
         #fetching ordered and gentle on the IPTV server.
@@ -364,6 +368,11 @@ class IPTVPlayerApp(QMainWindow):
         # carries the maximized state, while the splitter states preserve the three
         # independently resized columns in each content tab.
         self.restore_window_layout()
+
+        # Defer automatic login until the complete window exists and Qt has entered
+        # its event loop. A fast cache load must not populate widgets while the main
+        # window is still being constructed.
+        QTimer.singleShot(0, self.load_startup_credentials)
 
     def _init_resource_paths(self):
         """Resolve all packaged image assets from one declarative mapping."""
@@ -2256,35 +2265,28 @@ class IPTVPlayerApp(QMainWindow):
         # provider requests in the background.
         self.load_default_network_options()
 
-        #Load startup credentials
-        self.load_startup_credentials()
-
     def load_startup_credentials(self):
         # Load playlist on startup if enabled. A malformed/missing key here used to crash
         # the app right after the login screen (issue #92), so every access is guarded.
-        config = configparser.ConfigParser()
         try:
-            config.read(self.user_data_file)
+            selected_startup_account = load_startup_account(self.user_data_file)
+            data = load_account(self.user_data_file, selected_startup_account)
         except (configparser.Error, UnicodeDecodeError) as e:
             print(f"Failed reading user data file at startup: {e}")
             return
 
-        if 'Startup credentials' not in config:
-            return
-
-        selected_startup_account = config['Startup credentials'].get('startup_credentials', '')
         if not selected_startup_account or selected_startup_account == 'None':
             return
 
-        if 'Credentials' not in config or selected_startup_account not in config['Credentials']:
+        parsed_account = parse_account(data)
+        if parsed_account is None:
             return
 
         try:
-            data = config['Credentials'][selected_startup_account]
-            parts = data.split('|')
+            method, fields = parsed_account
 
-            if data.startswith('manual|') and len(parts) >= 7:
-                server, username, password, live_url_format, movie_url_format, series_url_format = parts[1:7]
+            if method == 'manual':
+                server, username, password, live_url_format, movie_url_format, series_url_format = fields
 
                 self.server            = server
                 self.username          = username
@@ -2292,17 +2294,19 @@ class IPTVPlayerApp(QMainWindow):
                 self.live_url_format   = live_url_format
                 self.movie_url_format  = movie_url_format
                 self.series_url_format = series_url_format
+                self.active_account_name = selected_startup_account
 
                 self.login()
 
-            elif data.startswith('m3u_plus|') and len(parts) >= 5:
-                m3u_url, live_url_format, movie_url_format, series_url_format = parts[1:5]
+            elif method == 'm3u_plus':
+                m3u_url, live_url_format, movie_url_format, series_url_format = fields
 
                 self.live_url_format   = live_url_format
                 self.movie_url_format  = movie_url_format
                 self.series_url_format = series_url_format
 
                 if self.extract_credentials_from_m3u_plus_url(m3u_url):
+                    self.active_account_name = selected_startup_account
                     self.login()
             else:
                 print(f"Skipping startup account '{selected_startup_account}': data is malformed.")

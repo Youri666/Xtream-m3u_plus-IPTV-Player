@@ -7,6 +7,7 @@ from iptv_player.config.accounts import (
     load_account,
     load_accounts,
     load_startup_account,
+    parse_account,
     save_account,
     save_startup_account,
 )
@@ -57,6 +58,18 @@ class AccountStorageTests(unittest.TestCase):
             self.assertTrue(delete_account(str(file_path), "Default"))
             self.assertEqual(load_startup_account(str(file_path)), "None")
             self.assertFalse(delete_account(str(file_path), "Missing"))
+
+    def test_parses_supported_accounts_and_rejects_malformed_data(self):
+        self.assertEqual(
+            parse_account("manual|host|user|password|live|movie|series"),
+            ("manual", ["host", "user", "password", "live", "movie", "series"]),
+        )
+        self.assertEqual(
+            parse_account("m3u_plus|url|live|movie|series"),
+            ("m3u_plus", ["url", "live", "movie", "series"]),
+        )
+        self.assertIsNone(parse_account("manual|missing|fields"))
+        self.assertIsNone(parse_account("unknown|value"))
 
 
 if __name__ == "__main__":

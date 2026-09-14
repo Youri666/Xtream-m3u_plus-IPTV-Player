@@ -72,6 +72,20 @@ def serialize_account(method, credentials):
     return "|".join((method, *credentials))
 
 
+def parse_account(serialized_account):
+    """Return a validated account method and fields from persisted text."""
+    parts = str(serialized_account or "").split("|")
+    expected_field_counts = {"manual": 6, "m3u_plus": 4}
+    if not parts or parts[0] not in expected_field_counts:
+        return None
+
+    method = parts[0]
+    field_count = expected_field_counts[method]
+    if len(parts) < field_count + 1:
+        return None
+    return method, parts[1:field_count + 1]
+
+
 def load_startup_account_from_config(config):
     return config.get("Startup credentials", "startup_credentials", fallback="None")
 

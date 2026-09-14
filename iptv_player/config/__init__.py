@@ -5,6 +5,7 @@ from .accounts import (
     load_account,
     load_accounts,
     load_startup_account,
+    parse_account,
     save_account,
     save_startup_account,
 )
@@ -22,6 +23,7 @@ __all__ = (
     "load_account",
     "load_accounts",
     "load_startup_account",
+    "parse_account",
     "macos_bundle_executable",
     "migrate_legacy_player_volume",
     "migrate_user_data_file",
