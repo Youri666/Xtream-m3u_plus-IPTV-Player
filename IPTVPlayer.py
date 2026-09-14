@@ -133,7 +133,8 @@ class IPTVPlayerApp(QMainWindow):
         os.makedirs(self.data_directory, exist_ok=True)
         self.user_data_file = path.join(self.data_directory, "userdata.ini")
         self.favorites_file = path.join(self.data_directory, "favorites.json")
-        self.cache_file = path.join(self.data_directory, "all_cached_data.json")
+        self.cache_file = path.join(self.data_directory, "provider_catalog_cache.json")
+        self.legacy_cache_file = path.join(self.data_directory, "all_cached_data.json")
 
         # The internal VLC UI runs in a second process. Commands are queued so
         # sending a large visible playlist can never block the main Qt event loop.

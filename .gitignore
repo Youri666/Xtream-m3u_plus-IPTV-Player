@@ -5,6 +5,7 @@ __pycache__/
 Pyinstaller/
 Raw IPTV data/
 all_cached_data.json
+provider_catalog_cache.*.json
 userdata.ini
 build/
 *.spec

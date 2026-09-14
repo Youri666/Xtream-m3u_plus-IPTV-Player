@@ -2,6 +2,7 @@
 
 import hashlib
 import time
+from pathlib import Path
 
 from iptv_player.storage import read_json_mapping, write_json_file
 
@@ -14,6 +15,14 @@ def account_cache_key(server, username):
     """Identify a provider account without storing its credentials in the cache."""
     identity = f"{str(server).rstrip('/').casefold()}\0{username}"
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
+def account_cache_file(legacy_filename, expected_account_key):
+    """Return the dedicated catalog-cache filename for one provider account."""
+    legacy_path = Path(legacy_filename)
+    return legacy_path.with_name(
+        f"{legacy_path.stem}.{expected_account_key}{legacy_path.suffix}"
+    )
 
 
 def load_catalog_cache(filename):

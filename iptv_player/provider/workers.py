@@ -4,6 +4,7 @@ import requests
 from PyQt5.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot
 
 from iptv_player.provider.cache import (
+    account_cache_file,
     account_cache_key,
     build_catalog_cache,
     catalog_cache_is_fresh,
@@ -130,11 +131,27 @@ class FetchDataWorker(QRunnable):
             # Load only cache data belonging to this provider account. Older cache
             # files have no metadata and are refreshed once before becoming trusted.
             cached_data = {}
-            if self.catalog_cache_enabled and path.isfile(self.parent.cache_file):
+            cache_account_key = self._cache_account_key()
+            dedicated_cache_file = account_cache_file(
+                self.parent.cache_file, cache_account_key
+            )
+            cache_file_to_load = dedicated_cache_file
+            legacy_cache_file = getattr(
+                self.parent, 'legacy_cache_file', self.parent.cache_file
+            )
+            if (
+                not path.isfile(cache_file_to_load)
+                and path.isfile(legacy_cache_file)
+            ):
+                # A matching cache from V2/V3 schema 1 remains usable and is copied
+                # into the account-specific location on the next successful write.
+                cache_file_to_load = legacy_cache_file
+
+            if self.catalog_cache_enabled and path.isfile(cache_file_to_load):
                 print("Cache file is there")
 
                 print("Loading cached data")
-                cached_data = load_catalog_cache(self.parent.cache_file)
+                cached_data = load_catalog_cache(cache_file_to_load)
                 if not cached_data:
                     cached_data = {}
 
@@ -145,14 +162,14 @@ class FetchDataWorker(QRunnable):
 
             metadata = cached_data.get('_metadata', {})
             cache_matches_account = (
-                metadata.get('account_key') == self._cache_account_key()
+                metadata.get('account_key') == cache_account_key
             )
             cache_is_fresh = (
                 self.catalog_cache_enabled
                 and not self.force_provider_refresh
                 and catalog_cache_is_fresh(
                     cached_data,
-                    self._cache_account_key(),
+                    cache_account_key,
                     self.enabled_stream_types,
                     self.catalog_cache_max_age_hours,
                 )
@@ -229,17 +246,25 @@ class FetchDataWorker(QRunnable):
                 if self.catalog_cache_enabled:
                     cache_to_write = build_catalog_cache(
                         cached_data,
-                        self._cache_account_key(),
+                        cache_account_key,
                         categories_per_stream_type,
                         entries_per_stream_type,
                         self.enabled_stream_types,
                         catalog_fetch_complete,
                     )
                     try:
-                        write_catalog_cache(self.parent.cache_file, cache_to_write)
+                        write_catalog_cache(dedicated_cache_file, cache_to_write)
                     except OSError as error:
                         # Cache persistence must not discard data already fetched.
                         print(f"Failed writing provider cache: {error}")
+            if (
+                cache_is_fresh
+                and cache_file_to_load != dedicated_cache_file
+            ):
+                try:
+                    write_catalog_cache(dedicated_cache_file, cached_data)
+                except OSError as error:
+                    print(f"Failed migrating provider cache: {error}")
             self.signals.progress_bar.emit(80, 100, "Provider catalog ready")
 
             print("Preparing streaming data")

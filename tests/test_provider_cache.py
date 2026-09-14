@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from iptv_player.provider.cache import (
+    account_cache_file,
     account_cache_key,
     build_catalog_cache,
     catalog_cache_is_fresh,
@@ -34,6 +35,17 @@ class ProviderCacheTests(unittest.TestCase):
             self.account_key,
             account_cache_key("https://example.test", "another-user"),
         )
+
+    def test_each_account_uses_a_dedicated_cache_file(self):
+        base_file = Path("data") / "provider_catalog_cache.json"
+        first = account_cache_file(base_file, "first-account")
+        second = account_cache_file(base_file, "second-account")
+
+        self.assertEqual(
+            first,
+            Path("data") / "provider_catalog_cache.first-account.json",
+        )
+        self.assertNotEqual(first, second)
 
     def test_fresh_cache_requires_matching_account_and_all_enabled_data(self):
         self.assertTrue(
