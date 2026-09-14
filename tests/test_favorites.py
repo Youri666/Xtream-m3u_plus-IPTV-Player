@@ -43,19 +43,6 @@ class FavoriteStorageTests(unittest.TestCase):
                 [{"stream_id": 10, "favorite": True}],
             )
 
-    def test_initializes_empty_favorites_for_a_new_account(self):
-        with tempfile.TemporaryDirectory() as directory:
-            legacy_file = Path(directory) / "favorites.json"
-            dedicated_file = Path(directory) / "provider_favorites.account.json"
-
-            selected_file = migrate_legacy_favorites_file(
-                legacy_file, dedicated_file
-            )
-
-            self.assertEqual(selected_file, dedicated_file)
-            self.assertTrue(dedicated_file.is_file())
-            self.assertEqual(dedicated_file.read_text(encoding="utf-8"), "{}")
-
     def test_add_moves_existing_id_to_end_without_duplicates(self):
         with tempfile.TemporaryDirectory() as directory:
             file_path = Path(directory) / "favorites.json"

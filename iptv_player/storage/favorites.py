@@ -15,16 +15,10 @@ def account_favorites_file(base_filename, account_key):
 
 
 def migrate_legacy_favorites_file(legacy_filename, dedicated_filename):
-    """Move legacy favorites or initialize an empty account-specific file."""
+    """Move legacy favorites once and return the safe file to use."""
     legacy_path = Path(legacy_filename)
     dedicated_path = Path(dedicated_filename)
-    if dedicated_path.is_file():
-        return dedicated_path
-    if not legacy_path.is_file():
-        try:
-            write_json_file(dedicated_path, {})
-        except OSError:
-            pass
+    if dedicated_path.is_file() or not legacy_path.is_file():
         return dedicated_path
     try:
         dedicated_path.parent.mkdir(parents=True, exist_ok=True)
