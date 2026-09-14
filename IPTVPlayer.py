@@ -46,22 +46,23 @@ from iptv_player.constants import (
     REMEMBER_LIST_SORTING,
 )
 from iptv_player.config import (
+    AdvancedPreferences,
     INTERNAL_VLC_COMMAND,
     application_resource_path,
     load_account,
     load_account_id,
     load_auto_update_preference,
     load_content_preferences,
-    load_detailed_logging_preference,
+    load_advanced_preferences,
     load_player_preference,
     load_sorting_preference,
-    load_stream_status_preference,
     load_theme_preference,
     load_startup_account,
     migrate_legacy_player_volume,
     migrate_user_data_file,
     parse_account,
     save_auto_update_preference,
+    save_advanced_preferences,
     save_content_preferences,
     save_player_preference,
     save_sorting_preference,
@@ -109,11 +110,6 @@ from iptv_player.updater import fetch_latest_release, is_newer_version
 from iptv_player.provider.network import (
     DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL,
     DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS,
-    DEFAULT_CONNECTION_TIMEOUT,
-    DEFAULT_LIVE_STATUS_RETRIES,
-    DEFAULT_LIVE_STATUS_TIMEOUT,
-    DEFAULT_READ_TIMEOUT,
-    MAX_LIVE_STATUS_RETRIES,
     NETWORK_SETTINGS,
 )
 from iptv_player.provider.workers import (
@@ -2002,20 +1998,6 @@ class IPTVPlayerApp(QMainWindow):
         self.settings_layout.addWidget(self.advanced_settings_group_box,     5, 0, 1, 2)
         self.settings_layout.addWidget(self.updates_group_box,               6, 0, 1, 2)
 
-    def load_default_user_agent(self):
-        #Read userdata config file
-        config = configparser.ConfigParser()
-        try:
-            config.read(self.user_data_file)
-        except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
-
-        #Check if defined in config. Otherwise set to default
-        if config.has_option('User-Agent', 'user-agent'):
-            self.current_user_agent = config['User-Agent']['user-agent']
-        else:
-            self.current_user_agent = DEFAULT_USER_AGENT_HEADER
-
     def load_default_content(self):
         self.content_enabled = load_content_preferences(self.user_data_file)
 
@@ -2142,46 +2124,23 @@ class IPTVPlayerApp(QMainWindow):
                              account_auto_refresh_enabled, catalog_cache_enabled,
                              catalog_cache_max_age_hours, detailed_logging_enabled):
         """Apply and persist all advanced provider settings in one operation."""
-        self.current_user_agent = user_agent or DEFAULT_USER_AGENT_HEADER
-        NETWORK_SETTINGS.connection_timeout = connection_timeout
-        NETWORK_SETTINGS.read_timeout = read_timeout
-        NETWORK_SETTINGS.live_status_timeout = live_status_timeout
-        NETWORK_SETTINGS.live_status_retries = live_status_retries
-        self.stream_status_enabled = stream_status_enabled
-        self.account_info_refresh_interval = account_refresh_interval
-        self.account_info_auto_refresh_enabled = account_auto_refresh_enabled
-        self.catalog_cache_enabled = catalog_cache_enabled
-        self.catalog_cache_max_age_hours = catalog_cache_max_age_hours
-        self.detailed_logging_enabled = detailed_logging_enabled
-        self._apply_stream_status_visibility()
-        self._update_account_info_timer()
-
-        config = configparser.ConfigParser()
-        try:
-            config.read(self.user_data_file)
-        except (configparser.Error, UnicodeDecodeError):
-            config = configparser.ConfigParser()
-
-        config['User-Agent'] = {'user-agent': self.current_user_agent}
-        config['Timeouts'] = {
-            'CONNECTION_TIMEOUT': str(connection_timeout),
-            'READ_TIMEOUT': str(read_timeout),
-            'LIVE_STATUS_TIMEOUT': str(live_status_timeout),
-            'LIVE_STATUS_RETRIES': str(live_status_retries)
-        }
-        config['StreamStatus'] = {'enabled': str(stream_status_enabled)}
-        config['AccountInfo'] = {
-            'refresh_interval': str(account_refresh_interval),
-            'auto_refresh_enabled': str(account_auto_refresh_enabled)
-        }
-        config['CatalogCache'] = {
-            'enabled': str(catalog_cache_enabled),
-            'max_age_hours': str(catalog_cache_max_age_hours)
-        }
-        config['Logging'] = {'detailed': str(detailed_logging_enabled)}
+        preferences = AdvancedPreferences(
+            user_agent=user_agent or DEFAULT_USER_AGENT_HEADER,
+            connection_timeout=connection_timeout,
+            read_timeout=read_timeout,
+            live_status_timeout=live_status_timeout,
+            live_status_retries=live_status_retries,
+            stream_status_enabled=stream_status_enabled,
+            account_refresh_interval=account_refresh_interval,
+            account_auto_refresh_enabled=account_auto_refresh_enabled,
+            catalog_cache_enabled=catalog_cache_enabled,
+            catalog_cache_max_age_hours=catalog_cache_max_age_hours,
+            detailed_logging_enabled=detailed_logging_enabled,
+        )
 
         try:
-            write_config_file(self.user_data_file, config)
+            save_advanced_preferences(self.user_data_file, preferences)
+            self._apply_advanced_preferences(preferences)
             set_detailed_logging(detailed_logging_enabled)
             self.animate_progress(0, 100, "Network settings saved")
         except OSError as e:
@@ -2189,83 +2148,31 @@ class IPTVPlayerApp(QMainWindow):
             self.animate_progress(0, 100, f"Failed saving network settings: {e}", "error")
 
     def load_default_network_options(self):
+        """Load and apply the persisted Advanced settings snapshot."""
         try:
-            self.detailed_logging_enabled = load_detailed_logging_preference(
-                self.user_data_file
+            self._apply_advanced_preferences(
+                load_advanced_preferences(self.user_data_file)
             )
-            # Read persisted network values. A malformed file falls back to the
-            # in-code defaults instead of preventing the application from starting.
-            config = configparser.ConfigParser()
-            try:
-                config.read(self.user_data_file)
-            except (configparser.Error, UnicodeDecodeError):
-                config = configparser.ConfigParser()
-
-            # Clamp manually edited values to the same ranges as the dialog. Each
-            # value falls back independently, so one bad entry cannot discard the rest.
-            def read_bounded_integer(option, default, minimum, maximum):
-                try:
-                    value = config.getint("Timeouts", option, fallback=default)
-                except (ValueError, configparser.Error):
-                    value = default
-                return max(minimum, min(value, maximum))
-
-            if config.has_section("Timeouts"):
-                NETWORK_SETTINGS.connection_timeout = read_bounded_integer(
-                    "CONNECTION_TIMEOUT", DEFAULT_CONNECTION_TIMEOUT, 1, 999
-                )
-                NETWORK_SETTINGS.read_timeout = read_bounded_integer(
-                    "READ_TIMEOUT", DEFAULT_READ_TIMEOUT, 1, 999
-                )
-                NETWORK_SETTINGS.live_status_timeout = read_bounded_integer(
-                    "LIVE_STATUS_TIMEOUT", DEFAULT_LIVE_STATUS_TIMEOUT, 1, 999
-                )
-                NETWORK_SETTINGS.live_status_retries = read_bounded_integer(
-                    "LIVE_STATUS_RETRIES", DEFAULT_LIVE_STATUS_RETRIES,
-                    0, MAX_LIVE_STATUS_RETRIES
-                )
-
-            try:
-                self.account_info_refresh_interval = config.getint(
-                    'AccountInfo', 'refresh_interval',
-                    fallback=DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL
-                )
-            except (ValueError, configparser.Error):
-                self.account_info_refresh_interval = (
-                    DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL
-                )
-            self.account_info_refresh_interval = max(
-                10, min(self.account_info_refresh_interval, 3600)
-            )
-            try:
-                self.account_info_auto_refresh_enabled = config.getboolean(
-                    'AccountInfo', 'auto_refresh_enabled', fallback=True
-                )
-            except (ValueError, configparser.Error):
-                self.account_info_auto_refresh_enabled = True
-            self._update_account_info_timer()
-
-            try:
-                self.catalog_cache_enabled = config.getboolean(
-                    'CatalogCache', 'enabled', fallback=True
-                )
-            except (ValueError, configparser.Error):
-                self.catalog_cache_enabled = True
-            try:
-                self.catalog_cache_max_age_hours = config.getint(
-                    'CatalogCache', 'max_age_hours',
-                    fallback=DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
-                )
-            except (ValueError, configparser.Error):
-                self.catalog_cache_max_age_hours = (
-                    DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
-                )
-            self.catalog_cache_max_age_hours = max(
-                1, min(self.catalog_cache_max_age_hours, 720)
-            )
-
         except Exception as e:
             print(f"Failed loading default timeout values: {e}")
+
+    def _apply_advanced_preferences(self, preferences):
+        """Apply advanced preferences to the UI and shared network runtime."""
+        self.current_user_agent = preferences.user_agent
+        NETWORK_SETTINGS.connection_timeout = preferences.connection_timeout
+        NETWORK_SETTINGS.read_timeout = preferences.read_timeout
+        NETWORK_SETTINGS.live_status_timeout = preferences.live_status_timeout
+        NETWORK_SETTINGS.live_status_retries = preferences.live_status_retries
+        self.stream_status_enabled = preferences.stream_status_enabled
+        self.account_info_refresh_interval = preferences.account_refresh_interval
+        self.account_info_auto_refresh_enabled = (
+            preferences.account_auto_refresh_enabled
+        )
+        self.catalog_cache_enabled = preferences.catalog_cache_enabled
+        self.catalog_cache_max_age_hours = preferences.catalog_cache_max_age_hours
+        self.detailed_logging_enabled = preferences.detailed_logging_enabled
+        self._apply_stream_status_visibility()
+        self._update_account_info_timer()
 
     def check_for_updates(self, enable_update_msg):
         try:
@@ -2371,17 +2278,11 @@ class IPTVPlayerApp(QMainWindow):
         #Load category exclusions before provider data populates the three columns
         self._load_hidden_categories()
 
-        #Load default user agent
-        self.load_default_user_agent()
-
         #Load independent LIVE, Movies, and Series availability
         self.load_default_content()
 
         #Load default auto update checker
         self.load_default_auto_update()
-
-        #Load stream-status toggle (issue #74)
-        self.load_default_stream_status()
 
         #Apply persisted theme (Light / Dark / System) — default System
         self.load_default_theme()
@@ -2504,13 +2405,6 @@ class IPTVPlayerApp(QMainWindow):
                 )
         except Exception:
             pass
-
-    def load_default_stream_status(self):
-        self.stream_status_enabled = load_stream_status_preference(
-            self.user_data_file
-        )
-
-        self._apply_stream_status_visibility()
 
     def toggle_content_type(self, stream_type, state):
         """Persist one content choice and immediately update tab visibility."""

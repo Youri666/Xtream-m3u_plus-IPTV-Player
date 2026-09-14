@@ -1,5 +1,11 @@
 """Configuration storage and platform path helpers."""
 
+from .advanced import (
+    AdvancedPreferences,
+    load_advanced_preferences,
+    save_advanced_preferences,
+)
+
 from .accounts import (
     account_name_error,
     delete_account,
@@ -38,11 +44,13 @@ from .preferences import (
 
 __all__ = (
     "INTERNAL_VLC_COMMAND",
+    "AdvancedPreferences",
     "PlayerPreference",
     "account_name_error",
     "application_resource_path",
     "delete_account",
     "load_account",
+    "load_advanced_preferences",
     "load_account_id",
     "load_accounts",
     "load_auto_update_preference",
@@ -59,6 +67,7 @@ __all__ = (
     "parse_account",
     "read_config_file",
     "save_account",
+    "save_advanced_preferences",
     "save_auto_update_preference",
     "save_content_preferences",
     "save_detailed_logging_preference",
