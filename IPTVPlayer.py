@@ -3230,7 +3230,32 @@ class IPTVPlayerApp(QMainWindow):
             # it as non-cacheable so switching away does not preserve the old rows.
             active_key = self.active_category_view_key.get(stream_type)
             if active_key and active_key[0] == 'favorites':
-                self.active_category_view_key[stream_type] = None
+                if not is_fav:
+                    # The selected row no longer belongs in the visible Favorites
+                    # view. Remove it immediately instead of making the user leave
+                    # the category and return before the invalidated cache is seen.
+                    list_widget = self.streaming_list_widgets[stream_type]
+                    removed_row = list_widget.currentRow()
+                    removed_item = list_widget.takeItem(removed_row)
+                    del removed_item
+                    self.currently_loaded_streams[stream_type] = [
+                        entry
+                        for entry in self.currently_loaded_streams[stream_type]
+                        if entry.get(
+                            'series_id' if stream_type == 'Series' else 'stream_id'
+                        ) != stream_id
+                    ]
+                    self.prev_clicked_streaming_item = 0
+                    if list_widget.count() == 0:
+                        list_widget.addItem("No items in list...")
+
+                    # The attached rows now represent the newly computed Favorites
+                    # view and may safely be cached when another category is opened.
+                    self.active_category_view_key[stream_type] = (
+                        self._category_view_key(
+                            stream_type, self.fav_categories_text
+                        )
+                    )
 
             self._refresh_category_count_labels(stream_type)
 
