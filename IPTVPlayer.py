@@ -46,7 +46,6 @@ from iptv_player.config import (
     load_account,
     load_account_id,
     load_startup_account,
-    macos_bundle_executable,
     migrate_legacy_player_volume,
     migrate_user_data_file,
     parse_account,
@@ -85,6 +84,10 @@ from iptv_player.provider.cache import account_cache_key
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 from iptv_player.provider.credentials import parse_xtream_m3u_url
 from iptv_player.player_process import run_embedded_player_process
+from iptv_player.external_player import (
+    ExternalPlayerNotExecutableError,
+    launch_external_player,
+)
 from iptv_player.provider.network import (
     DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL,
     DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS,
@@ -110,8 +113,6 @@ from iptv_player.provider.workers import (
 # ordered migration in migrate_user_data_file(). It is intentionally independent from
 # CURRENT_VERSION because most application releases do not change persisted data.
 is_windows  = sys.platform.startswith('win')
-is_mac      = sys.platform.startswith('darwin')
-is_linux    = sys.platform.startswith('linux')
 
 
 
@@ -3931,68 +3932,16 @@ class IPTVPlayerApp(QMainWindow):
                     self._play_embedded(url)
                     return
 
-                ua = (self.current_user_agent or "").strip()
-                exe_lower = self.external_player_command.lower()
+                launch_external_player(
+                    self.external_player_command,
+                    url,
+                    user_agent=self.current_user_agent,
+                )
 
-                if is_linux:
-                    #Ensure the external player command is executable
-                    if not os.access(self.external_player_command, os.X_OK):
-                        self.animate_progress(0, 100, "Selected player is not executable", "error")
-                        return
-
-                    # Linux: list-form Popen is safe (no shell quirks); each player
-                    # parses its own argv cleanly.
-                    player_cmd = [self.external_player_command]
-                    if exe_lower.endswith("vlc") and ua:
-                        player_cmd.append(f"--http-user-agent={ua}")
-                    elif exe_lower.endswith(("mpv", "mpv.com")) and ua:
-                        player_cmd.append(f"--user-agent={ua}")
-                    player_cmd.append(url)
-                    subprocess.Popen(player_cmd)
-
-                elif is_windows:
-                    # Windows: we build a single command string so each player's
-                    # quoting expectations are met EXACTLY — list2cmdline wraps each
-                    # arg in outer quotes, which breaks PotPlayer's `/key="value"`
-                    # parser (it expects the quotes INSIDE the value, not around the
-                    # whole token). See issue #47 and the regression the user reported
-                    # after the first round of fixes.
-                    exe_q = f'"{self.external_player_command}"'
-                    url_q = f'"{url}"'
-
-                    if "potplayermini64.exe" in exe_lower or "potplayer" in exe_lower:
-                        ua_arg = f' /user_agent="{ua}"' if ua else ""
-                        player_cmd = f'{exe_q} {url_q}{ua_arg}'
-
-                    elif exe_lower.endswith(("mpv.exe", "mpv.com")) or "\\mpv\\" in exe_lower:
-                        ua_arg = f' --user-agent="{ua}"' if ua else ""
-                        player_cmd = f'{exe_q}{ua_arg} {url_q}'
-
-                    elif exe_lower.endswith("vlc.exe"):
-                        ua_arg = f' --http-user-agent="{ua}"' if ua else ""
-                        player_cmd = f'{exe_q}{ua_arg} {url_q}'
-
-                    else:
-                        # MPC-HC, MPC-BE, generic players: just exe + URL.
-                        player_cmd = f'{exe_q} {url_q}'
-
-                    subprocess.Popen(player_cmd)
-
-                elif is_mac:
-                    # Finder exposes applications as .app bundles, but subprocess
-                    # must launch the executable declared inside the bundle.
-                    player_executable = self.external_player_command
-                    if player_executable.lower().endswith(".app") and path.isdir(player_executable):
-                        player_executable = macos_bundle_executable(player_executable)
-                    player_cmd = [player_executable]
-                    if path.basename(player_executable).lower() == "vlc" and ua:
-                        player_cmd.append(f"--http-user-agent={ua}")
-                    player_cmd.append(url)
-                    subprocess.Popen(player_cmd)
-
-                else:
-                    subprocess.Popen([self.external_player_command, url])
-
+            except ExternalPlayerNotExecutableError:
+                self.animate_progress(
+                    0, 100, "Selected player is not executable", "error"
+                )
             except Exception as e:
                 import traceback
                 self.animate_progress(0, 100, "Failed playing stream", "error")

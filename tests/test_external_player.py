@@ -1,0 +1,101 @@
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from iptv_player.external_player import (
+    ExternalPlayerNotExecutableError,
+    external_player_command,
+    launch_external_player,
+)
+
+
+class ExternalPlayerCommandTests(unittest.TestCase):
+    def test_windows_vlc_receives_user_agent_before_stream_url(self):
+        command = external_player_command(
+            r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+            "http://example.test/live/1",
+            "IPTV Player",
+            platform="win32",
+        )
+
+        self.assertEqual(
+            command,
+            '"C:\\Program Files\\VideoLAN\\VLC\\vlc.exe" '
+            '--http-user-agent="IPTV Player" "http://example.test/live/1"',
+        )
+
+    def test_windows_generic_player_uses_only_executable_and_url(self):
+        command = external_player_command(
+            r"C:\Players\player.exe",
+            "http://example.test/movie/2",
+            "Ignored for generic players",
+            platform="win32",
+        )
+
+        self.assertEqual(
+            command,
+            '"C:\\Players\\player.exe" "http://example.test/movie/2"',
+        )
+
+    def test_linux_rejects_non_executable_player(self):
+        with patch("iptv_player.external_player.os.access", return_value=False):
+            with self.assertRaises(ExternalPlayerNotExecutableError):
+                external_player_command(
+                    "/usr/bin/vlc", "http://example.test/live/1", platform="linux"
+                )
+
+    def test_linux_mpv_receives_user_agent(self):
+        with patch("iptv_player.external_player.os.access", return_value=True):
+            command = external_player_command(
+                "/usr/bin/mpv",
+                "http://example.test/live/1",
+                "IPTV Player",
+                platform="linux",
+            )
+
+        self.assertEqual(
+            command,
+            [
+                "/usr/bin/mpv",
+                "--user-agent=IPTV Player",
+                "http://example.test/live/1",
+            ],
+        )
+
+    def test_macos_resolves_application_bundle_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory) / "VLC.app"
+            bundle.mkdir()
+            with patch(
+                "iptv_player.external_player.macos_bundle_executable",
+                return_value="/Applications/VLC.app/Contents/MacOS/VLC",
+            ):
+                command = external_player_command(
+                    str(bundle),
+                    "http://example.test/live/1",
+                    "IPTV Player",
+                    platform="darwin",
+                )
+
+        self.assertEqual(
+            command,
+            [
+                "/Applications/VLC.app/Contents/MacOS/VLC",
+                "--http-user-agent=IPTV Player",
+                "http://example.test/live/1",
+            ],
+        )
+
+    def test_launcher_passes_constructed_command_to_subprocess(self):
+        with patch(
+            "iptv_player.external_player.external_player_command",
+            return_value=["player", "stream"],
+        ), patch("iptv_player.external_player.subprocess.Popen") as popen:
+            launch_external_player("player", "stream")
+
+        popen.assert_called_once_with(["player", "stream"])
+
+
+if __name__ == "__main__":
+    unittest.main()
