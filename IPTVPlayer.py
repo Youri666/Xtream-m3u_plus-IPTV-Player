@@ -378,6 +378,14 @@ class IPTVPlayerApp(QMainWindow):
         # window is still being constructed.
         QTimer.singleShot(0, self.load_startup_credentials)
 
+    def set_active_account(self, name):
+        """Store the active account label and expose it in the window title."""
+        self.active_account_name = str(name or "").strip()
+        title = f"IPTV Player {CURRENT_VERSION}"
+        if self.active_account_name:
+            title = f"{title} — {self.active_account_name}"
+        self.setWindowTitle(title)
+
     def _init_resource_paths(self):
         """Resolve all packaged image assets from one declarative mapping."""
         filenames = {
@@ -2298,7 +2306,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.live_url_format   = live_url_format
                 self.movie_url_format  = movie_url_format
                 self.series_url_format = series_url_format
-                self.active_account_name = selected_startup_account
+                self.set_active_account(selected_startup_account)
 
                 self.login()
 
@@ -2310,7 +2318,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.series_url_format = series_url_format
 
                 if self.extract_credentials_from_m3u_plus_url(m3u_url):
-                    self.active_account_name = selected_startup_account
+                    self.set_active_account(selected_startup_account)
                     self.login()
             else:
                 print(f"Skipping startup account '{selected_startup_account}': data is malformed.")

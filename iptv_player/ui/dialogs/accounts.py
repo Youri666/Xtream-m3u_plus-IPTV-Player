@@ -183,7 +183,7 @@ class AccountManager(QtWidgets.QDialog):
             self.parent.live_url_format = live_url_format
             self.parent.movie_url_format = movie_url_format
             self.parent.series_url_format = series_url_format
-            self.parent.active_account_name = name
+            self.parent.set_active_account(name)
             self.parent.login()
             return True
 
@@ -200,7 +200,7 @@ class AccountManager(QtWidgets.QDialog):
             self.parent.series_url_format = series_url_format
 
             if self.parent.extract_credentials_from_m3u_plus_url(m3u_url):
-                self.parent.active_account_name = name
+                self.parent.set_active_account(name)
                 self.parent.login()
                 return True
 
