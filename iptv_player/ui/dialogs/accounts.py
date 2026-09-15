@@ -10,13 +10,9 @@ from PyQt5.QtWidgets import (
 
 from iptv_player.config import (
     account_name_error,
-    delete_account,
     load_account,
     load_accounts,
-    load_startup_account,
-    parse_account,
     save_account,
-    save_startup_account,
 )
 
 class AccountManager(QtWidgets.QDialog):
@@ -28,24 +24,13 @@ class AccountManager(QtWidgets.QDialog):
 
         account_manager_layout = QtWidgets.QGridLayout(self)
 
-        #Create startup account label with options widget
-        self.startup_account_label = QLabel("Startup account:")
-
-        self.startup_account_options = QtWidgets.QComboBox()
-        self.startup_account_options.currentTextChanged.connect(self.set_startup_credentials)
-
         #Create accounts list
         self.accounts_list = QtWidgets.QListWidget()
-        self.accounts_list.itemDoubleClicked.connect(self.double_click_account)
 
         #Create buttons for adding, selecting and deleting accounts
         self.add_button = QPushButton("Add")
         self.add_button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogNewFolder))
         self.add_button.clicked.connect(self.add_account)
-
-        self.select_button = QPushButton("Select")
-        self.select_button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DialogYesButton))
-        self.select_button.clicked.connect(self.select_account)
 
         self.edit_button = QPushButton("Edit")
         self.edit_button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogDetailedView))
@@ -56,37 +41,19 @@ class AccountManager(QtWidgets.QDialog):
         self.delete_button.clicked.connect(self.delete_account)
 
         #Add widgets to layout
-        account_manager_layout.addWidget(self.startup_account_label,        0, 0)
-        account_manager_layout.addWidget(self.startup_account_options,      0, 1, 1, 2)
-        account_manager_layout.addWidget(self.accounts_list,                1, 0, 1, 4)
-        account_manager_layout.addWidget(self.add_button,                   2, 0)
-        account_manager_layout.addWidget(self.select_button,                2, 1)
-        account_manager_layout.addWidget(self.edit_button,                  2, 2)
-        account_manager_layout.addWidget(self.delete_button,                2, 3)
+        account_manager_layout.addWidget(self.accounts_list,                0, 0, 1, 3)
+        account_manager_layout.addWidget(self.add_button,                   1, 0)
+        account_manager_layout.addWidget(self.edit_button,                  1, 1)
+        account_manager_layout.addWidget(self.delete_button,                1, 2)
 
         #Load saved accounts from .ini file
         self.load_saved_accounts()
 
-    def set_startup_credentials(self):
-        selected_item = self.startup_account_options.currentText()
-        save_startup_account(self.parent.user_data_file, selected_item)
-
     def load_saved_accounts(self):
-        self.startup_account_options.currentTextChanged.disconnect(self.set_startup_credentials)
-
         self.accounts_list.clear()
-        self.startup_account_options.clear()
-        self.startup_account_options.addItem("None")
 
         for name in load_accounts(self.parent.user_data_file):
             self.accounts_list.addItem(name)
-            self.startup_account_options.addItem(name)
-
-        selected_name = load_startup_account(self.parent.user_data_file)
-        index = self.startup_account_options.findText(selected_name)
-        self.startup_account_options.setCurrentIndex(max(0, index))
-
-        self.startup_account_options.currentTextChanged.connect(self.set_startup_credentials)
 
     def edit_account(self):
         selected_item = self.accounts_list.currentItem()
@@ -121,7 +88,7 @@ class AccountManager(QtWidgets.QDialog):
                         if editing_active_account:
                             # Reapply changed URLs and credentials immediately so
                             # the in-memory catalog never keeps stale stream links.
-                            self._activate_account(updated_name)
+                            self.parent.activate_saved_account(updated_name)
 
     def add_account(self):
         dialog = AccountDialog(self, AccountDialog.MODE_ADD)
@@ -152,71 +119,13 @@ class AccountManager(QtWidgets.QDialog):
             old_name=credentials_dict.get('old_name'),
         )
 
-    def select_account(self):
-        selected_item = self.accounts_list.currentItem()
-
-        if selected_item and self._activate_account(selected_item.text()):
-            self.accept()
-
-    def _activate_account(self, name):
-        """Load one saved account into the application and refresh its catalog."""
-        parsed_account = parse_account(
-            load_account(self.parent.user_data_file, name)
-        )
-        if parsed_account is None:
-            return False
-        method, fields = parsed_account
-
-        if method == "manual":
-            (
-                server,
-                username,
-                password,
-                live_url_format,
-                movie_url_format,
-                series_url_format,
-            ) = fields
-
-            self.parent.server = server
-            self.parent.username = username
-            self.parent.password = password
-            self.parent.live_url_format = live_url_format
-            self.parent.movie_url_format = movie_url_format
-            self.parent.series_url_format = series_url_format
-            self.parent.set_active_account(name)
-            self.parent.login()
-            return True
-
-        if method == "m3u_plus":
-            (
-                m3u_url,
-                live_url_format,
-                movie_url_format,
-                series_url_format,
-            ) = fields
-
-            self.parent.live_url_format = live_url_format
-            self.parent.movie_url_format = movie_url_format
-            self.parent.series_url_format = series_url_format
-
-            if self.parent.extract_credentials_from_m3u_plus_url(m3u_url):
-                self.parent.set_active_account(name)
-                self.parent.login()
-                return True
-
-        return False
-
-    def double_click_account(self, item):
-        self.select_account()
-        self.accept()
-
     def delete_account(self):
         selected_item = self.accounts_list.currentItem()
 
         if selected_item:
             name = selected_item.text()
 
-            if delete_account(self.parent.user_data_file, name):
+            if self.parent.delete_saved_account(name):
                 self.load_saved_accounts()
 
 class AccountDialog(QtWidgets.QDialog):

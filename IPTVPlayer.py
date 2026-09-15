@@ -49,8 +49,10 @@ from iptv_player.config import (
     INTERNAL_VLC_COMMAND,
     InternalPlayerPreferences,
     application_resource_path,
+    delete_account,
     load_account,
     load_account_id,
+    load_accounts,
     load_auto_update_preference,
     load_content_preferences,
     load_advanced_preferences,
@@ -68,6 +70,7 @@ from iptv_player.config import (
     save_internal_player_preferences,
     save_player_preference,
     save_sorting_preference,
+    save_startup_account,
     save_theme_preference,
     writable_data_directory,
     write_config_file,
@@ -97,6 +100,7 @@ from iptv_player.storage import (
     load_provider_preferences,
     migrate_legacy_favorites_file,
     provider_preferences_file,
+    remove_account_data_files,
     save_provider_preferences,
     set_favorite,
 )
@@ -430,8 +434,105 @@ class IPTVPlayerApp(QMainWindow):
         if self.active_account_name:
             title = f"{title} — {self.active_account_name}"
         self.setWindowTitle(title)
+        self._refresh_account_selectors(self.active_account_name)
         self._load_hidden_categories()
         self._load_account_sort_preferences()
+
+    def activate_saved_account(self, name):
+        """Load one saved account and refresh its provider catalog."""
+        parsed_account = parse_account(load_account(self.user_data_file, name))
+        if parsed_account is None:
+            return False
+
+        method, fields = parsed_account
+        if method == "manual":
+            (
+                self.server,
+                self.username,
+                self.password,
+                self.live_url_format,
+                self.movie_url_format,
+                self.series_url_format,
+            ) = fields
+        elif method == "m3u_plus":
+            (
+                m3u_url,
+                self.live_url_format,
+                self.movie_url_format,
+                self.series_url_format,
+            ) = fields
+            if not self.extract_credentials_from_m3u_plus_url(m3u_url):
+                return False
+        else:
+            return False
+
+        self.set_active_account(name)
+        self.login()
+        return True
+
+    def delete_saved_account(self, name):
+        """Delete a saved account and every JSON file owned by its stable id."""
+        account_id = load_account_id(self.user_data_file, name)
+        if not account_id or not delete_account(self.user_data_file, name):
+            return False
+
+        failures = remove_account_data_files(
+            account_id,
+            self.cache_file,
+            self.favorites_base_file,
+            self.provider_preferences_base_file,
+        )
+        for filename, error in failures:
+            logging.warning(
+                "Could not delete account data file %s: %s", filename, error
+            )
+        return True
+
+    def _refresh_account_selectors(self, preferred_active_name=None):
+        """Synchronize startup and active account selectors without activating one."""
+        active_selector = getattr(self, "account_selector", None)
+        startup_selector = getattr(self, "startup_account_selector", None)
+        if active_selector is None or startup_selector is None:
+            return
+
+        account_names = list(load_accounts(self.user_data_file))
+        startup_name = load_startup_account(self.user_data_file)
+        active_selector.blockSignals(True)
+        startup_selector.blockSignals(True)
+        active_selector.clear()
+        startup_selector.clear()
+        startup_selector.addItem("None")
+        if account_names:
+            active_selector.addItems(account_names)
+            startup_selector.addItems(account_names)
+            selected_name = preferred_active_name or self.active_account_name
+            active_index = active_selector.findText(
+                selected_name, Qt.MatchFixedString
+            )
+            startup_index = startup_selector.findText(
+                startup_name, Qt.MatchFixedString
+            )
+            active_selector.setCurrentIndex(active_index)
+            startup_selector.setCurrentIndex(max(0, startup_index))
+            active_selector.setEnabled(True)
+            startup_selector.setEnabled(True)
+        else:
+            active_selector.addItem("No accounts configured")
+            active_selector.setEnabled(False)
+            startup_selector.setEnabled(False)
+        active_selector.blockSignals(False)
+        startup_selector.blockSignals(False)
+
+    def _startup_account_changed(self, name):
+        """Persist the account chosen for automatic loading at startup."""
+        save_startup_account(self.user_data_file, name)
+
+    def _quick_account_changed(self, name):
+        """Activate the account explicitly chosen from the Settings selector."""
+        if not name or name == self.active_account_name:
+            return
+        if not self.activate_saved_account(name):
+            self._refresh_account_selectors(self.active_account_name)
 
     def _reset_provider_view_state(self):
         """Discard every catalog and Qt item reference before changing accounts."""
@@ -1758,6 +1859,44 @@ class IPTVPlayerApp(QMainWindow):
         self.address_book_button.setToolTip("Manage IPTV accounts")
         self.address_book_button.clicked.connect(self.open_address_book)
 
+        self.account_selector = QtWidgets.QComboBox()
+        self.account_selector.setPlaceholderText("Select an IPTV account…")
+        self.account_selector.setToolTip("Switch to another IPTV account")
+        self.account_selector.setMinimumContentsLength(18)
+        self.account_selector.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.account_selector.setMinimumWidth(220)
+        self.account_selector.setMaximumWidth(320)
+        self.account_selector.currentTextChanged.connect(
+            self._quick_account_changed
+        )
+
+        self.startup_account_selector = QtWidgets.QComboBox()
+        self.startup_account_selector.setToolTip(
+            "Choose the IPTV account loaded automatically at startup"
+        )
+        self.startup_account_selector.setMinimumContentsLength(14)
+        self.startup_account_selector.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.startup_account_selector.setMinimumWidth(180)
+        self.startup_account_selector.setMaximumWidth(280)
+        self.startup_account_selector.currentTextChanged.connect(
+            self._startup_account_changed
+        )
+        self._refresh_account_selectors(load_startup_account(self.user_data_file))
+
+        self.account_controls = QWidget()
+        account_controls_layout = QHBoxLayout(self.account_controls)
+        account_controls_layout.setContentsMargins(0, 0, 0, 0)
+        account_controls_layout.setSpacing(8)
+        account_controls_layout.addWidget(self.address_book_button, 1)
+        account_controls_layout.addWidget(QLabel("Startup account:"))
+        account_controls_layout.addWidget(self.startup_account_selector)
+        account_controls_layout.addWidget(QLabel("Active account:"))
+        account_controls_layout.addWidget(self.account_selector)
+
         # Keep both player choices in one compact group. The radio buttons make the
         # active mode explicit, while the read-only field exposes the external path
         # without forcing the Settings tab to display a full-width status sentence.
@@ -1895,7 +2034,7 @@ class IPTVPlayerApp(QMainWindow):
         updates_layout.addStretch()
 
         # Keep the Settings page in the exact functional order shown to the user.
-        self.settings_layout.addWidget(self.address_book_button,             0, 0, 1, 2)
+        self.settings_layout.addWidget(self.account_controls,                0, 0, 1, 2)
         self.settings_layout.addWidget(self.content_group_box,               1, 0, 1, 2)
         self.settings_layout.addWidget(self.window_behavior_group_box,       2, 0, 1, 2)
         self.settings_layout.addWidget(self.sorting_group_box,               3, 0, 1, 2)
@@ -2148,7 +2287,6 @@ class IPTVPlayerApp(QMainWindow):
         # the app right after the login screen (issue #92), so every access is guarded.
         try:
             selected_startup_account = load_startup_account(self.user_data_file)
-            data = load_account(self.user_data_file, selected_startup_account)
         except (configparser.Error, UnicodeDecodeError) as e:
             print(f"Failed reading user data file at startup: {e}")
             return
@@ -2156,37 +2294,8 @@ class IPTVPlayerApp(QMainWindow):
         if not selected_startup_account or selected_startup_account == 'None':
             return
 
-        parsed_account = parse_account(data)
-        if parsed_account is None:
-            return
-
         try:
-            method, fields = parsed_account
-
-            if method == 'manual':
-                server, username, password, live_url_format, movie_url_format, series_url_format = fields
-
-                self.server            = server
-                self.username          = username
-                self.password          = password
-                self.live_url_format   = live_url_format
-                self.movie_url_format  = movie_url_format
-                self.series_url_format = series_url_format
-                self.set_active_account(selected_startup_account)
-
-                self.login()
-
-            elif method == 'm3u_plus':
-                m3u_url, live_url_format, movie_url_format, series_url_format = fields
-
-                self.live_url_format   = live_url_format
-                self.movie_url_format  = movie_url_format
-                self.series_url_format = series_url_format
-
-                if self.extract_credentials_from_m3u_plus_url(m3u_url):
-                    self.set_active_account(selected_startup_account)
-                    self.login()
-            else:
+            if not self.activate_saved_account(selected_startup_account):
                 print(f"Skipping startup account '{selected_startup_account}': data is malformed.")
         except Exception as e:
             print(f"Failed loading startup account: {e}")
@@ -4236,6 +4345,7 @@ class IPTVPlayerApp(QMainWindow):
         dialog = AccountManager(self)
         self._prepare_dialog_theme(dialog)
         dialog.exec_()
+        self._refresh_account_selectors(self.active_account_name)
 
 
 
@@ -4260,5 +4370,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

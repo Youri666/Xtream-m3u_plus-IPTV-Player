@@ -4,7 +4,7 @@ import hashlib
 import time
 from pathlib import Path
 
-from iptv_player.storage import read_json_mapping, write_json_file
+from iptv_player.storage.json_file import read_json_mapping, write_json_file
 
 
 CACHE_SCHEMA_VERSION = 1
