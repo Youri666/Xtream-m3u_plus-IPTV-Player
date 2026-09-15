@@ -93,7 +93,6 @@ For external playback, VLC and SMPlayer are supported:
 The main interface is organized into six tabs: **Live**, **Movies**, **Series**, **History**, **Info**, and **Settings**.
 
 The **Live**, **Movies**, and **Series** tabs all use the same three-column layout:
-
 - **Left column:** categories
 - **Middle column:** items available in the selected category
 - **Right column:** information about the currently selected item
@@ -142,7 +141,6 @@ The **IPTV accounts** button opens the account manager, where accounts can be ad
 ![IPTV account manager](Screenshots/iptv-accounts.png)
 
 Two account input methods are available:
-
 - **Manual/Xtream entry:** enter the server URL, username, password, and stream URL formats manually.
 - **M3U_plus URL entry:** paste an M3U_plus URL and let the application extract the required credentials.
 
@@ -170,13 +168,12 @@ The **LIVE**, **Movies**, and **Series** options control which content sections 
 
 **Keep on top** keeps the main window above other windows.
 
-The theme can be set to:
+![Content and appearance](Screenshots/content-appearance.png)
 
+The theme can be set to:
 - **System** — follows the operating system appearance
 - **Light**
 - **Dark**
-
-![Content and appearance](Screenshots/content-appearance.png)
 
 ![Content and appearance Darh Theme](Screenshots/content-appearance-dark.png)
 
@@ -185,7 +182,6 @@ The theme can be set to:
 The default sorting mode can be configured globally.
 
 Available modes include:
-
 - **Sorting disabled** — keep the order provided by the IPTV provider
 - **A → Z**
 - **Z → A**
@@ -215,7 +211,6 @@ When **Previously started media** is set to **Ask**, the player can offer to **R
 ![Advanced settings](Screenshots/advanced-settings.png)
 
 Advanced settings provide additional control over:
-
 - network timeouts and User-Agent
 - automatic Info-tab refresh
 - provider catalog caching and refresh interval
@@ -301,7 +296,6 @@ The loader preserves a schema number newer than the current application understa
 Install the latest Python 3 from [python.org](https://www.python.org/downloads/).
 
 During installation:
-
 - Use administrator privileges when appropriate.
 - Add `python.exe` to the system `PATH`.
 
