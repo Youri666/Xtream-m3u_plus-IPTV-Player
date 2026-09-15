@@ -176,6 +176,8 @@ The theme can be set to:
 - **Light**
 - **Dark**
 
+![Content and appearance](Screenshots/content-appearance.png)
+
 ### Sorting
 
 The default sorting mode can be configured globally.
@@ -188,6 +190,9 @@ Available modes include:
 - **Remember per list** — each list/category can use its own sorting mode, selected with the sorting button and remembered for future use
 
 The per-list sorting preferences are stored so they persist between sessions.
+
+![Sorting](Screenshots/sorting.png)
+
 
 ### Media player
 
@@ -224,6 +229,7 @@ Provider catalog caching can significantly reduce loading time by reusing locall
 
 The application can check for new releases manually with **Check for updates**, or automatically when **Auto check for updates** is enabled.
 
+![Updates](Screenshots/updates.png)
 
 
 ## Internal player
