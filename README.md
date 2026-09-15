@@ -157,12 +157,9 @@ Stream URL formats are fully editable because IPTV providers do not always use t
 
 The **Startup account** selects which account should be loaded when the application starts. The **Active account** can be used to switch immediately between configured IPTV accounts.
 
-#### Live TV URL troubleshooting
-
 **My Live TV doesn't work, but Movies and Series do. How can I fix this?**
 
 Some IPTV providers require a different URL format for LIVE streams.
-
 Edit the affected account and try replacing the **Live URL format** with one of the following:
 
 ```text
@@ -177,7 +174,7 @@ Edit the affected account and try replacing the **Live URL format** with one of 
 {server}/live/{username}/{password}/{stream_id}.m3u8
 ```
 
-If none of these formats work, please open an issue on the V3 repository: [**Report a V3 issue**](https://github.com/LapinFou/Xtream-m3u_plus-IPTV-Player/issues)
+If none of these formats work, please open an issue on the V3 repository: [Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues)
 
 ### Content and appearance
 
