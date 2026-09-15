@@ -20,12 +20,12 @@ QWidget#playerOverlay {
 QWidget#playerTopBar {
     background: rgb(20, 20, 22);
 }
-QLabel#titleLabel { color: white; font-size: 14px; font-weight: bold; }
+QLabel#titleLabel { color: white; font-size: 13px; font-weight: bold; }
 QLabel#timeLabel  { color: #eee; font-size: 11px; }
-QSlider#seekSlider::groove:horizontal { height: 6px; background: rgba(255,255,255,70); border-radius: 3px; }
-QSlider#seekSlider::handle:horizontal { background: #7c3aed; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px; }
+QSlider#seekSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,70); border-radius: 2px; }
+QSlider#seekSlider::handle:horizontal { background: #7c3aed; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }
 QSlider#seekSlider::handle:horizontal:hover { background: #9b6dff; }
-QSlider#seekSlider::sub-page:horizontal { background: #7c3aed; border-radius: 3px; }
+QSlider#seekSlider::sub-page:horizontal { background: #7c3aed; border-radius: 2px; }
 QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,60); border-radius: 2px; }
 QSlider::handle:horizontal { background: #7c3aed; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }
 QSlider::sub-page:horizontal { background: #7c3aed; border-radius: 2px; }
@@ -77,12 +77,12 @@ QWidget#playerOverlay {
 QWidget#playerTopBar {
     background: rgb(245, 245, 245);
 }
-QLabel#titleLabel { color: #202020; font-size: 14px; font-weight: bold; }
+QLabel#titleLabel { color: #202020; font-size: 13px; font-weight: bold; }
 QLabel#timeLabel  { color: #303030; font-size: 11px; }
-QSlider#seekSlider::groove:horizontal { height: 6px; background: rgba(0,0,0,60); border-radius: 3px; }
-QSlider#seekSlider::handle:horizontal { background: #5b8def; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px; }
+QSlider#seekSlider::groove:horizontal { height: 4px; background: rgba(0,0,0,60); border-radius: 2px; }
+QSlider#seekSlider::handle:horizontal { background: #5b8def; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }
 QSlider#seekSlider::handle:horizontal:hover { background: #376fd3; }
-QSlider#seekSlider::sub-page:horizontal { background: #5b8def; border-radius: 3px; }
+QSlider#seekSlider::sub-page:horizontal { background: #5b8def; border-radius: 2px; }
 QSlider::groove:horizontal { height: 4px; background: rgba(0,0,0,55); border-radius: 2px; }
 QSlider::handle:horizontal { background: #5b8def; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }
 QSlider::sub-page:horizontal { background: #5b8def; border-radius: 2px; }

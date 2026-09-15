@@ -8,7 +8,7 @@ from multiprocessing.connection import Client
 from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5.QtWidgets import QApplication
 
-from iptv_player.bootstrap import configure_qt_application
+from iptv_player.bootstrap import configure_qt_application, install_logging
 from iptv_player.constants import (
     DEFAULT_INTERNAL_SEEK_STEP_SECONDS,
     DEFAULT_INTERNAL_SPEED_STEP,
@@ -31,6 +31,7 @@ class _PlayerCommandBridge(QObject):
 
 def run_embedded_player_process():
     """Run the libVLC window separately from the main application process."""
+    install_logging(append=True, process_name="Internal player")
     address = os.environ.get("IPTV_PLAYER_IPC_ADDRESS", "")
     family = os.environ.get("IPTV_PLAYER_IPC_FAMILY", "")
     encoded_auth_key = os.environ.get("IPTV_PLAYER_IPC_AUTH", "")

@@ -136,7 +136,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         # ---------- Top overlay (title + sidebar toggle) ----------
         self.top_bar = QWidget(self)
         self.top_bar.setObjectName("playerTopBar")
-        self.top_bar.setFixedHeight(44)
+        self.top_bar.setFixedHeight(40)
         self.title_label = QLabel("")
         self.title_label.setObjectName("titleLabel")
         self.title_label.setMinimumWidth(200)
@@ -144,14 +144,14 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_sidebar.setToolTip("Show/hide playlist (L)")
         self.btn_sidebar.clicked.connect(self.toggle_sidebar)
         top_lay = QHBoxLayout(self.top_bar)
-        top_lay.setContentsMargins(12, 6, 12, 6)
+        top_lay.setContentsMargins(10, 4, 10, 4)
         top_lay.addWidget(self.btn_sidebar)
         top_lay.addWidget(self.title_label, 1)
 
         # ---------- Bottom overlay (seek + buttons + volume) ----------
         self.overlay = QWidget(self)
         self.overlay.setObjectName("playerOverlay")
-        self.overlay.setFixedHeight(110)
+        self.overlay.setFixedHeight(72)
 
         # Custom slider that jumps to clicked position. The previous QSlider only
         # supported drag-to-seek; clicking the track did a +10% page-step which
@@ -159,6 +159,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.seek_slider = _ClickableSlider(Qt.Horizontal)
         self.seek_slider.setObjectName("seekSlider")
         self.seek_slider.setRange(0, 1000)
+        self.seek_slider.setFixedHeight(14)
         self.seek_slider.setCursor(Qt.PointingHandCursor)
         self.seek_slider.sliderPressed.connect(self._seek_pressed)
         self.seek_slider.sliderMoved.connect(self._seek_moved)
@@ -192,14 +193,14 @@ class EmbeddedPlayerWindow(QMainWindow):
         for b in (self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
                   self.btn_next, self.btn_slow, self.btn_fast, self.btn_mute,
                   self.btn_audio, self.btn_subs, self.btn_fs, self.btn_sidebar):
-            b.setFixedHeight(34)
-            b.setIconSize(QSize(20, 20))
+            b.setFixedHeight(30)
+            b.setIconSize(QSize(18, 18))
             b.setCursor(Qt.PointingHandCursor)
             b.setFocusPolicy(Qt.NoFocus)
 
         # Play and pause use glyphs with different natural widths. A fixed button
         # width keeps every neighbouring control stationary when the icon changes.
-        self.btn_play.setFixedWidth(44)
+        self.btn_play.setFixedWidth(40)
 
         self.btn_prev.setToolTip("Previous (Page Up)")
         self.btn_rewind.setToolTip("Rewind (Left arrow)")
@@ -227,13 +228,13 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_fs.clicked.connect(self.toggle_fullscreen)
 
         seek_row = QHBoxLayout()
-        seek_row.setContentsMargins(12, 4, 12, 0)
+        seek_row.setContentsMargins(10, 2, 10, 0)
         seek_row.addWidget(self.seek_slider, 1)
         seek_row.addSpacing(8)
         seek_row.addWidget(self.time_label)
 
         btn_row = QHBoxLayout()
-        btn_row.setContentsMargins(12, 0, 12, 8)
+        btn_row.setContentsMargins(10, 0, 10, 4)
         btn_row.setSpacing(4)
         btn_row.addWidget(self.btn_prev)
         btn_row.addWidget(self.btn_rewind)
@@ -256,7 +257,7 @@ class EmbeddedPlayerWindow(QMainWindow):
 
         overlay_lay = QVBoxLayout(self.overlay)
         overlay_lay.setContentsMargins(0, 0, 0, 0)
-        overlay_lay.setSpacing(2)
+        overlay_lay.setSpacing(0)
         overlay_lay.addLayout(seek_row)
         overlay_lay.addLayout(btn_row)
 

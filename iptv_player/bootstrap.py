@@ -1,12 +1,15 @@
 """Application-wide logging and Qt startup configuration."""
 
 import atexit
+import faulthandler
 import logging
 import os
 from os import path
 import sys
+import threading
 import traceback
 
+from PyQt5 import QtCore
 from PyQt5.QtGui import QFont
 
 from iptv_player.config import load_advanced_preferences, writable_data_directory
@@ -54,8 +57,11 @@ class _StreamToLogger:
         return False
 
 
-def install_logging():
-    """Mirror console output and unhandled exceptions to ``log.txt``."""
+_FAULT_LOG_STREAMS = []
+
+
+def install_logging(append=False, process_name="Main application"):
+    """Capture Python diagnostics in ``log.txt`` for one application process."""
     if sys.platform.startswith("darwin"):
         application_dir = writable_data_directory()
     elif getattr(sys, "frozen", False):
@@ -72,18 +78,24 @@ def install_logging():
         else logging.INFO
     )
 
+    # Truncate once in the main process, then let both application processes use
+    # append mode so their file positions cannot overwrite each other's records.
+    if not append:
+        with open(log_path, "w", encoding="utf-8"):
+            pass
+
     try:
         logging.basicConfig(
             filename=log_path,
-            # Each launch starts a self-contained diagnostic report.
-            filemode="w",
+            filemode="a",
             level=log_level,
             format="%(asctime)s %(levelname)s %(message)s",
             encoding="utf-8",
+            force=True,
         )
     except TypeError:
         # Python versions before 3.9 do not support the encoding argument.
-        handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
+        handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
         logging.getLogger().addHandler(handler)
         logging.getLogger().setLevel(log_level)
@@ -102,8 +114,27 @@ def install_logging():
         sys.__excepthook__(exc_type, exc, tb)
 
     sys.excepthook = handle_unhandled_exception
-    logging.info("=== Session start (log lives at %s) ===", log_path)
-    atexit.register(lambda: logging.info("=== Session end ==="))
+
+    def handle_thread_exception(args):
+        handle_unhandled_exception(args.exc_type, args.exc_value, args.exc_traceback)
+
+    threading.excepthook = handle_thread_exception
+
+    # faulthandler writes tracebacks for fatal Python signals that bypass normal
+    # exception handling. Keep its file object alive for the complete process.
+    try:
+        fault_stream = open(log_path, "a", encoding="utf-8")
+        faulthandler.enable(file=fault_stream, all_threads=True)
+        _FAULT_LOG_STREAMS.append(fault_stream)
+    except (OSError, RuntimeError):
+        logging.exception("Could not enable fatal Python traceback logging")
+
+    logging.info(
+        "=== %s session start (log lives at %s) ===", process_name, log_path
+    )
+    atexit.register(
+        lambda: logging.info("=== %s session end ===", process_name)
+    )
 
 
 def set_detailed_logging(enabled):
@@ -113,6 +144,7 @@ def set_detailed_logging(enabled):
 
 def configure_qt_application(app):
     """Apply the same visual defaults in the main and player processes."""
+    _install_qt_message_logging()
     app.setStyle("Fusion")
 
     # Use fonts with broad Unicode coverage so provider titles remain readable.
@@ -122,3 +154,31 @@ def configure_qt_application(app):
         app.setFont(QFont("Helvetica Neue", 13))
     else:
         app.setFont(QFont("Noto Sans", 10))
+
+
+def _install_qt_message_logging():
+    """Route Qt diagnostics through the same filtered application logger."""
+    levels = {
+        QtCore.QtDebugMsg: logging.DEBUG,
+        QtCore.QtWarningMsg: logging.WARNING,
+        QtCore.QtCriticalMsg: logging.ERROR,
+        QtCore.QtFatalMsg: logging.CRITICAL,
+    }
+    # QtInfoMsg is absent from some older Qt 5 bindings still used by Linux
+    # distributions, so register it only when the binding exposes it.
+    qt_info_message = getattr(QtCore, "QtInfoMsg", None)
+    if qt_info_message is not None:
+        levels[qt_info_message] = logging.INFO
+
+    def handle_qt_message(message_type, context, message):
+        location = ""
+        if context is not None and context.file:
+            location = f" ({context.file}:{context.line})"
+        logging.log(
+            levels.get(message_type, logging.INFO),
+            "Qt: %s%s",
+            message,
+            location,
+        )
+
+    QtCore.qInstallMessageHandler(handle_qt_message)
