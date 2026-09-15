@@ -145,6 +145,7 @@ The **IPTV accounts** button opens the account manager, where accounts can be ad
 ![IPTV account manager](Screenshots/iptv-accounts.png)
 
 Two account input methods are available:
+
 - **Manual/Xtream entry:** enter the server URL, username, password, and stream URL formats manually.
 - **M3U_plus URL entry:** paste an M3U_plus URL and let the application extract the required credentials.
 
@@ -152,19 +153,31 @@ Two account input methods are available:
 
 ![M3U_plus account configuration](Screenshots/add-account-m3u-plus.png)
 
-Stream URL formats are fully editable because IPTV providers do not always use the same URL structure. For example, a LIVE stream may use either:
+Stream URL formats are fully editable because IPTV providers do not always use the same URL structure.
 
-```text
-{server}/live/{username}/{password}/{stream_id}.{container_extension}
-```
+The **Startup account** selects which account should be loaded when the application starts. The **Active account** can be used to switch immediately between configured IPTV accounts.
 
-or:
+#### Live TV URL troubleshooting
+
+**My Live TV doesn't work, but Movies and Series do. How can I fix this?**
+
+Some IPTV providers require a different URL format for LIVE streams.
+
+Edit the affected account and try replacing the **Live URL format** with one of the following:
 
 ```text
 {server}/{username}/{password}/{stream_id}
+{server}/{username}/{password}/{stream_id}.ts
+{server}/{username}/{password}/{stream_id}.m3u8
+{server}/{username}/{password}/live/{stream_id}
+{server}/{username}/{password}/live/{stream_id}.ts
+{server}/{username}/{password}/live/{stream_id}.m3u8
+{server}/live/{username}/{password}/{stream_id}
+{server}/live/{username}/{password}/{stream_id}.ts
+{server}/live/{username}/{password}/{stream_id}.m3u8
 ```
 
-The **Startup account** selects which account should be loaded when the application starts. The **Active account** can be used to switch immediately between configured IPTV accounts.
+If none of these formats work, please open an issue on the V3 repository: [**Report a V3 issue**](https://github.com/LapinFou/Xtream-m3u_plus-IPTV-Player/issues)
 
 ### Content and appearance
 
@@ -175,11 +188,12 @@ The **LIVE**, **Movies**, and **Series** options control which content sections 
 ![Content and appearance](Screenshots/content-appearance.png)
 
 The theme can be set to:
+
 - **System** — follows the operating system appearance
 - **Light**
 - **Dark**
 
-![Content and appearance Darh Theme](Screenshots/content-appearance-dark.png)
+![Content and appearance Dark Theme](Screenshots/content-appearance-dark.png)
 
 ### Sorting
 
