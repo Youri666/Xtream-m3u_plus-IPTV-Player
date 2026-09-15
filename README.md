@@ -111,7 +111,7 @@ The **History** tab keeps track of recently viewed content and separates it into
 
 Each section shows the **last viewed date/time** and the corresponding **title**, making it easy to find content that was previously opened.
 
-The maximum number of history entries is configurable in **Advanced Settings**. The default value is **10 items per content type**.
+The maximum number of history entries is configurable in **Advanced Settings**. The default value is **50 items per content type**.
 
 The History feature is still under development, but playback resume support is already available with the internal player.
 
