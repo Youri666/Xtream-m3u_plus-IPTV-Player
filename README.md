@@ -18,6 +18,10 @@ Version **V3.0.0** is currently available as a beta/test release for users who w
 [**Download V3.0.0 Beta / Test Release**](https://github.com/LapinFou/Xtream-m3u_plus-IPTV-Player/releases)
 
 > V3.0.0 is currently in beta. It includes major internal changes and may still contain regressions or unfinished behavior.
+>
+> **Beta notice:** V3 is still in beta. As a precaution, it is recommended to make a backup copy of your existing V2 application folder, including its configuration and user data files, before testing V3.
+>
+> No compatibility issue is expected, but keeping a backup makes it easy to return to your current V2 setup if needed.
 
 ## Development branch
 
