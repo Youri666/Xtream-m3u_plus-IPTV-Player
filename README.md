@@ -178,6 +178,8 @@ The theme can be set to:
 
 ![Content and appearance](Screenshots/content-appearance.png)
 
+![Content and appearance Darh Theme](Screenshots/content-appearance-dark.png)
+
 ### Sorting
 
 The default sorting mode can be configured globally.
