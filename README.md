@@ -258,6 +258,7 @@ Playback controls provide previous/next navigation, play/pause, seeking, playbac
 - **Left / Right Arrow** — seek backward / forward
 - **Space** — play / pause
 - **+ / -** — increase / decrease playback speed
+- **Mouse wheel** — increase / decrease volume
 - **M** — mute / unmute
 - **A** — cycle through available audio tracks
 - **S** — cycle through available subtitles
