@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from iptv_player.constants import MEDIA_LANGUAGE_OPTIONS
+from iptv_player.constants import DEFAULT_HISTORY_SIZE, MEDIA_LANGUAGE_OPTIONS
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 from iptv_player.provider.network import (
     DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL,
@@ -156,6 +156,20 @@ class NetworkSettingsDialog(QDialog):
         )
         diagnostics_layout.addWidget(self.detailed_logging_checkbox)
 
+        history_group = QGroupBox("History")
+        history_form = QFormLayout(history_group)
+        self.history_size_spin = QSpinBox()
+        self.history_size_spin.setRange(1, 1000)
+        self.history_size_spin.setValue(parent.history_size)
+        self.history_size_spin.setToolTip(
+            "Maximum number of recent items retained for each content type"
+        )
+        self.clear_history_button = QPushButton("Clear active account history")
+        self.clear_history_button.setEnabled(bool(parent.active_account_id))
+        self.clear_history_button.clicked.connect(parent.clear_active_history)
+        history_form.addRow("Items per type:", self.history_size_spin)
+        history_form.addRow(self.clear_history_button)
+
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.Save
             | QDialogButtonBox.Cancel
@@ -171,6 +185,7 @@ class NetworkSettingsDialog(QDialog):
         main_layout.addWidget(cache_group)
         main_layout.addWidget(live_group)
         main_layout.addWidget(diagnostics_group)
+        main_layout.addWidget(history_group)
         main_layout.addWidget(self.button_box)
 
         # Compute the initial dimensions only after every control has been added.
@@ -205,6 +220,7 @@ class NetworkSettingsDialog(QDialog):
             DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
         )
         self.detailed_logging_checkbox.setChecked(False)
+        self.history_size_spin.setValue(DEFAULT_HISTORY_SIZE)
 
     def save_settings(self, force_catalog_refresh=False):
         """Apply the complete dialog state as one coherent configuration update."""
@@ -219,7 +235,8 @@ class NetworkSettingsDialog(QDialog):
             self.account_refresh_checkbox.isChecked(),
             self.catalog_cache_checkbox.isChecked(),
             self.catalog_cache_hours_spin.value(),
-            self.detailed_logging_checkbox.isChecked()
+            self.detailed_logging_checkbox.isChecked(),
+            self.history_size_spin.value()
         )
         if force_catalog_refresh:
             self.parent_app.refresh_provider_catalog()
@@ -338,11 +355,19 @@ class InternalPlayerSettingsDialog(QDialog):
         subtitle_index = self.subtitle_language.findData(parent.internal_subtitle_language)
         self.subtitle_language.setCurrentIndex(max(0, subtitle_index))
 
+        self.resume_behavior = QComboBox()
+        self.resume_behavior.addItem("Ask", "ask")
+        self.resume_behavior.addItem("Always resume", "resume")
+        self.resume_behavior.addItem("Always restart", "restart")
+        resume_index = self.resume_behavior.findData(parent.internal_resume_behavior)
+        self.resume_behavior.setCurrentIndex(max(0, resume_index))
+
         layout.addRow("Seek step:", self.seek_step)
         layout.addRow("Volume step:", self.volume_step)
         layout.addRow("Playback speed step:", self.speed_step)
         layout.addRow("Preferred audio:", self.audio_language)
         layout.addRow("Preferred subtitles:", self.subtitle_language)
+        layout.addRow("Previously started media:", self.resume_behavior)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)

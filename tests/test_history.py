@@ -5,6 +5,7 @@ import unittest
 from iptv_player.storage.history import (
     load_history,
     record_history,
+    repair_misclassified_history,
     resume_position,
 )
 
@@ -48,6 +49,21 @@ class PlaybackHistoryTests(unittest.TestCase):
             saved = load_history(filename)[0]
             self.assertNotIn("url", saved)
             self.assertNotIn("account_id", saved)
+
+    def test_repairs_live_and_movie_rows_saved_as_series(self):
+        with tempfile.TemporaryDirectory() as directory:
+            filename = Path(directory) / "history.json"
+            for stream_id, title in (("11", "Live"), ("22", "Movie"), ("33", "Episode")):
+                entry = self._entry(f"Series:{stream_id}", "Series", title)
+                entry["stream_id"] = stream_id
+                record_history(filename, entry, 10)
+
+            repaired = repair_misclassified_history(filename, {"11"}, {"22"})
+
+            by_title = {item["title"]: item for item in repaired}
+            self.assertEqual(by_title["Live"]["type"], "LIVE")
+            self.assertEqual(by_title["Movie"]["type"], "Movies")
+            self.assertEqual(by_title["Episode"]["type"], "Series")
 
     @staticmethod
     def _entry(key, stream_type, title, position_ms=0):

@@ -23,7 +23,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QLineEdit, QLabel, QPushButton,
     QListWidget, QWidget, QFileDialog, QCheckBox, QSizePolicy, QHBoxLayout,
     QDialog, QTabWidget, QListWidgetItem, QMenu, QAction, QActionGroup,
-    QTextEdit, QGridLayout, QMessageBox, QListView, QTreeWidgetItem, QComboBox, QSplitter,
+    QTextEdit, QGridLayout, QMessageBox, QListView, QTreeWidget, QTreeWidgetItem, QComboBox, QSplitter,
     QGroupBox, QRadioButton, QButtonGroup, QToolButton
 )
 
@@ -40,6 +40,8 @@ from iptv_player.constants import (
     DEFAULT_INTERNAL_SEEK_STEP_SECONDS,
     DEFAULT_INTERNAL_SPEED_STEP,
     DEFAULT_INTERNAL_VOLUME_STEP_PERCENT,
+    DEFAULT_HISTORY_SIZE,
+    DEFAULT_RESUME_BEHAVIOR,
     DEFAULT_URL_FORMATS,
     GITHUB_REPO,
     REMEMBER_LIST_SORTING,
@@ -96,11 +98,17 @@ from iptv_player.utils.search import (
 from iptv_player.utils.sorting import ordered_catalog_entries, ordered_season_keys
 from iptv_player.storage import (
     account_favorites_file,
+    account_history_file,
+    clear_history,
     entries_in_favorite_order,
+    load_history,
     load_provider_preferences,
     migrate_legacy_favorites_file,
     provider_preferences_file,
     remove_account_data_files,
+    record_history,
+    repair_misclassified_history,
+    resume_position,
     save_provider_preferences,
     set_favorite,
 )
@@ -173,6 +181,8 @@ class IPTVPlayerApp(QMainWindow):
         )
         self.provider_preferences_file = ""
         self.cache_file = path.join(self.data_directory, "provider_catalog_cache.json")
+        self.history_base_file = path.join(self.data_directory, "provider_history.json")
+        self.history_file = ""
         self.legacy_cache_file = path.join(self.data_directory, "all_cached_data.json")
 
         # The internal VLC UI runs in a second process. Commands are queued so
@@ -181,6 +191,7 @@ class IPTVPlayerApp(QMainWindow):
         self._embedded_player_listener = None
         self._embedded_player_command_queue = None
         self._embedded_player_sender_thread = None
+        self._embedded_player_event_queue = queue.Queue()
 
         # These defaults are replaced by persisted values during startup and are
         # sent to the isolated VLC process whenever it is started or reconfigured.
@@ -189,6 +200,8 @@ class IPTVPlayerApp(QMainWindow):
         self.internal_speed_step = DEFAULT_INTERNAL_SPEED_STEP
         self.internal_audio_language = ""
         self.internal_subtitle_language = ""
+        self.internal_resume_behavior = DEFAULT_RESUME_BEHAVIOR
+        self.history_size = DEFAULT_HISTORY_SIZE
         self.default_url_formats = dict(DEFAULT_URL_FORMATS)
 
         self.update_user_data_file()
@@ -206,6 +219,9 @@ class IPTVPlayerApp(QMainWindow):
         # Series uses three navigation levels: shows, seasons, and episodes.
         self.series_navigation_level = 0
         self.finished_fetching_series_info = False
+        self.current_series_entry = None
+        self.current_series_season = None
+        self._pending_history_series = None
 
         self.streaming_search_history_list      = []
         self.streaming_search_history_list_idx  = [0]
@@ -341,12 +357,17 @@ class IPTVPlayerApp(QMainWindow):
         self.account_info_threadpool.setMaxThreadCount(1)
         self.account_info_timer = QTimer(self)
         self.account_info_timer.timeout.connect(self.refresh_account_info)
+        self.player_event_timer = QTimer(self)
+        self.player_event_timer.setInterval(1000)
+        self.player_event_timer.timeout.connect(self._process_embedded_player_events)
+        self.player_event_timer.start()
 
         self.init_icons()
 
         self.init_tab_widget()
 
         self.init_iptv_info()
+        self.init_history_tab()
 
         self.init_category_list_widgets()
         self.init_entry_list_widgets()
@@ -430,6 +451,10 @@ class IPTVPlayerApp(QMainWindow):
             ))
             if self.active_account_id else ""
         )
+        self.history_file = (
+            str(account_history_file(self.history_base_file, self.active_account_id))
+            if self.active_account_id else ""
+        )
         title = f"IPTV Player {CURRENT_VERSION}"
         if self.active_account_name:
             title = f"{title} — {self.active_account_name}"
@@ -437,6 +462,7 @@ class IPTVPlayerApp(QMainWindow):
         self._refresh_account_selectors(self.active_account_name)
         self._load_hidden_categories()
         self._load_account_sort_preferences()
+        self.refresh_history_tab()
 
     def activate_saved_account(self, name):
         """Load one saved account and refresh its provider catalog."""
@@ -481,6 +507,7 @@ class IPTVPlayerApp(QMainWindow):
             self.cache_file,
             self.favorites_base_file,
             self.provider_preferences_base_file,
+            self.history_base_file,
         )
         for filename, error in failures:
             logging.warning(
@@ -753,6 +780,7 @@ class IPTVPlayerApp(QMainWindow):
         self.live_icon              = QIcon(self.path_to_live_icon)
         self.movies_icon            = QIcon(self.path_to_movies_icon)
         self.series_icon            = QIcon(self.path_to_series_icon)
+        self.history_icon           = self._history_icon(QColor("#202020"))
         self.favorites_icon         = QIcon(self.path_to_favorites_icon)
         self.favorites_icon_colour  = QIcon(self.path_to_fav_colour_icon)
         self.info_icon              = QIcon(self.path_to_info_icon)
@@ -791,9 +819,27 @@ class IPTVPlayerApp(QMainWindow):
         painter.end()
         return QIcon(pixmap)
 
+    @staticmethod
+    def _history_icon(color):
+        """Draw a transparent history clock consistent with the tab icon set."""
+        pixmap = QPixmap(24, 24)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        pen = painter.pen()
+        pen.setColor(color)
+        pen.setWidth(2)
+        painter.setPen(pen)
+        painter.drawEllipse(3, 3, 18, 18)
+        painter.drawLine(12, 6, 12, 12)
+        painter.drawLine(12, 12, 17, 15)
+        painter.end()
+        return QIcon(pixmap)
+
     def _refresh_theme_icons(self, dark):
         """Refresh monochrome icons after the application palette changes."""
         color = QColor("#f2f2f2" if dark else "#202020")
+        self.history_icon = self._history_icon(color)
         themed_paths = {
             'live_icon': self.path_to_live_icon,
             'movies_icon': self.path_to_movies_icon,
@@ -816,6 +862,7 @@ class IPTVPlayerApp(QMainWindow):
                 'LIVE': self.live_icon,
                 'Movies': self.movies_icon,
                 'Series': self.series_icon,
+                'History': self.history_icon,
                 'Info': self.info_icon,
                 'Settings': self.settings_icon,
             }
@@ -856,21 +903,231 @@ class IPTVPlayerApp(QMainWindow):
         self.live_tab     = QWidget()
         self.movies_tab   = QWidget()
         self.series_tab   = QWidget()
+        self.history_tab  = QWidget()
         self.info_tab     = QWidget()
         settings_tab      = QWidget()
 
         self.live_tab_layout        = QVBoxLayout(self.live_tab)
         self.movies_tab_layout      = QVBoxLayout(self.movies_tab)
         self.series_tab_layout      = QVBoxLayout(self.series_tab)
+        self.history_tab_layout     = QHBoxLayout(self.history_tab)
         self.info_tab_layout        = QVBoxLayout(self.info_tab)
         self.settings_layout        = QGridLayout(settings_tab)
 
         self.tab_widget.addTab(self.live_tab,   self.live_icon,         "LIVE")
         self.tab_widget.addTab(self.movies_tab, self.movies_icon,       "Movies")
         self.tab_widget.addTab(self.series_tab, self.series_icon,       "Series")
+        self.tab_widget.addTab(
+            self.history_tab,
+            self.history_icon,
+            "History",
+        )
         self.tab_widget.addTab(self.info_tab,   self.info_icon,         "Info")
         self.tab_widget.addTab(settings_tab,    self.settings_icon,     "Settings")
         self.tab_widget.currentChanged.connect(self._on_current_tab_changed)
+
+    def init_history_tab(self):
+        """Create one recent-playback panel for each enabled content type."""
+        self.history_widgets = {}
+        self.history_groups = {}
+        for stream_type, label in (
+            ("LIVE", "LIVE"),
+            ("Movies", "Movies"),
+            ("Series", "Series"),
+        ):
+            group = QGroupBox(label)
+            layout = QVBoxLayout(group)
+            history_list = QTreeWidget()
+            history_list.setColumnCount(2)
+            history_list.setHeaderLabels(("Last viewed", "Title"))
+            history_list.setRootIsDecorated(False)
+            history_list.setAlternatingRowColors(True)
+            history_list.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+            history_list.header().setStretchLastSection(True)
+            history_list.header().resizeSection(0, 145)
+            history_list.itemActivated.connect(self._history_item_activated)
+            layout.addWidget(history_list)
+            self.history_groups[stream_type] = group
+            self.history_widgets[stream_type] = history_list
+            self.history_tab_layout.addWidget(group, 1)
+        self.refresh_history_tab()
+
+    def refresh_history_tab(self):
+        """Reload the active account history into its three compact panels."""
+        if not hasattr(self, "history_widgets"):
+            return
+        entries = load_history(self.history_file) if self.history_file else []
+        for history_list in self.history_widgets.values():
+            history_list.clear()
+        for entry in entries:
+            history_list = self.history_widgets.get(entry.get("type"))
+            if history_list is None:
+                continue
+            timestamp = self._history_display_time(entry.get("last_viewed", ""))
+            item = QTreeWidgetItem((timestamp, entry.get("title", "")))
+            item.setData(0, Qt.UserRole, entry)
+            history_list.addTopLevelItem(item)
+
+    @staticmethod
+    def _history_display_time(value):
+        """Format an ISO timestamp using the computer's local time zone."""
+        try:
+            return datetime.fromisoformat(str(value)).astimezone().strftime(
+                "%Y-%m-%d %H:%M"
+            )
+        except (TypeError, ValueError):
+            return str(value)
+
+    def _history_item_activated(self, item, _column=0):
+        """Restore the source list for a history row without starting playback."""
+        entry = item.data(0, Qt.UserRole) if item is not None else None
+        if not isinstance(entry, dict):
+            return
+        if entry.get("type") == "Series" and entry.get("series_id"):
+            if self._open_history_series(entry):
+                return
+        self._open_history_catalog_entry(entry)
+
+    def _open_history_catalog_entry(self, history_entry):
+        """Restore a LIVE or Movies category and select its remembered item."""
+        stream_type = history_entry.get("type")
+        if stream_type not in ("LIVE", "Movies"):
+            return False
+        stream_id = str(history_entry.get("stream_id", ""))
+        catalog_entry = next(
+            (
+                entry for entry in self.entries_per_stream_type.get(stream_type, [])
+                if str(entry.get("stream_id", "")) == stream_id
+            ),
+            None,
+        )
+        if catalog_entry is None:
+            return False
+
+        target_tab = self.live_tab if stream_type == "LIVE" else self.movies_tab
+        self.tab_widget.setCurrentWidget(target_tab)
+        category_item = self._history_category_item(
+            stream_type, history_entry, catalog_entry
+        )
+        if category_item is None:
+            return False
+        category_list = self.category_list_widgets[stream_type]
+        category_list.setCurrentItem(category_item)
+        self.prev_clicked_category_item[stream_type] = 0
+        category_list.itemClicked.emit(category_item)
+
+        stream_list = self.streaming_list_widgets[stream_type]
+        for row in range(stream_list.count()):
+            stream_item = stream_list.item(row)
+            data = stream_item.data(Qt.UserRole)
+            if (
+                isinstance(data, dict)
+                and str(data.get("stream_id", "")) == stream_id
+            ):
+                stream_list.setCurrentItem(stream_item)
+                stream_list.scrollToItem(stream_item)
+                return True
+        return False
+
+    def _history_category_item(self, stream_type, history_entry, catalog_entry):
+        """Find the saved source category, falling back to the provider category."""
+        category_list = self.category_list_widgets[stream_type]
+        source_name = history_entry.get("source_category_name", "")
+        source_id = str(history_entry.get("source_category_id", ""))
+        source_is_available = (
+            source_name != self.fav_categories_text
+            or bool(catalog_entry.get("favorite"))
+        )
+        actual_category_id = str(catalog_entry.get("category_id", ""))
+        fallback_item = None
+        for row in range(category_list.count()):
+            candidate = category_list.item(row)
+            data = candidate.data(Qt.UserRole) or {}
+            candidate_name = data.get("category_name", candidate.text())
+            candidate_id = str(data.get("category_id", ""))
+            if candidate_id == actual_category_id:
+                fallback_item = candidate
+            if (
+                source_is_available
+                and candidate_name == source_name
+                and candidate_id == source_id
+            ):
+                return candidate
+        return fallback_item
+
+    def _open_history_series(self, history_entry):
+        """Restore the category and season where a history episode was launched."""
+        series_id = str(history_entry.get("series_id", ""))
+        series_entry = next(
+            (
+                entry for entry in self.entries_per_stream_type.get("Series", [])
+                if str(entry.get("series_id", "")) == series_id
+            ),
+            None,
+        )
+        if series_entry is None:
+            return False
+
+        self.tab_widget.setCurrentWidget(self.series_tab)
+        category_list = self.category_list_widgets["Series"]
+        category_item = self._history_category_item(
+            "Series", history_entry, series_entry
+        )
+        if category_item is None:
+            return False
+
+        category_list.setCurrentItem(category_item)
+        # Emit the normal signal so list caches, sorting, and category state remain
+        # identical to a category selected manually by the user.
+        self.prev_clicked_category_item["Series"] = 0
+        category_list.itemClicked.emit(category_item)
+
+        series_list = self.streaming_list_widgets["Series"]
+        series_item = next(
+            (
+                series_list.item(row) for row in range(series_list.count())
+                if isinstance(series_list.item(row).data(Qt.UserRole), dict)
+                and str(series_list.item(row).data(Qt.UserRole).get("series_id", ""))
+                == series_id
+            ),
+            None,
+        )
+        if series_item is None:
+            return False
+
+        series_list.setCurrentItem(series_item)
+        series_list.scrollToItem(series_item)
+        self.current_series_entry = series_entry
+        self.series_navigation_level = 1
+        self._pending_history_series = dict(history_entry)
+        self.show_seasons(series_entry)
+        return True
+
+    def _history_entry_url(self, entry):
+        """Rebuild a private stream URL without persisting credentials in history."""
+        stream_type = entry.get("type")
+        stream_id = entry.get("stream_id")
+        if not stream_id or stream_type not in ("LIVE", "Movies", "Series"):
+            return ""
+        template = {
+            "LIVE": self.live_url_format,
+            "Movies": self.movie_url_format,
+            "Series": self.series_url_format,
+        }[stream_type]
+        extension = str(entry.get("container_extension", "") or "")
+        if ".{container_extension}" not in template:
+            extension = ""
+            template = template.replace(".{container_extension}", "")
+        try:
+            return template.format(
+                server=self.server,
+                username=self.username,
+                password=self.password,
+                stream_id=stream_id,
+                container_extension=extension,
+            )
+        except (KeyError, ValueError):
+            return ""
 
     def init_search_bars(self):
         self.category_search_bars["LIVE"] = QLineEdit()
@@ -2065,6 +2322,28 @@ class IPTVPlayerApp(QMainWindow):
                 self.tab_widget.indexOf(tab),
                 self.content_enabled[stream_type]
             )
+            history_group = getattr(self, "history_groups", {}).get(stream_type)
+            if history_group is not None:
+                history_group.setVisible(self.content_enabled[stream_type])
+        history_index = self.tab_widget.indexOf(self.history_tab)
+        self.tab_widget.setTabVisible(
+            history_index, any(self.content_enabled.values())
+        )
+
+    def clear_active_history(self):
+        """Clear playback history for the active account after confirmation."""
+        if not self.history_file:
+            return
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Question)
+        dialog.setWindowTitle("Clear history")
+        dialog.setText("Clear all playback history for the active account?")
+        dialog.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        dialog.setDefaultButton(QMessageBox.No)
+        self._prepare_dialog_theme(dialog)
+        if dialog.exec_() == QMessageBox.Yes:
+            clear_history(self.history_file)
+            self.refresh_history_tab()
 
     def open_network_settings(self):
         """Open the modal editor after all persisted network values are loaded."""
@@ -2084,6 +2363,7 @@ class IPTVPlayerApp(QMainWindow):
         self.internal_speed_step = round(dialog.speed_step.value(), 2)
         self.internal_audio_language = dialog.audio_language.currentData() or ""
         self.internal_subtitle_language = dialog.subtitle_language.currentData() or ""
+        self.internal_resume_behavior = dialog.resume_behavior.currentData() or DEFAULT_RESUME_BEHAVIOR
         self.save_internal_player_settings()
 
         if self._embedded_player_command_queue is not None:
@@ -2093,7 +2373,8 @@ class IPTVPlayerApp(QMainWindow):
                 'volume_percent': self.internal_volume_step_percent,
                 'speed_step': self.internal_speed_step,
                 'audio_language': self.internal_audio_language,
-                'subtitle_language': self.internal_subtitle_language
+                'subtitle_language': self.internal_subtitle_language,
+                'resume_behavior': self.internal_resume_behavior,
             })
 
     def save_internal_player_settings(self):
@@ -2107,6 +2388,7 @@ class IPTVPlayerApp(QMainWindow):
                     speed_step=self.internal_speed_step,
                     audio_language=self.internal_audio_language,
                     subtitle_language=self.internal_subtitle_language,
+                    resume_behavior=self.internal_resume_behavior,
                 ),
             )
         except OSError as error:
@@ -2120,12 +2402,14 @@ class IPTVPlayerApp(QMainWindow):
         self.internal_speed_step = preferences.speed_step
         self.internal_audio_language = preferences.audio_language
         self.internal_subtitle_language = preferences.subtitle_language
+        self.internal_resume_behavior = preferences.resume_behavior
 
     def apply_network_settings(self, user_agent, connection_timeout, read_timeout,
                              live_status_timeout, live_status_retries,
                              stream_status_enabled, account_refresh_interval,
                              account_auto_refresh_enabled, catalog_cache_enabled,
-                             catalog_cache_max_age_hours, detailed_logging_enabled):
+                             catalog_cache_max_age_hours, detailed_logging_enabled,
+                             history_size):
         """Apply and persist all advanced provider settings in one operation."""
         preferences = AdvancedPreferences(
             user_agent=user_agent or DEFAULT_USER_AGENT_HEADER,
@@ -2139,6 +2423,7 @@ class IPTVPlayerApp(QMainWindow):
             catalog_cache_enabled=catalog_cache_enabled,
             catalog_cache_max_age_hours=catalog_cache_max_age_hours,
             detailed_logging_enabled=detailed_logging_enabled,
+            history_size=history_size,
         )
 
         try:
@@ -2174,6 +2459,7 @@ class IPTVPlayerApp(QMainWindow):
         self.catalog_cache_enabled = preferences.catalog_cache_enabled
         self.catalog_cache_max_age_hours = preferences.catalog_cache_max_age_hours
         self.detailed_logging_enabled = preferences.detailed_logging_enabled
+        self.history_size = preferences.history_size
         self._apply_stream_status_visibility()
         self._update_account_info_timer()
 
@@ -2846,6 +3132,20 @@ class IPTVPlayerApp(QMainWindow):
         if hidden_categories_changed:
             self._save_hidden_categories()
 
+        if self.history_file:
+            repair_misclassified_history(
+                self.history_file,
+                (
+                    entry.get("stream_id")
+                    for entry in self.entries_per_stream_type.get("LIVE", [])
+                ),
+                (
+                    entry.get("stream_id")
+                    for entry in self.entries_per_stream_type.get("Movies", [])
+                ),
+            )
+            self.refresh_history_tab()
+
         self.set_progress_bar(100, f"Finished loading")
         QtWidgets.qApp.processEvents()
 
@@ -2958,6 +3258,33 @@ class IPTVPlayerApp(QMainWindow):
                 item.setData(Qt.UserRole, series_info_data['episodes'][season])
 
                 self.streaming_list_widgets['Series'].addItem(item)
+
+            pending = self._pending_history_series
+            if isinstance(pending, dict):
+                self._pending_history_series = None
+                season_key = str(pending.get("season", ""))
+                episodes = series_info_data['episodes'].get(season_key)
+                if episodes is None:
+                    try:
+                        episodes = series_info_data['episodes'].get(int(season_key))
+                    except (TypeError, ValueError):
+                        episodes = None
+                if episodes is not None:
+                    self.current_series_season = season_key
+                    self.series_navigation_level = 2
+                    self.show_episodes(episodes)
+                    episode_id = str(pending.get("stream_id", ""))
+                    episode_list = self.streaming_list_widgets['Series']
+                    for row in range(episode_list.count()):
+                        episode_item = episode_list.item(row)
+                        episode_data = episode_item.data(Qt.UserRole)
+                        if (
+                            isinstance(episode_data, dict)
+                            and str(episode_data.get("id", "")) == episode_id
+                        ):
+                            episode_list.setCurrentItem(episode_item)
+                            episode_list.scrollToItem(episode_item)
+                            break
 
             self.animate_progress(0, 100, "Loading finished")
 
@@ -3549,19 +3876,27 @@ class IPTVPlayerApp(QMainWindow):
 
             self.prev_double_clicked_streaming_item = clicked_item
 
-            # Have different action depending on the navigation level
+            # LIVE and Movies are always root-level entries. A nested Series view
+            # must not affect how another tab classifies or launches its items.
+            if 'live' in stream_type or 'movie' in stream_type:
+                history_type = "LIVE" if 'live' in stream_type else "Movies"
+                self.play_item(
+                    clicked_item_data['url'],
+                    clicked_item_data.get('name', clicked_item_text),
+                    self._history_metadata(
+                        history_type, clicked_item_data, clicked_item_text
+                    ),
+                )
+                return
+
+            # Series actions depend on the current show/season/episode level.
             match self.series_navigation_level:
                 case 0:  # Highest level, either LIVE, VOD or series
                     if clicked_item_text == self.go_back_text:
                         return
 
-                    if 'live' in stream_type or 'movie' in stream_type:
-                        self.play_item(
-                            clicked_item_data['url'],
-                            clicked_item_data.get('name', clicked_item_text),
-                        )
-
-                    elif 'series' in stream_type:
+                    if 'series' in stream_type:
+                        self.current_series_entry = clicked_item_data
                         self.series_navigation_level = 1
                         self.show_seasons(clicked_item_data)
 
@@ -3571,6 +3906,9 @@ class IPTVPlayerApp(QMainWindow):
                         self.go_back_to_level(self.series_navigation_level)
                         
                     else:
+                        self.current_series_season = clicked_item_text.removeprefix(
+                            "Season "
+                        )
                         self.series_navigation_level = 2
                         self.show_episodes(clicked_item_data)
 
@@ -3584,6 +3922,9 @@ class IPTVPlayerApp(QMainWindow):
                         self.play_item(
                             clicked_item_data['url'],
                             clicked_item_data.get('title', clicked_item_text),
+                            self._history_metadata(
+                                "Series", clicked_item_data, clicked_item_text
+                            ),
                         )
 
         except Exception as e:
@@ -3677,7 +4018,103 @@ class IPTVPlayerApp(QMainWindow):
 
         self.animate_progress(0, 100, "Loading finished")
 
-    def play_item(self, url, title=""):
+    def _history_metadata(self, stream_type, data, fallback_title=""):
+        """Build safe history metadata without including a provider URL."""
+        if not isinstance(data, dict):
+            return None
+        stream_id = data.get("stream_id") or data.get("id")
+        title = data.get("title") or data.get("name") or fallback_title
+        if not stream_id or not title:
+            return None
+        metadata = {
+            "key": f"{stream_type}:{stream_id}",
+            "type": stream_type,
+            "title": str(title),
+            "stream_id": str(stream_id),
+            "container_extension": data.get("container_extension", ""),
+            "account_id": self.active_account_id,
+        }
+        category_name, category_id = self._selected_category(stream_type)
+        metadata.update({
+            "source_category_name": str(category_name or ""),
+            "source_category_id": str(category_id or ""),
+        })
+        if stream_type == "Series" and self.current_series_entry:
+            metadata.update({
+                "series_id": str(self.current_series_entry.get("series_id", "")),
+                "series_title": str(self.current_series_entry.get("name", "")),
+                "series_category_id": str(
+                    self.current_series_entry.get("category_id", "")
+                ),
+                "season": str(data.get("season", self.current_series_season or "")),
+            })
+        return metadata
+
+    def _record_history_access(self, entry):
+        """Move one playback entry to the top while preserving resume progress."""
+        if not self.history_file or not isinstance(entry, dict):
+            return entry
+        merged = self._history_with_saved_progress(entry)
+        merged["last_viewed"] = datetime.now().astimezone().isoformat(timespec="seconds")
+        try:
+            record_history(self.history_file, merged, self.history_size)
+            self.refresh_history_tab()
+        except OSError as error:
+            logging.warning("Could not update playback history: %s", error)
+        return merged
+
+    def _history_with_saved_progress(self, entry):
+        """Merge safe catalog metadata with an existing playback position."""
+        if not self.history_file or not isinstance(entry, dict):
+            return entry
+        previous = next(
+            (
+                item for item in load_history(self.history_file)
+                if item.get("key") == entry.get("key")
+            ),
+            {},
+        )
+        merged = dict(previous)
+        merged.update(entry)
+        return merged
+
+    def _choose_resume_position(self, entry):
+        """Apply the configured resume policy to one previously started item."""
+        if entry.get("type") == "LIVE":
+            return 0
+        position_ms = resume_position(entry)
+        if not position_ms or self.internal_resume_behavior == "restart":
+            return 0
+        if self.internal_resume_behavior == "resume":
+            return position_ms
+
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Question)
+        dialog.setWindowTitle("Resume playback")
+        dialog.setText(
+            f"Resume '{entry.get('title', '')}' from "
+            f"{self._format_history_position(position_ms)}?"
+        )
+        resume_button = dialog.addButton("Resume", QMessageBox.AcceptRole)
+        dialog.addButton("Restart", QMessageBox.DestructiveRole)
+        dialog.addButton(QMessageBox.Cancel)
+        dialog.setDefaultButton(resume_button)
+        self._prepare_dialog_theme(dialog)
+        dialog.exec_()
+        if dialog.clickedButton() is resume_button:
+            return position_ms
+        if dialog.standardButton(dialog.clickedButton()) == QMessageBox.Cancel:
+            return None
+        return 0
+
+    @staticmethod
+    def _format_history_position(position_ms):
+        seconds = max(0, int(position_ms) // 1000)
+        hours, seconds = divmod(seconds, 3600)
+        minutes, seconds = divmod(seconds, 60)
+        return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
+
+    def play_item(self, url, title="", history_entry=None):
         if not url:
             self.animate_progress(0, 100, "Stream URL not found", "error")
 
@@ -3693,6 +4130,7 @@ class IPTVPlayerApp(QMainWindow):
 
         if self.external_player_command:
             try:
+                history_entry = self._history_with_saved_progress(history_entry)
                 print(f"Going to play: {private_url_log_reference(url)}")
                 self.animate_progress(0, 100, "Loading player for streaming")
 
@@ -3700,9 +4138,14 @@ class IPTVPlayerApp(QMainWindow):
                 # command. The marker is set when the user picks "Embedded VLC" in
                 # Settings (so we don't store a real path that could be invoked by accident).
                 if self.external_player_command == INTERNAL_VLC_COMMAND:
-                    self._play_embedded(url)
+                    resume_ms = self._choose_resume_position(history_entry or {})
+                    if resume_ms is None:
+                        return
+                    history_entry = self._record_history_access(history_entry)
+                    self._play_embedded(url, history_entry, resume_ms)
                     return
 
+                history_entry = self._record_history_access(history_entry)
                 launch_external_player(
                     self.external_player_command,
                     url,
@@ -3875,16 +4318,34 @@ class IPTVPlayerApp(QMainWindow):
             self.internal_player_radio.isChecked()
         )
 
-    def _play_embedded(self, url):
+    def _play_embedded(self, url, history_entry=None, resume_ms=0):
         try:
-            playlist, current_idx, title = self._collect_visible_playlist(url)
+            playlist, current_idx, title = self._collect_visible_playlist(
+                url, history_entry
+            )
+            saved_history = {
+                entry.get("key"): entry
+                for entry in load_history(self.history_file)
+            } if self.history_file else {}
+            for playlist_entry in playlist:
+                metadata = playlist_entry.get("history")
+                if not isinstance(metadata, dict):
+                    continue
+                previous = saved_history.get(metadata.get("key"), {})
+                merged = dict(previous)
+                merged.update(metadata)
+                playlist_entry["history"] = merged
+            if history_entry and 0 <= current_idx < len(playlist):
+                playlist[current_idx]['history'] = history_entry
             self._ensure_embedded_player_process()
             self._embedded_player_command_queue.put({
                 'command': 'play',
                 'url': url,
                 'title': title,
                 'playlist': playlist,
-                'index': current_idx
+                'index': current_idx,
+                'history': history_entry,
+                'resume_ms': resume_ms,
             })
             self.animate_progress(0, 100, "Playing in internal player")
         except Exception as e:
@@ -3929,6 +4390,7 @@ class IPTVPlayerApp(QMainWindow):
         environment['IPTV_PLAYER_SPEED_STEP'] = str(self.internal_speed_step)
         environment['IPTV_PLAYER_AUDIO_LANGUAGE'] = self.internal_audio_language
         environment['IPTV_PLAYER_SUBTITLE_LANGUAGE'] = self.internal_subtitle_language
+        environment['IPTV_PLAYER_RESUME_BEHAVIOR'] = self.internal_resume_behavior
         environment['IPTV_PLAYER_SETTINGS_FILE'] = path.abspath(self.user_data_file)
 
         if getattr(sys, 'frozen', False):
@@ -3959,6 +4421,20 @@ class IPTVPlayerApp(QMainWindow):
             connection = None
             try:
                 connection = listener.accept()
+                def receive_events():
+                    try:
+                        while True:
+                            event = connection.recv()
+                            if isinstance(event, dict):
+                                self._embedded_player_event_queue.put(event)
+                    except (EOFError, OSError):
+                        pass
+
+                threading.Thread(
+                    target=receive_events,
+                    name='EmbeddedPlayerEventReceiver',
+                    daemon=True,
+                ).start()
                 while True:
                     payload = command_queue.get()
                     if payload is None:
@@ -3978,6 +4454,37 @@ class IPTVPlayerApp(QMainWindow):
         )
         self._embedded_player_sender_thread.start()
 
+    def _process_embedded_player_events(self):
+        """Persist player progress events on the main application's GUI thread."""
+        history_changed = False
+        while True:
+            try:
+                event = self._embedded_player_event_queue.get_nowait()
+            except queue.Empty:
+                break
+            if event.get("event") != "history_progress":
+                continue
+            entry = event.get("history")
+            if not isinstance(entry, dict):
+                continue
+            account_id = entry.get("account_id") or self.active_account_id
+            if not account_id:
+                continue
+            filename = account_history_file(self.history_base_file, account_id)
+            try:
+                was_known = any(
+                    item.get("key") == entry.get("key")
+                    for item in load_history(filename)
+                )
+                record_history(filename, entry, self.history_size)
+                history_changed = history_changed or (
+                    not was_known and account_id == self.active_account_id
+                )
+            except OSError as error:
+                logging.warning("Could not save playback progress: %s", error)
+        if history_changed:
+            self.refresh_history_tab()
+
     def _close_embedded_player_listener(self):
         """Close resources left by an earlier isolated player instance."""
         if self._embedded_player_listener is not None:
@@ -3996,13 +4503,19 @@ class IPTVPlayerApp(QMainWindow):
         process = self._embedded_player_process
         if process is not None and process.poll() is None:
             try:
-                process.terminate()
-            except OSError:
-                pass
+                # Give the player time to report its final playback position before
+                # falling back to a forced termination during application shutdown.
+                process.wait(timeout=1.5)
+            except subprocess.TimeoutExpired:
+                try:
+                    process.terminate()
+                except OSError:
+                    pass
+        self._process_embedded_player_events()
         self._embedded_player_process = None
         self._close_embedded_player_listener()
 
-    def _collect_visible_playlist(self, url):
+    def _collect_visible_playlist(self, url, history_entry=None):
         # Build the player's sidebar list from what's CURRENTLY VISIBLE in the main
         # window — i.e. iterate the actual QListWidget the user just clicked from,
         # not the cached `currently_loaded_streams` array. For Series in episode
@@ -4011,7 +4524,39 @@ class IPTVPlayerApp(QMainWindow):
         try:
             current_tab_idx = self.tab_widget.currentIndex()
             tab_name = self.tab_widget.tabText(current_tab_idx)
-            stream_type = {'LIVE': 'LIVE', 'Movies': 'Movies', 'Series': 'Series'}.get(tab_name, 'LIVE')
+            stream_type = {
+                'LIVE': 'LIVE', 'Movies': 'Movies', 'Series': 'Series'
+            }.get(tab_name)
+
+            # History has no catalog list of its own. Build the sidebar from
+            # recent items of the selected type so Series never inherits LIVE.
+            if tab_name == 'History' and isinstance(history_entry, dict):
+                stream_type = history_entry.get('type')
+                playlist = []
+                current_idx = 0
+                title = history_entry.get('title', '')
+                for entry in load_history(self.history_file):
+                    if entry.get('type') != stream_type:
+                        continue
+                    entry_url = self._history_entry_url(entry)
+                    if not entry_url:
+                        continue
+                    playlist.append({
+                        'name': entry.get('title', entry_url),
+                        'url': entry_url,
+                        'history': entry,
+                    })
+                    if entry.get('key') == history_entry.get('key'):
+                        current_idx = len(playlist) - 1
+                if playlist:
+                    return playlist, current_idx, title
+
+            if stream_type is None:
+                return [{
+                    'name': (history_entry or {}).get('title', url),
+                    'url': url,
+                    'history': history_entry,
+                }], 0, (history_entry or {}).get('title', '')
 
             list_widget = self.streaming_list_widgets.get(stream_type)
             playlist = []
@@ -4035,7 +4580,14 @@ class IPTVPlayerApp(QMainWindow):
                     if not u:
                         # Series-level rows (no URL) — drop them so Next/Prev only walks playable items.
                         continue
-                    playlist.append({'name': name, 'url': u})
+                    history_entry = self._history_metadata(
+                        stream_type, data, name
+                    )
+                    playlist.append({
+                        'name': name,
+                        'url': u,
+                        'history': history_entry,
+                    })
                     if u == url:
                         current_idx = len(playlist) - 1
                         title = name

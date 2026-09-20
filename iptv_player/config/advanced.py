@@ -4,6 +4,7 @@ import configparser
 from dataclasses import dataclass
 
 from iptv_player.config.ini import read_config_file, write_config_file
+from iptv_player.constants import DEFAULT_HISTORY_SIZE
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 from iptv_player.provider.network import (
     DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL,
@@ -31,6 +32,7 @@ class AdvancedPreferences:
     catalog_cache_enabled: bool = True
     catalog_cache_max_age_hours: int = DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
     detailed_logging_enabled: bool = False
+    history_size: int = DEFAULT_HISTORY_SIZE
 
 
 def load_advanced_preferences(filename):
@@ -79,6 +81,9 @@ def load_advanced_preferences(filename):
         detailed_logging_enabled=_boolean(
             config, "Logging", "detailed", False
         ),
+        history_size=_bounded_int(
+            config, "History", "max_items_per_type", DEFAULT_HISTORY_SIZE, 1, 1000
+        ),
     )
 
 
@@ -109,6 +114,9 @@ def save_advanced_preferences(filename, preferences):
     }
     config["Logging"] = {
         "detailed": str(preferences.detailed_logging_enabled)
+    }
+    config["History"] = {
+        "max_items_per_type": str(preferences.history_size)
     }
     write_config_file(filename, config)
 

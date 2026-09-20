@@ -25,6 +25,7 @@ class AdvancedPreferenceTests(unittest.TestCase):
                 catalog_cache_enabled=False,
                 catalog_cache_max_age_hours=48,
                 detailed_logging_enabled=True,
+                history_size=125,
             )
 
             save_advanced_preferences(filename, expected)
@@ -41,7 +42,9 @@ class AdvancedPreferenceTests(unittest.TestCase):
                 "live_status_retries=-5\n"
                 "[CatalogCache]\n"
                 "enabled=invalid\n"
-                "max_age_hours=0\n",
+                "max_age_hours=0\n"
+                "[History]\n"
+                "max_items_per_type=5000\n",
                 encoding="utf-8",
             )
 
@@ -52,6 +55,7 @@ class AdvancedPreferenceTests(unittest.TestCase):
             self.assertEqual(preferences.live_status_retries, 0)
             self.assertTrue(preferences.catalog_cache_enabled)
             self.assertEqual(preferences.catalog_cache_max_age_hours, 1)
+            self.assertEqual(preferences.history_size, 1000)
 
 
 if __name__ == "__main__":

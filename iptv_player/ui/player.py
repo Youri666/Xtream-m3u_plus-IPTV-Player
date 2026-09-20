@@ -3,6 +3,7 @@
 import configparser
 from os import path
 import sys
+import time
 
 from PyQt5.QtCore import QPoint, QSize, Qt, QTimer
 from PyQt5.QtGui import (
@@ -25,6 +26,7 @@ from PyQt5.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QMenu,
+    QMessageBox,
     QPushButton,
     QSlider,
     QStyle,
@@ -33,6 +35,8 @@ from PyQt5.QtWidgets import (
 )
 
 from iptv_player.config import write_config_file
+from iptv_player.constants import DEFAULT_RESUME_BEHAVIOR, RESUME_BEHAVIORS
+from iptv_player.storage.history import resume_position
 from iptv_player.ui.player_theme import (
     DARK_BUTTON_STYLE,
     DARK_OVERLAY_STYLE,
@@ -86,7 +90,8 @@ class EmbeddedPlayerWindow(QMainWindow):
     def __init__(
         self, parent=None, user_agent="", settings_path=None,
         seek_step_seconds=10, volume_step_percent=2, speed_step=0.25,
-        audio_language="", subtitle_language=""
+        audio_language="", subtitle_language="", resume_behavior="ask",
+        progress_callback=None
     ):
         super().__init__(parent)
         self.setWindowTitle("Internal Player")
@@ -118,6 +123,15 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._speed_step = 0.25
         self._audio_language = ""
         self._subtitle_language = ""
+        self._progress_callback = progress_callback
+        self._current_history = None
+        self._pending_resume_ms = 0
+        self._pending_resume_attempts = 0
+        self._last_progress_report = 0.0
+        self._resume_behavior = (
+            resume_behavior if resume_behavior in RESUME_BEHAVIORS
+            else DEFAULT_RESUME_BEHAVIOR
+        )
         self._app_parent = parent
         self._explicit_settings_path = settings_path
         self._volume = self._load_volume_pref()
@@ -549,7 +563,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         except Exception:
             return False
 
-    def play_url(self, url, title="", playlist=None, index=0):
+    def play_url(self, url, title="", playlist=None, index=0, resume_ms=0):
+        self._report_progress(force=True)
         if playlist is not None:
             self._playlist = list(playlist)
             self._current_idx = max(0, min(index, len(self._playlist) - 1)) if self._playlist else 0
@@ -582,6 +597,13 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.activateWindow()
         self._bind_video_output()
         self.player.play()
+        self._current_history = (
+            dict(self._playlist[self._current_idx].get("history") or {})
+            if self._playlist else None
+        )
+        self._pending_resume_ms = max(0, int(resume_ms or 0))
+        self._pending_resume_attempts = 20 if self._pending_resume_ms else 0
+        self._last_progress_report = 0.0
         self._set_standard_icon(self.btn_play, QStyle.SP_MediaPause)
         self._update_pl_pos()
         self._wake_controls()
@@ -707,7 +729,41 @@ class EmbeddedPlayerWindow(QMainWindow):
         if not url:
             # Skip ahead if the entry has no playable URL (e.g. series-level item).
             return
-        self.play_url(url, title=entry.get('name', ''), playlist=self._playlist, index=self._current_idx)
+        resume_ms = self._resume_for_playlist_entry(entry)
+        if resume_ms is None:
+            return
+        self.play_url(
+            url,
+            title=entry.get('name', ''),
+            playlist=self._playlist,
+            index=self._current_idx,
+            resume_ms=resume_ms,
+        )
+
+    def set_resume_behavior(self, behavior):
+        """Update how previously started playlist entries are handled."""
+        self._resume_behavior = (
+            behavior if behavior in RESUME_BEHAVIORS else DEFAULT_RESUME_BEHAVIOR
+        )
+
+    def _resume_for_playlist_entry(self, entry):
+        """Choose a resume position when navigating inside the player playlist."""
+        history = entry.get("history") or {}
+        position_ms = resume_position(history)
+        if not position_ms or self._resume_behavior == "restart":
+            return 0
+        if self._resume_behavior == "resume":
+            return position_ms
+        answer = QMessageBox.question(
+            self,
+            "Resume playback",
+            f"Resume '{entry.get('name', '')}' from {self._fmt_ms(position_ms)}?",
+            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+            QMessageBox.Yes,
+        )
+        if answer == QMessageBox.Cancel:
+            return None
+        return position_ms if answer == QMessageBox.Yes else 0
 
     def _update_pl_pos(self):
         n = len(self._playlist)
@@ -1031,6 +1087,19 @@ class EmbeddedPlayerWindow(QMainWindow):
 
             length = self.player.get_length()
             cur    = self.player.get_time()
+            if self._pending_resume_ms and length > 0 and self.player.is_playing():
+                target = min(self._pending_resume_ms, length)
+                if cur >= target - 500:
+                    self._pending_resume_ms = 0
+                    self._pending_resume_attempts = 0
+                elif self._pending_resume_attempts > 0:
+                    # VLC can reject an early seek while media metadata is still
+                    # opening. Retry briefly and confirm the reported position.
+                    self.player.set_time(target)
+                    self._pending_resume_attempts -= 1
+                else:
+                    self._pending_resume_ms = 0
+                cur = self.player.get_time()
             if length > 0 and not self._seeking:
                 self.seek_slider.setEnabled(True)
                 self.seek_slider.setValue(int(cur / length * 1000))
@@ -1042,7 +1111,27 @@ class EmbeddedPlayerWindow(QMainWindow):
                 self.time_label.setText("LIVE")
             self._update_subs_button()
             self._update_audio_button()
+            self._report_progress()
         except Exception:
+            pass
+
+    def _report_progress(self, force=False):
+        """Send playback progress to the main process at ten-second intervals."""
+        if not self._current_history or self._progress_callback is None:
+            return
+        now = time.monotonic()
+        if not force and now - self._last_progress_report < 10:
+            return
+        try:
+            entry = dict(self._current_history)
+            entry["position_ms"] = max(0, int(self.player.get_time()))
+            entry["duration_ms"] = max(0, int(self.player.get_length()))
+            self._progress_callback({
+                "event": "history_progress",
+                "history": entry,
+            })
+            self._last_progress_report = now
+        except (EOFError, OSError, TypeError, ValueError):
             pass
 
     def _seek_pressed(self):
@@ -1202,6 +1291,7 @@ class EmbeddedPlayerWindow(QMainWindow):
 
     def closeEvent(self, event):
         try:
+            self._report_progress(force=True)
             self._save_volume_pref()
             self.player.stop()
         except Exception:

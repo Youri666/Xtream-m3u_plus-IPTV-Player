@@ -3,15 +3,9 @@
 from pathlib import Path
 
 
-def remove_account_data_files(
-    account_id, cache_base_file, favorites_base_file, preferences_base_file
-):
-    """Remove an account's cache, favorites, and category preference files."""
-    owned_files = (
-        _account_file(cache_base_file, account_id),
-        _account_file(favorites_base_file, account_id),
-        _account_file(preferences_base_file, account_id),
-    )
+def remove_account_data_files(account_id, *base_files):
+    """Remove every per-account file derived from the supplied base paths."""
+    owned_files = tuple(_account_file(filename, account_id) for filename in base_files)
     failures = []
     for filename in owned_files:
         try:

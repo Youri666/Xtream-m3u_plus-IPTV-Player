@@ -73,6 +73,8 @@ def run_embedded_player_process():
         speed_step=speed_step,
         audio_language=os.environ.get("IPTV_PLAYER_AUDIO_LANGUAGE", ""),
         subtitle_language=os.environ.get("IPTV_PLAYER_SUBTITLE_LANGUAGE", ""),
+        resume_behavior=os.environ.get("IPTV_PLAYER_RESUME_BEHAVIOR", "ask"),
+        progress_callback=lambda event: connection.send(event),
     )
     bridge = _PlayerCommandBridge()
 
@@ -84,6 +86,7 @@ def run_embedded_player_process():
                 payload.get("title", ""),
                 payload.get("playlist") or [],
                 payload.get("index", 0),
+                payload.get("resume_ms", 0),
             )
         elif command == "quit":
             player.close()
@@ -101,6 +104,7 @@ def run_embedded_player_process():
                 payload.get("audio_language", ""),
                 payload.get("subtitle_language", ""),
             )
+            player.set_resume_behavior(payload.get("resume_behavior", "ask"))
 
     bridge.command_received.connect(handle_command)
     bridge.connection_closed.connect(app.quit)

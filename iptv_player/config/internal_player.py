@@ -5,10 +5,12 @@ from dataclasses import dataclass
 
 from iptv_player.config.ini import read_config_file, write_config_file
 from iptv_player.constants import (
+    DEFAULT_RESUME_BEHAVIOR,
     DEFAULT_INTERNAL_SEEK_STEP_SECONDS,
     DEFAULT_INTERNAL_SPEED_STEP,
     DEFAULT_INTERNAL_VOLUME_STEP_PERCENT,
     MEDIA_LANGUAGE_OPTIONS,
+    RESUME_BEHAVIORS,
 )
 
 
@@ -21,6 +23,7 @@ class InternalPlayerPreferences:
     speed_step: float = DEFAULT_INTERNAL_SPEED_STEP
     audio_language: str = ""
     subtitle_language: str = ""
+    resume_behavior: str = DEFAULT_RESUME_BEHAVIOR
 
 
 def load_internal_player_preferences(filename):
@@ -53,6 +56,12 @@ def load_internal_player_preferences(filename):
             if subtitle_language in valid_languages | {"disabled"}
             else ""
         ),
+        resume_behavior=_choice(
+            config,
+            "resume_behavior",
+            DEFAULT_RESUME_BEHAVIOR,
+            RESUME_BEHAVIORS,
+        ),
     )
 
 
@@ -66,6 +75,7 @@ def save_internal_player_preferences(filename, preferences):
         "speed_step": str(preferences.speed_step),
         "audio_language": preferences.audio_language,
         "subtitle_language": preferences.subtitle_language,
+        "resume_behavior": preferences.resume_behavior,
         "volume": saved_volume,
     }
     write_config_file(filename, config)
@@ -95,3 +105,9 @@ def _bounded_float(config, option, fallback, minimum, maximum):
     except (ValueError, configparser.Error):
         value = fallback
     return max(minimum, min(round(value, 2), maximum))
+
+
+def _choice(config, option, fallback, allowed_values):
+    """Read one string option and reject values outside its documented choices."""
+    value = config.get("InternalPlayer", option, fallback=fallback)
+    return value if value in allowed_values else fallback

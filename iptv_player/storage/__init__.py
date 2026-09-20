@@ -8,6 +8,14 @@ from .favorites import (
     set_favorite,
 )
 from .json_file import read_json_mapping, write_json_file
+from .history import (
+    account_history_file,
+    clear_history,
+    load_history,
+    record_history,
+    repair_misclassified_history,
+    resume_position,
+)
 from .provider_preferences import (
     load_provider_preferences,
     provider_preferences_file,
@@ -16,12 +24,18 @@ from .provider_preferences import (
 
 __all__ = (
     "account_favorites_file",
+    "account_history_file",
+    "clear_history",
     "entries_in_favorite_order",
     "migrate_legacy_favorites_file",
     "load_provider_preferences",
+    "load_history",
     "provider_preferences_file",
     "read_json_mapping",
     "remove_account_data_files",
+    "record_history",
+    "repair_misclassified_history",
+    "resume_position",
     "set_favorite",
     "save_provider_preferences",
     "write_json_file",

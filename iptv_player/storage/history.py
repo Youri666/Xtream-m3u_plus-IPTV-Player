@@ -61,6 +61,38 @@ def clear_history(filename):
         pass
 
 
+def repair_misclassified_history(filename, live_ids, movie_ids):
+    """Repair rows saved as Series while another Series view remained open."""
+    entries = load_history(filename)
+    live_ids = {str(value) for value in live_ids}
+    movie_ids = {str(value) for value in movie_ids}
+    changed = False
+    repaired = []
+    seen_keys = set()
+    for entry in entries:
+        item = dict(entry)
+        stream_id = str(item.get("stream_id", ""))
+        if item.get("type") == "Series" and not item.get("series_id"):
+            if stream_id in live_ids:
+                item["type"] = "LIVE"
+            elif stream_id in movie_ids:
+                item["type"] = "Movies"
+            if item["type"] != "Series":
+                item["key"] = f"{item['type']}:{stream_id}"
+                changed = True
+        if item.get("key") in seen_keys:
+            changed = True
+            continue
+        seen_keys.add(item.get("key"))
+        repaired.append(_normalize_entry(item))
+    if changed:
+        write_json_file(filename, {
+            "schema_version": HISTORY_SCHEMA_VERSION,
+            "items": [item for item in repaired if item is not None],
+        })
+    return [item for item in repaired if item is not None]
+
+
 def resume_position(entry):
     """Return a useful resume position, excluding starts and completed media."""
     try:
@@ -91,7 +123,7 @@ def _normalize_entry(entry):
     except (TypeError, ValueError):
         position_ms = 0
         duration_ms = 0
-    return {
+    normalized = {
         "key": key,
         "type": stream_type,
         "title": title,
@@ -100,7 +132,21 @@ def _normalize_entry(entry):
         "duration_ms": duration_ms,
         "stream_id": str(entry.get("stream_id", "")),
         "container_extension": str(entry.get("container_extension", "") or ""),
+        "source_category_name": str(
+            entry.get("source_category_name", "") or ""
+        ),
+        "source_category_id": str(
+            entry.get("source_category_id", "") or ""
+        ),
     }
+    if stream_type == "Series":
+        normalized.update({
+            "series_id": str(entry.get("series_id", "") or ""),
+            "series_title": str(entry.get("series_title", "") or ""),
+            "series_category_id": str(entry.get("series_category_id", "") or ""),
+            "season": str(entry.get("season", "") or ""),
+        })
+    return normalized
 
 
 def _valid_entry(entry):

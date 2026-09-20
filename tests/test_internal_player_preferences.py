@@ -20,6 +20,7 @@ class InternalPlayerPreferenceTests(unittest.TestCase):
                 speed_step=0.2,
                 audio_language="eng",
                 subtitle_language="disabled",
+                resume_behavior="resume",
             )
 
             save_internal_player_preferences(filename, expected)
@@ -36,7 +37,8 @@ class InternalPlayerPreferenceTests(unittest.TestCase):
                 "volume_step_percent=invalid\n"
                 "speed_step=0.001\n"
                 "audio_language=unsupported\n"
-                "subtitle_language=fra\n",
+                "subtitle_language=fra\n"
+                "resume_behavior=invalid\n",
                 encoding="utf-8",
             )
 
@@ -47,6 +49,7 @@ class InternalPlayerPreferenceTests(unittest.TestCase):
             self.assertEqual(preferences.speed_step, 0.05)
             self.assertEqual(preferences.audio_language, "")
             self.assertEqual(preferences.subtitle_language, "fra")
+            self.assertEqual(preferences.resume_behavior, "ask")
 
 
 if __name__ == "__main__":
