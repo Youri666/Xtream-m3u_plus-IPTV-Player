@@ -11,13 +11,13 @@ This IPTV player, built with Python and PyQt5, supports M3U_plus playlists and X
 
 # Download
 
-## V3.0.0 Beta
+## V3.0.1 Beta
 
-Version **V3.0.0** is currently available as a beta/test release for users who want to try the new V3 architecture and features before the final stable release.
+Version **V3.0.1** is currently available as a beta/test release for users who want to try the new V3 architecture and features before the final stable release.
 
-[**Download V3.0.0 Beta / Test Release**](https://github.com/LapinFou/Xtream-m3u_plus-IPTV-Player/releases)
+[**Download V3.0.1 Beta / Test Release**](https://github.com/LapinFou/Xtream-m3u_plus-IPTV-Player/releases)
 
-> V3.0.0 is currently in beta. It includes major internal changes and may still contain regressions or unfinished behavior.
+> V3.0.1 is currently in beta. It includes major internal changes and may still contain regressions or unfinished behavior.
 >
 > **Beta notice:** V3 is still in beta. As a precaution, it is recommended to make a backup copy of your existing V2 application folder, including its configuration and user data files, before testing V3.
 >

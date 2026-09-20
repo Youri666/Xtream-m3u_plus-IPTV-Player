@@ -38,6 +38,7 @@ class NetworkSettingsDialog(QDialog):
 
     def __init__(self, parent):
         super().__init__(parent)
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.parent_app = parent
         self.setWindowTitle("Advanced settings")
         self.setModal(True)
@@ -252,6 +253,7 @@ class CategoryVisibilityDialog(QDialog):
 
     def __init__(self, parent, stream_type, categories, hidden_category_ids):
         super().__init__(parent)
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.setWindowTitle(f"Select {stream_type} categories")
         self.setModal(True)
         self.resize(520, 620)
@@ -263,6 +265,11 @@ class CategoryVisibilityDialog(QDialog):
         ))
 
         self.category_list = QListWidget()
+        # Match the Settings background so native Qt checkbox indicators retain
+        # their intended contrast in both light and dark themes.
+        self.category_list.setStyleSheet(
+            "QListWidget { background-color: palette(window); }"
+        )
         for category in sorted(
             categories,
             key=lambda entry: entry.get('category_name', '').casefold()
@@ -314,6 +321,7 @@ class InternalPlayerSettingsDialog(QDialog):
 
     def __init__(self, parent):
         super().__init__(parent)
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.setWindowTitle("Internal player settings")
         layout = QFormLayout(self)
 

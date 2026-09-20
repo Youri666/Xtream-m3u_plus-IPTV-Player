@@ -112,6 +112,15 @@ def save_content_preferences(filename, preferences):
     )
 
 
+def remove_content_preferences(filename):
+    """Remove legacy global content switches after account-specific migration."""
+    config = _load_config(filename)
+    changed = config.remove_section("Content")
+    changed = config.remove_section("VOD") or changed
+    if changed:
+        write_config_file(filename, config)
+
+
 def load_sorting_preference(filename):
     """Load the global catalog sorting mode used by the Settings page."""
     config = _load_config(filename)

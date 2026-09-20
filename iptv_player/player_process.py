@@ -50,6 +50,9 @@ def run_embedded_player_process():
 
     # Do not expose the private child-mode argument to Qt's option parser.
     app = QApplication([sys.argv[0]])
+    # Keep the initialized VLC engine alive after the window is closed so the next
+    # playback starts immediately in the same isolated process.
+    app.setQuitOnLastWindowClosed(False)
     configure_qt_application(app)
     apply_application_theme(app, os.environ.get("IPTV_PLAYER_THEME", "System"))
 
@@ -87,6 +90,7 @@ def run_embedded_player_process():
                 payload.get("playlist") or [],
                 payload.get("index", 0),
                 payload.get("resume_ms", 0),
+                payload.get("keep_above_main", False),
             )
         elif command == "quit":
             player.close()

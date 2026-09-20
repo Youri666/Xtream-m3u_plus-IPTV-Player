@@ -66,9 +66,10 @@ def load_internal_player_preferences(filename):
 
 
 def save_internal_player_preferences(filename, preferences):
-    """Persist player controls while preserving the separately managed volume."""
+    """Persist controls while preserving runtime volume and playback rate."""
     config = _load_config(filename)
     saved_volume = config.get("InternalPlayer", "volume", fallback="80")
+    saved_rate = config.get("InternalPlayer", "playback_rate", fallback="1.0")
     config["InternalPlayer"] = {
         "seek_step_seconds": str(preferences.seek_step_seconds),
         "volume_step_percent": str(preferences.volume_step_percent),
@@ -77,6 +78,7 @@ def save_internal_player_preferences(filename, preferences):
         "subtitle_language": preferences.subtitle_language,
         "resume_behavior": preferences.resume_behavior,
         "volume": saved_volume,
+        "playback_rate": saved_rate,
     }
     write_config_file(filename, config)
 

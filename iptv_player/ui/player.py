@@ -5,7 +5,7 @@ from os import path
 import sys
 import time
 
-from PyQt5.QtCore import QPoint, QSize, Qt, QTimer
+from PyQt5.QtCore import QByteArray, QEvent, QPoint, QSize, Qt, QTimer
 from PyQt5.QtGui import (
     QColor,
     QIcon,
@@ -30,6 +30,7 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QSlider,
     QStyle,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -49,24 +50,50 @@ from iptv_player.utils.search import normalize_search_text, title_matches_search
 
 
 class _ClickableSlider(QSlider):
-    """QSlider variant where clicking the track jumps to that position (instead of
-    paging in the default ±10% step). Emits sliderPressed/Released around the
-    click so the parent's seek logic still gets fired."""
+    """Seek slider that previews a dragged position and applies it on release."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._dragging = False
+
+    def _value_at_event(self, event):
+        """Map a pointer position to the slider range."""
+        if self.orientation() == Qt.Horizontal:
+            ratio = max(0.0, min(1.0, event.x() / max(1, self.width())))
+        else:
+            ratio = max(0.0, min(1.0, 1.0 - event.y() / max(1, self.height())))
+        return int(self.minimum() + ratio * (self.maximum() - self.minimum()))
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and self.maximum() != self.minimum():
-            # Compute the position under the click as a value in [minimum, maximum].
-            if self.orientation() == Qt.Horizontal:
-                ratio = max(0.0, min(1.0, event.x() / max(1, self.width())))
-            else:
-                ratio = max(0.0, min(1.0, 1.0 - event.y() / max(1, self.height())))
-            val = self.minimum() + ratio * (self.maximum() - self.minimum())
-            self.setValue(int(val))
+            self._dragging = True
+            self.setValue(self._value_at_event(event))
+            self.grabMouse()
             self.sliderPressed.emit()
-            self.sliderReleased.emit()
             event.accept()
             return
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._dragging and event.buttons() & Qt.LeftButton:
+            value = self._value_at_event(event)
+            self.setValue(value)
+            self.sliderMoved.emit(value)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._dragging and event.button() == Qt.LeftButton:
+            value = self._value_at_event(event)
+            self.setValue(value)
+            self.sliderMoved.emit(value)
+            self._dragging = False
+            self.releaseMouse()
+            self.sliderReleased.emit()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
 
 class EmbeddedPlayerWindow(QMainWindow):
@@ -116,6 +143,11 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._is_fullscreen = False
         self._muted = False
         self._last_wheel_event_id = None
+        self._paused_by_minimize = False
+        self._seek_osd_total_ms = 0
+        self._seek_target_ms = 0
+        self._seek_osd_active = False
+        self._pending_playback_rate_attempts = 0
         # Start from safe values; set_control_steps performs defensive parsing
         # after every control has been created and can update its tooltip.
         self._seek_step_ms = 10000
@@ -127,6 +159,9 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._current_history = None
         self._pending_resume_ms = 0
         self._pending_resume_attempts = 0
+        self._deferred_present = False
+        self._deferred_present_polls = 0
+        self._deferred_keep_topmost = False
         self._last_progress_report = 0.0
         self._resume_behavior = (
             resume_behavior if resume_behavior in RESUME_BEHAVIORS
@@ -135,6 +170,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._app_parent = parent
         self._explicit_settings_path = settings_path
         self._volume = self._load_volume_pref()
+        self._playback_rate = self._load_playback_rate_pref()
         self._volume_before_mute = self._volume if self._volume > 0 else 80
         self.player.audio_set_volume(self._volume)
         self.player.audio_set_mute(False)
@@ -191,7 +227,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_next   = QPushButton()
         self.btn_slow   = QPushButton("−")
         self.btn_fast   = QPushButton("+")
-        self.rate_label = QLabel("1.00x")
+        self.rate_label = QLabel(f"{self._playback_rate:.2f}x")
         self.btn_mute   = QPushButton()
         self.vol_slider = QSlider(Qt.Horizontal)
         self.vol_slider.setRange(0, 100)
@@ -335,7 +371,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.track_osd.hide()
         self._track_osd_timer = QTimer(self)
         self._track_osd_timer.setSingleShot(True)
-        self._track_osd_timer.timeout.connect(self.track_osd.hide)
+        self._track_osd_timer.timeout.connect(self._hide_track_osd)
 
         # ---------- Auto-hide timer ----------
         self._hide_timer = QTimer(self)
@@ -357,6 +393,12 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._poll_timer.setInterval(500)
         self._poll_timer.timeout.connect(self._poll_state)
         self._poll_timer.start()
+
+        # Native libVLC video surfaces can lag behind a Qt layout resize. Rebind
+        # once resizing settles so the child surface receives the final geometry.
+        self._video_resize_timer = QTimer(self)
+        self._video_resize_timer.setSingleShot(True)
+        self._video_resize_timer.timeout.connect(self._refresh_video_output_size)
 
         # Periodically check the cursor's global position; if it's inside the
         # player window and we're hidden, wake. This catches any mouse-move that
@@ -390,6 +432,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             seek_step_seconds, volume_step_percent, speed_step
         )
         self.set_track_preferences(audio_language, subtitle_language)
+        self._restore_window_geometry()
         self.apply_theme()
         self._wake_controls()
 
@@ -563,7 +606,10 @@ class EmbeddedPlayerWindow(QMainWindow):
         except Exception:
             return False
 
-    def play_url(self, url, title="", playlist=None, index=0, resume_ms=0):
+    def play_url(
+        self, url, title="", playlist=None, index=0, resume_ms=0,
+        keep_above_main=False
+    ):
         self._report_progress(force=True)
         if playlist is not None:
             self._playlist = list(playlist)
@@ -588,21 +634,31 @@ class EmbeddedPlayerWindow(QMainWindow):
             media.add_option(":no-spu")
         elif self._subtitle_language:
             media.add_option(f":sub-language={self._subtitle_language}")
+        if resume_ms:
+            # Ask VLC to begin at the saved position before it decodes the first
+            # visible frame. The polling seek below remains a precision fallback.
+            media.add_option(f":start-time={max(0, int(resume_ms)) / 1000:.3f}")
         self.player.set_media(media)
-        self.show()
-        # Apply native caption colors after the HWND is visible because Windows
-        # may initialize its final non-client appearance during the first show.
-        self.apply_theme()
-        self.raise_()
-        self.activateWindow()
-        self._bind_video_output()
-        self.player.play()
         self._current_history = (
             dict(self._playlist[self._current_idx].get("history") or {})
             if self._playlist else None
         )
+        self._pending_playback_rate_attempts = 20
         self._pending_resume_ms = max(0, int(resume_ms or 0))
         self._pending_resume_attempts = 20 if self._pending_resume_ms else 0
+        self._deferred_present = bool(self._pending_resume_ms)
+        self._deferred_present_polls = 12 if self._deferred_present else 0
+        self._deferred_keep_topmost = bool(keep_above_main)
+        if not sys.platform.startswith("win"):
+            # Use Qt's portable window-manager hint on macOS and Linux. The
+            # player remains an independent top-level window.
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, bool(keep_above_main))
+        if self._deferred_present:
+            self.hide()
+        self._bind_video_output()
+        self.player.play()
+        if not self._deferred_present:
+            self._present_player(keep_above_main)
         self._last_progress_report = 0.0
         self._set_standard_icon(self.btn_play, QStyle.SP_MediaPause)
         self._update_pl_pos()
@@ -631,6 +687,73 @@ class EmbeddedPlayerWindow(QMainWindow):
         except Exception:
             pass
 
+    def _bring_to_front(self, keep_topmost=False):
+        """Present the isolated player above the main window without keeping it topmost."""
+        if sys.platform.startswith("win"):
+            try:
+                import ctypes
+
+                hwnd = int(self.winId())
+                user32 = ctypes.windll.user32
+                # Mark the hidden native window topmost before Qt displays it so
+                # there is no single frame underneath the main window.
+                flags = 0x0001 | 0x0002  # NOSIZE | NOMOVE
+                user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, flags)
+            except Exception:
+                pass
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        if sys.platform.startswith("win"):
+            try:
+                ctypes.windll.user32.SetForegroundWindow(int(self.winId()))
+                if not keep_topmost:
+                    QTimer.singleShot(500, self._release_temporary_topmost)
+            except Exception:
+                pass
+
+    def _present_player(self, keep_topmost=False):
+        """Show a prepared player and request foreground activation from its parent."""
+        self._deferred_present = False
+        self._bring_to_front(keep_topmost=keep_topmost)
+        # Apply native caption colors after the final HWND becomes visible.
+        self.apply_theme()
+        if self._progress_callback is None:
+            return
+        try:
+            self._progress_callback({
+                "event": "player_window_ready",
+                "window_id": int(self.winId()),
+                "keep_topmost": bool(keep_topmost),
+            })
+        except (EOFError, OSError, TypeError, ValueError):
+            pass
+
+    def _release_temporary_topmost(self):
+        """Return the player to normal stacking after Windows has presented it."""
+        if not sys.platform.startswith("win") or not self.isVisible():
+            return
+        try:
+            import ctypes
+
+            hwnd = int(self.winId())
+            flags = 0x0001 | 0x0002 | 0x0040  # NOSIZE | NOMOVE | SHOWWINDOW
+            ctypes.windll.user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, flags)
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+
+    def _refresh_video_output_size(self):
+        """Synchronize libVLC's native child surface with the final Qt geometry."""
+        if not self.isVisible():
+            return
+        try:
+            self.video_frame.updateGeometry()
+            self._bind_video_output()
+            self.player.video_set_scale(0)
+        except Exception:
+            pass
+
     # ---------- transport ----------
     def toggle_play_pause(self):
         if self.player.is_playing():
@@ -649,13 +772,24 @@ class EmbeddedPlayerWindow(QMainWindow):
         cur = self.player.get_time()
         if cur < 0:
             return
-        new = max(0, cur + ms)
+        if self._track_osd_timer.isActive() and self._seek_osd_active:
+            self._seek_osd_total_ms += ms
+            new = self._seek_target_ms + ms
+        else:
+            self._seek_osd_total_ms = ms
+            new = cur + ms
+        length = self.player.get_length()
+        new = max(0, min(new, length if length > 0 else new))
+        self._seek_target_ms = new
         self.player.set_time(int(new))
-        seconds = abs(ms) / 1000
+        seconds = abs(self._seek_osd_total_ms) / 1000
         amount = f"{seconds:g}"
-        direction = "+" if ms >= 0 else "−"
+        direction = "+" if self._seek_osd_total_ms >= 0 else "−"
         unit = "second" if seconds == 1 else "seconds"
-        self._show_track_osd(f"{direction}{amount} {unit}")
+        self._show_track_osd(
+            f"{direction}{amount} {unit}\n{self._fmt_ms(new)}",
+            seek=True,
+        )
         self._wake_controls()
 
     def set_volume(self, value):
@@ -700,12 +834,12 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._wake_controls()
 
     def _adjust_rate(self, delta):
-        try:
-            rate = max(0.25, min(4.0, self.player.get_rate() + delta))
-        except Exception:
-            rate = 1.0
-        self.player.set_rate(rate)
-        self.rate_label.setText(f"{rate:.2f}x")
+        self._playback_rate = max(
+            0.25, min(4.0, round(self._playback_rate + delta, 2))
+        )
+        self.player.set_rate(self._playback_rate)
+        self.rate_label.setText(f"{self._playback_rate:.2f}x")
+        self._save_playback_rate_pref()
         self._wake_controls()
 
     # ---------- next / previous ----------
@@ -898,14 +1032,22 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._show_track_osd(f"Subtitles: {selected_name}")
         self._wake_controls()
 
-    def _show_track_osd(self, text):
+    def _show_track_osd(self, text, seek=False):
         """Show a brief track-selection message over the video picture."""
+        self._seek_osd_active = bool(seek)
         self.track_osd.setText(text)
         self.track_osd.adjustSize()
         self._reposition_track_osd()
         self.track_osd.show()
         self.track_osd.raise_()
         self._track_osd_timer.start(1800)
+
+    def _hide_track_osd(self):
+        """Hide the OSD and end any accumulated keyboard seek sequence."""
+        self.track_osd.hide()
+        self._seek_osd_active = False
+        self._seek_osd_total_ms = 0
+        self._seek_target_ms = 0
 
     # ---------- fullscreen ----------
     def toggle_fullscreen(self):
@@ -1015,6 +1157,8 @@ class EmbeddedPlayerWindow(QMainWindow):
             return
         if self._sidebar_visible:
             return
+        if self._seeking:
+            return
         if not self.player.is_playing():
             return
         self.overlay.hide()
@@ -1085,13 +1229,15 @@ class EmbeddedPlayerWindow(QMainWindow):
             ):
                 self._hide_timer.start(3000)
 
-            length = self.player.get_length()
+            length = self._playback_length()
             cur    = self.player.get_time()
+            resume_completed = False
             if self._pending_resume_ms and length > 0 and self.player.is_playing():
                 target = min(self._pending_resume_ms, length)
                 if cur >= target - 500:
                     self._pending_resume_ms = 0
                     self._pending_resume_attempts = 0
+                    resume_completed = True
                 elif self._pending_resume_attempts > 0:
                     # VLC can reject an early seek while media metadata is still
                     # opening. Retry briefly and confirm the reported position.
@@ -1099,18 +1245,32 @@ class EmbeddedPlayerWindow(QMainWindow):
                     self._pending_resume_attempts -= 1
                 else:
                     self._pending_resume_ms = 0
+                    resume_completed = True
                 cur = self.player.get_time()
-            if length > 0 and not self._seeking:
-                self.seek_slider.setEnabled(True)
-                self.seek_slider.setValue(int(cur / length * 1000))
-                self.time_label.setText(f"{self._fmt_ms(cur)} / {self._fmt_ms(length)}")
-            else:
-                # Live stream — disable scrubbing, show LIVE label.
+            if self._deferred_present:
+                self._deferred_present_polls -= 1
+                if resume_completed or self._deferred_present_polls <= 0:
+                    self._present_player(self._deferred_keep_topmost)
+            is_live = (self._current_history or {}).get("type") == "LIVE"
+            if is_live:
                 self.seek_slider.setEnabled(False)
                 self.seek_slider.setValue(0)
                 self.time_label.setText("LIVE")
+            elif length > 0:
+                self.seek_slider.setEnabled(True)
+                if not self._seeking:
+                    self.seek_slider.setValue(int(max(0, cur) / length * 1000))
+                    self.time_label.setText(
+                        f"{self._fmt_ms(cur)} / {self._fmt_ms(length)}"
+                    )
+            else:
+                # VOD duration can be unavailable briefly while VLC opens media.
+                self.seek_slider.setEnabled(False)
+                self.seek_slider.setValue(0)
+                self.time_label.setText("Loading...")
             self._update_subs_button()
             self._update_audio_button()
+            self._apply_pending_playback_rate()
             self._report_progress()
         except Exception:
             pass
@@ -1124,8 +1284,15 @@ class EmbeddedPlayerWindow(QMainWindow):
             return
         try:
             entry = dict(self._current_history)
-            entry["position_ms"] = max(0, int(self.player.get_time()))
-            entry["duration_ms"] = max(0, int(self.player.get_length()))
+            duration_ms = int(self.player.get_length())
+            position_ms = int(self.player.get_time())
+            if entry.get("type") != "LIVE" and duration_ms <= 0:
+                # Never replace a valid resume point with VLC's transient opening
+                # values while a movie or episode is still loading.
+                return
+            entry["position_ms"] = max(0, position_ms)
+            entry["duration_ms"] = max(0, duration_ms)
+            self._current_history = entry
             self._progress_callback({
                 "event": "history_progress",
                 "history": entry,
@@ -1138,18 +1305,62 @@ class EmbeddedPlayerWindow(QMainWindow):
         # Set the seeking flag the moment the user grabs (or clicks) the slider,
         # so the 500 ms poll timer doesn't yank the handle back while they drag.
         self._seeking = True
+        self._hide_timer.stop()
+        self.overlay.show()
+        self._show_seek_preview(self.seek_slider.value())
 
     def _seek_moved(self, value):
         self._seeking = True
+        self._show_seek_preview(value)
 
     def _seek_released(self):
         try:
-            length = self.player.get_length()
+            length = self._playback_length()
             if length > 0:
                 self.player.set_time(int(self.seek_slider.value() / 1000 * length))
         finally:
             self._seeking = False
+            QToolTip.hideText()
             self._wake_controls()
+
+    def _show_seek_preview(self, slider_value):
+        """Show the timestamp represented by the seek handle while it is dragged."""
+        length = self._playback_length()
+        if length <= 0:
+            return
+        target = int(max(0, min(1000, slider_value)) / 1000 * length)
+        handle_x = int(self.seek_slider.width() * slider_value / 1000)
+        point = self.seek_slider.mapToGlobal(QPoint(handle_x, -28))
+        QToolTip.showText(point, self._fmt_ms(target), self.seek_slider)
+
+    def _playback_length(self):
+        """Return VLC's duration or the last valid VOD duration during opening."""
+        try:
+            length = int(self.player.get_length())
+        except (TypeError, ValueError):
+            length = 0
+        if length > 0:
+            return length
+        history = self._current_history or {}
+        if history.get("type") == "LIVE":
+            return 0
+        try:
+            return max(0, int(history.get("duration_ms", 0)))
+        except (TypeError, ValueError):
+            return 0
+
+    def _apply_pending_playback_rate(self):
+        """Restore the global rate once VLC accepts controls for the new media."""
+        if not self._pending_playback_rate_attempts or not self.player.is_playing():
+            return
+        try:
+            self.player.set_rate(self._playback_rate)
+            self.rate_label.setText(f"{self._playback_rate:.2f}x")
+            self._pending_playback_rate_attempts -= 1
+            if abs(float(self.player.get_rate()) - self._playback_rate) < 0.01:
+                self._pending_playback_rate_attempts = 0
+        except (TypeError, ValueError):
+            self._pending_playback_rate_attempts = 0
 
     @staticmethod
     def _fmt_ms(ms):
@@ -1194,6 +1405,69 @@ class EmbeddedPlayerWindow(QMainWindow):
         except (OSError, configparser.Error, UnicodeDecodeError):
             pass
 
+    def _restore_window_geometry(self):
+        """Restore the player's last screen, position, dimensions, and window state."""
+        settings_path = self._settings_path()
+        if not settings_path or not path.isfile(settings_path):
+            return
+        try:
+            config = configparser.ConfigParser()
+            config.read(settings_path)
+            encoded = config.get("InternalPlayerWindow", "geometry", fallback="")
+            if encoded:
+                self.restoreGeometry(QByteArray.fromBase64(encoded.encode("ascii")))
+                visible = any(
+                    screen.availableGeometry().intersects(self.frameGeometry())
+                    for screen in QApplication.screens()
+                )
+                if not visible and QApplication.primaryScreen() is not None:
+                    area = QApplication.primaryScreen().availableGeometry()
+                    self.move(area.center() - self.rect().center())
+        except (OSError, ValueError, configparser.Error, UnicodeDecodeError):
+            pass
+
+    def _save_window_geometry(self):
+        """Persist the native player geometry for the next isolated process."""
+        settings_path = self._settings_path()
+        if not settings_path:
+            return
+        try:
+            config = configparser.ConfigParser()
+            config.read(settings_path)
+            if not config.has_section("InternalPlayerWindow"):
+                config.add_section("InternalPlayerWindow")
+            encoded = bytes(self.saveGeometry().toBase64()).decode("ascii")
+            config.set("InternalPlayerWindow", "geometry", encoded)
+            write_config_file(settings_path, config)
+        except (OSError, configparser.Error, UnicodeDecodeError):
+            pass
+
+    def _load_playback_rate_pref(self):
+        settings_path = self._settings_path()
+        if not settings_path or not path.isfile(settings_path):
+            return 1.0
+        try:
+            config = configparser.ConfigParser()
+            config.read(settings_path)
+            rate = config.getfloat("InternalPlayer", "playback_rate", fallback=1.0)
+            return max(0.25, min(4.0, round(rate, 2)))
+        except (OSError, ValueError, configparser.Error, UnicodeDecodeError):
+            return 1.0
+
+    def _save_playback_rate_pref(self):
+        settings_path = self._settings_path()
+        if not settings_path:
+            return
+        try:
+            config = configparser.ConfigParser()
+            config.read(settings_path)
+            if not config.has_section("InternalPlayer"):
+                config.add_section("InternalPlayer")
+            config.set("InternalPlayer", "playback_rate", str(self._playback_rate))
+            write_config_file(settings_path, config)
+        except (OSError, configparser.Error, UnicodeDecodeError):
+            pass
+
     # ---------- events ----------
     def _obj_is_in_player(self, obj):
         # Walk the parent chain to see if `obj` is a descendant of this window.
@@ -1225,7 +1499,6 @@ class EmbeddedPlayerWindow(QMainWindow):
         return False
 
     def eventFilter(self, obj, event):
-        from PyQt5.QtCore import QEvent
         et = event.type()
 
         # An eventFilter installed on QApplication is invoked with the RECEIVING
@@ -1288,11 +1561,30 @@ class EmbeddedPlayerWindow(QMainWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._reposition_overlays()
+        if hasattr(self, "_video_resize_timer"):
+            self._video_resize_timer.start(80)
+
+    def changeEvent(self, event):
+        """Pause only for minimization and resume only when that pause was automatic."""
+        super().changeEvent(event)
+        if event.type() != QEvent.WindowStateChange:
+            return
+        if self.isMinimized():
+            if self.player.is_playing():
+                self.player.pause()
+                self._paused_by_minimize = True
+                self._set_standard_icon(self.btn_play, QStyle.SP_MediaPlay)
+        elif self._paused_by_minimize:
+            self.player.play()
+            self._paused_by_minimize = False
+            self._set_standard_icon(self.btn_play, QStyle.SP_MediaPause)
 
     def closeEvent(self, event):
         try:
             self._report_progress(force=True)
             self._save_volume_pref()
+            self._save_playback_rate_pref()
+            self._save_window_geometry()
             self.player.stop()
         except Exception:
             pass

@@ -28,6 +28,7 @@ class ProviderPreferencesTests(unittest.TestCase):
                 filename,
                 {"LIVE": ["12"]},
                 {"fallback": "z_a", "preferences": {"LIVE": {}}},
+                {"LIVE": False, "Movies": True, "Series": True},
             )
 
             self.assertEqual(
@@ -37,6 +38,9 @@ class ProviderPreferencesTests(unittest.TestCase):
                     "category_sorting": {
                         "fallback": "z_a",
                         "preferences": {"LIVE": {}},
+                    },
+                    "content_enabled": {
+                        "LIVE": False, "Movies": True, "Series": True,
                     },
                 },
             )
@@ -54,7 +58,11 @@ class ProviderPreferencesTests(unittest.TestCase):
 
             self.assertEqual(
                 load_provider_preferences(filename),
-                {"hidden_categories": {}, "category_sorting": {}},
+                {
+                    "hidden_categories": {},
+                    "category_sorting": {},
+                    "content_enabled": {},
+                },
             )
 
 

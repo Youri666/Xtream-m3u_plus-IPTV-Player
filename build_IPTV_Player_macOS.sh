@@ -102,6 +102,7 @@ PYINSTALLER_ARGS=(
   --add-data "Images/tv_tab_icon.ico:Images"
   --add-data "Images/movies_tab_icon.ico:Images"
   --add-data "Images/series_tab_icon.ico:Images"
+  --add-data "Images/home_tab_icon.ico:Images"
   --add-data "Images/favorite_tab_icon.ico:Images"
   --add-data "Images/favorite_tab_icon_colour.ico:Images"
   --add-data "Images/info_tab_icon.ico:Images"

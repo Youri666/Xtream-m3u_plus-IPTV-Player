@@ -261,7 +261,10 @@ def _migrate_account_preferences_to_files(config, user_data_file):
 
         try:
             save_provider_preferences(
-                filename, hidden_categories, category_sorting
+                filename,
+                hidden_categories,
+                category_sorting,
+                current.get("content_enabled", {}),
             )
         except (OSError, TypeError, ValueError) as error:
             print(f"Could not migrate category preferences: {error}")

@@ -50,6 +50,23 @@ class PlaybackHistoryTests(unittest.TestCase):
             self.assertNotIn("url", saved)
             self.assertNotIn("account_id", saved)
 
+    def test_does_not_persist_runtime_track_preferences(self):
+        with tempfile.TemporaryDirectory() as directory:
+            filename = Path(directory) / "history.json"
+            entry = self._entry("movie-1", "Movies", "Example", 42_000)
+            entry.update({
+                "audio_track_name": "French",
+                "subtitle_track_id": 4,
+                "subtitle_track_name": "Forced French",
+            })
+
+            record_history(filename, entry, 10)
+
+            saved = load_history(filename)[0]
+            self.assertNotIn("audio_track_name", saved)
+            self.assertNotIn("subtitle_track_id", saved)
+            self.assertNotIn("subtitle_track_name", saved)
+
     def test_repairs_live_and_movie_rows_saved_as_series(self):
         with tempfile.TemporaryDirectory() as directory:
             filename = Path(directory) / "history.json"

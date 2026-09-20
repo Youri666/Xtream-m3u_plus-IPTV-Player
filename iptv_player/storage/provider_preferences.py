@@ -18,6 +18,7 @@ def load_provider_preferences(filename):
     data = read_json_mapping(filename)
     hidden_categories = data.get("hidden_categories", {})
     category_sorting = data.get("category_sorting", {})
+    content_enabled = data.get("content_enabled", {})
     return {
         "hidden_categories": (
             hidden_categories if isinstance(hidden_categories, dict) else {}
@@ -25,12 +26,18 @@ def load_provider_preferences(filename):
         "category_sorting": (
             category_sorting if isinstance(category_sorting, dict) else {}
         ),
+        "content_enabled": (
+            content_enabled if isinstance(content_enabled, dict) else {}
+        ),
     }
 
 
-def save_provider_preferences(filename, hidden_categories, category_sorting):
+def save_provider_preferences(
+    filename, hidden_categories, category_sorting, content_enabled=None
+):
     """Atomically persist all category preferences for one IPTV account."""
     write_json_file(filename, {
         "hidden_categories": hidden_categories,
         "category_sorting": category_sorting,
+        "content_enabled": content_enabled or {},
     })

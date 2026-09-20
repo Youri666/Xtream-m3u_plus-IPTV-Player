@@ -5,6 +5,7 @@ import time
 import requests
 import subprocess
 import configparser
+import ctypes
 import json
 import logging
 import queue
@@ -57,6 +58,7 @@ from iptv_player.config import (
     load_accounts,
     load_auto_update_preference,
     load_content_preferences,
+    remove_content_preferences,
     load_advanced_preferences,
     load_internal_player_preferences,
     load_player_preference,
@@ -68,7 +70,6 @@ from iptv_player.config import (
     parse_account,
     save_auto_update_preference,
     save_advanced_preferences,
-    save_content_preferences,
     save_internal_player_preferences,
     save_player_preference,
     save_sorting_preference,
@@ -358,7 +359,7 @@ class IPTVPlayerApp(QMainWindow):
         self.account_info_timer = QTimer(self)
         self.account_info_timer.timeout.connect(self.refresh_account_info)
         self.player_event_timer = QTimer(self)
-        self.player_event_timer.setInterval(1000)
+        self.player_event_timer.setInterval(100)
         self.player_event_timer.timeout.connect(self._process_embedded_player_events)
         self.player_event_timer.start()
 
@@ -433,6 +434,14 @@ class IPTVPlayerApp(QMainWindow):
         # window is still being constructed.
         QTimer.singleShot(0, self.load_startup_credentials)
 
+    def _prewarm_embedded_player(self):
+        """Initialize the selected internal VLC engine before the first playback."""
+        try:
+            self._ensure_embedded_player_process()
+            self._embedded_player_command_queue.put({'command': 'warmup'})
+        except Exception as error:
+            logging.debug("Could not prewarm internal VLC: %s", error)
+
     def set_active_account(self, name):
         """Store the active account label and expose it in the window title."""
         self._reset_provider_view_state()
@@ -462,6 +471,7 @@ class IPTVPlayerApp(QMainWindow):
         self._refresh_account_selectors(self.active_account_name)
         self._load_hidden_categories()
         self._load_account_sort_preferences()
+        self._load_account_content_preferences()
         self.refresh_history_tab()
 
     def activate_saved_account(self, name):
@@ -605,6 +615,7 @@ class IPTVPlayerApp(QMainWindow):
             'path_to_live_icon': 'tv_tab_icon.ico',
             'path_to_movies_icon': 'movies_tab_icon.ico',
             'path_to_series_icon': 'series_tab_icon.ico',
+            'path_to_home_icon': 'home_tab_icon.ico',
             'path_to_favorites_icon': 'favorite_tab_icon.ico',
             'path_to_fav_colour_icon': 'favorite_tab_icon_colour.ico',
             'path_to_online_status_icon': 'online_status.png',
@@ -780,7 +791,7 @@ class IPTVPlayerApp(QMainWindow):
         self.live_icon              = QIcon(self.path_to_live_icon)
         self.movies_icon            = QIcon(self.path_to_movies_icon)
         self.series_icon            = QIcon(self.path_to_series_icon)
-        self.history_icon           = self._history_icon(QColor("#202020"))
+        self.history_icon           = QIcon(self.path_to_home_icon)
         self.favorites_icon         = QIcon(self.path_to_favorites_icon)
         self.favorites_icon_colour  = QIcon(self.path_to_fav_colour_icon)
         self.info_icon              = QIcon(self.path_to_info_icon)
@@ -819,31 +830,14 @@ class IPTVPlayerApp(QMainWindow):
         painter.end()
         return QIcon(pixmap)
 
-    @staticmethod
-    def _history_icon(color):
-        """Draw a transparent history clock consistent with the tab icon set."""
-        pixmap = QPixmap(24, 24)
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
-        pen = painter.pen()
-        pen.setColor(color)
-        pen.setWidth(2)
-        painter.setPen(pen)
-        painter.drawEllipse(3, 3, 18, 18)
-        painter.drawLine(12, 6, 12, 12)
-        painter.drawLine(12, 12, 17, 15)
-        painter.end()
-        return QIcon(pixmap)
-
     def _refresh_theme_icons(self, dark):
         """Refresh monochrome icons after the application palette changes."""
         color = QColor("#f2f2f2" if dark else "#202020")
-        self.history_icon = self._history_icon(color)
         themed_paths = {
             'live_icon': self.path_to_live_icon,
             'movies_icon': self.path_to_movies_icon,
             'series_icon': self.path_to_series_icon,
+            'history_icon': self.path_to_home_icon,
             'favorites_icon': self.path_to_favorites_icon,
             'info_icon': self.path_to_info_icon,
             'settings_icon': self.path_to_settings_icon,
@@ -914,14 +908,14 @@ class IPTVPlayerApp(QMainWindow):
         self.info_tab_layout        = QVBoxLayout(self.info_tab)
         self.settings_layout        = QGridLayout(settings_tab)
 
-        self.tab_widget.addTab(self.live_tab,   self.live_icon,         "LIVE")
-        self.tab_widget.addTab(self.movies_tab, self.movies_icon,       "Movies")
-        self.tab_widget.addTab(self.series_tab, self.series_icon,       "Series")
         self.tab_widget.addTab(
             self.history_tab,
             self.history_icon,
             "History",
         )
+        self.tab_widget.addTab(self.live_tab,   self.live_icon,         "LIVE")
+        self.tab_widget.addTab(self.movies_tab, self.movies_icon,       "Movies")
+        self.tab_widget.addTab(self.series_tab, self.series_icon,       "Series")
         self.tab_widget.addTab(self.info_tab,   self.info_icon,         "Info")
         self.tab_widget.addTab(settings_tab,    self.settings_icon,     "Settings")
         self.tab_widget.currentChanged.connect(self._on_current_tab_changed)
@@ -944,7 +938,12 @@ class IPTVPlayerApp(QMainWindow):
             history_list.setAlternatingRowColors(True)
             history_list.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
             history_list.header().setStretchLastSection(True)
-            history_list.header().resizeSection(0, 145)
+            history_list.header().setSectionResizeMode(
+                0, QtWidgets.QHeaderView.ResizeToContents
+            )
+            history_list.header().setSectionResizeMode(
+                1, QtWidgets.QHeaderView.Stretch
+            )
             history_list.itemActivated.connect(self._history_item_activated)
             layout.addWidget(history_list)
             self.history_groups[stream_type] = group
@@ -980,9 +979,17 @@ class IPTVPlayerApp(QMainWindow):
 
     def _history_item_activated(self, item, _column=0):
         """Restore the source list for a history row without starting playback."""
+        self._process_embedded_player_events()
         entry = item.data(0, Qt.UserRole) if item is not None else None
         if not isinstance(entry, dict):
             return
+        entry = next(
+            (
+                saved for saved in load_history(self.history_file)
+                if saved.get("key") == entry.get("key")
+            ),
+            entry,
+        )
         if entry.get("type") == "Series" and entry.get("series_id"):
             if self._open_history_series(entry):
                 return
@@ -1026,6 +1033,10 @@ class IPTVPlayerApp(QMainWindow):
             ):
                 stream_list.setCurrentItem(stream_item)
                 stream_list.scrollToItem(stream_item)
+                # Programmatic selection does not emit itemClicked. Run the same
+                # handler as a real click so the EPG or movie panel is refreshed.
+                self.prev_clicked_streaming_item = None
+                self.streaming_item_clicked(stream_item)
                 return True
         return False
 
@@ -1097,6 +1108,9 @@ class IPTVPlayerApp(QMainWindow):
 
         series_list.setCurrentItem(series_item)
         series_list.scrollToItem(series_item)
+        # Refresh the Series information panel before entering its season view.
+        self.prev_clicked_streaming_item = None
+        self.streaming_item_clicked(series_item)
         self.current_series_entry = series_entry
         self.series_navigation_level = 1
         self._pending_history_series = dict(history_entry)
@@ -1437,6 +1451,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.provider_preferences_file,
                 hidden_categories,
                 current.get('category_sorting', {}),
+                current.get('content_enabled', {}),
             )
         except OSError as e:
             print(f"Could not save hidden categories: {e}")
@@ -1908,7 +1923,9 @@ class IPTVPlayerApp(QMainWindow):
         ).get('category_sorting', {})
         if not isinstance(saved, dict):
             return
-        saved_fallback = saved.get('fallback', 'a_z')
+        # An account without a saved override must inherit the global setting.
+        # This preserves "Sorting disabled" on a fresh installation.
+        saved_fallback = saved.get('fallback', self.category_sort_fallback)
         if saved_fallback in ('a_z', 'z_a', 'disabled'):
             self.category_sort_fallback = saved_fallback
 
@@ -1945,6 +1962,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.provider_preferences_file,
                 current.get('hidden_categories', {}),
                 category_sorting,
+                current.get('content_enabled', {}),
             )
         except OSError as e:
             print(f"Could not save category sorting preferences: {e}")
@@ -2300,12 +2318,44 @@ class IPTVPlayerApp(QMainWindow):
         self.settings_layout.addWidget(self.updates_group_box,               6, 0, 1, 2)
 
     def load_default_content(self):
-        self.content_enabled = load_content_preferences(self.user_data_file)
+        # Content visibility belongs to an IPTV account. Until an account becomes
+        # active, expose every tab rather than applying another provider's choice.
+        self.content_enabled = {'LIVE': True, 'Movies': True, 'Series': True}
 
         self._apply_content_visibility()
 
         # Loading preferences must not trigger three redundant writes to userdata.ini.
         for stream_type, checkbox in self.content_checkboxes.items():
+            checkbox.blockSignals(True)
+            checkbox.setChecked(self.content_enabled[stream_type])
+            checkbox.blockSignals(False)
+
+    def _load_account_content_preferences(self):
+        """Load enabled content types belonging only to the active account."""
+        if not self.provider_preferences_file:
+            return
+        current = load_provider_preferences(self.provider_preferences_file)
+        saved = current.get('content_enabled', {})
+        if not saved:
+            # Import the former global choice once for the first account opened
+            # after this migration; subsequent accounts start with all content.
+            saved = load_content_preferences(self.user_data_file)
+            try:
+                save_provider_preferences(
+                    self.provider_preferences_file,
+                    current.get('hidden_categories', {}),
+                    current.get('category_sorting', {}),
+                    saved,
+                )
+                remove_content_preferences(self.user_data_file)
+            except OSError as error:
+                logging.warning("Could not migrate content preferences: %s", error)
+        self.content_enabled = {
+            stream_type: bool(saved.get(stream_type, True))
+            for stream_type in ('LIVE', 'Movies', 'Series')
+        }
+        self._apply_content_visibility()
+        for stream_type, checkbox in getattr(self, 'content_checkboxes', {}).items():
             checkbox.blockSignals(True)
             checkbox.setChecked(self.content_enabled[stream_type])
             checkbox.blockSignals(False)
@@ -2612,6 +2662,7 @@ class IPTVPlayerApp(QMainWindow):
 
     def _prepare_dialog_theme(self, dialog):
         """Apply the current palette and native title-bar theme to a dialog."""
+        dialog.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         dialog.setPalette(QtWidgets.qApp.palette())
         apply_windows_title_bar_theme(
             dialog, application_palette_is_dark(QtWidgets.qApp)
@@ -2661,7 +2712,13 @@ class IPTVPlayerApp(QMainWindow):
         self._apply_content_visibility()
 
         try:
-            save_content_preferences(self.user_data_file, self.content_enabled)
+            current = load_provider_preferences(self.provider_preferences_file)
+            save_provider_preferences(
+                self.provider_preferences_file,
+                current.get('hidden_categories', {}),
+                current.get('category_sorting', {}),
+                self.content_enabled,
+            )
         except OSError as e:
             print(f"Could not write user data file: {e}")
 
@@ -3148,6 +3205,8 @@ class IPTVPlayerApp(QMainWindow):
 
         self.set_progress_bar(100, f"Finished loading")
         QtWidgets.qApp.processEvents()
+        if self.external_player_command == INTERNAL_VLC_COMMAND:
+            QTimer.singleShot(0, self._prewarm_embedded_player)
 
     def on_fetch_data_error(self, error_msg):
         print(f"Error occurred while fetching data: {error_msg}")
@@ -4115,6 +4174,9 @@ class IPTVPlayerApp(QMainWindow):
         return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
 
     def play_item(self, url, title="", history_entry=None):
+        # Drain progress sent by the reusable player before deciding whether the
+        # selected media has a resumable position.
+        self._process_embedded_player_events()
         if not url:
             self.animate_progress(0, 100, "Stream URL not found", "error")
 
@@ -4132,7 +4194,6 @@ class IPTVPlayerApp(QMainWindow):
             try:
                 history_entry = self._history_with_saved_progress(history_entry)
                 print(f"Going to play: {private_url_log_reference(url)}")
-                self.animate_progress(0, 100, "Loading player for streaming")
 
                 # Embedded VLC marker — short-circuit before constructing any subprocess
                 # command. The marker is set when the user picks "Embedded VLC" in
@@ -4145,6 +4206,7 @@ class IPTVPlayerApp(QMainWindow):
                     self._play_embedded(url, history_entry, resume_ms)
                     return
 
+                self.animate_progress(0, 100, "Loading player for streaming")
                 history_entry = self._record_history_access(history_entry)
                 launch_external_player(
                     self.external_player_command,
@@ -4209,6 +4271,7 @@ class IPTVPlayerApp(QMainWindow):
             if len(file_paths) > 0:
                 self.external_player_command = file_paths[0]
                 self.last_external_player_command = self.external_player_command
+                self._stop_embedded_player_process()
 
                 self.save_external_player_command()
                 self._refresh_current_player_label()
@@ -4228,6 +4291,7 @@ class IPTVPlayerApp(QMainWindow):
         remembered_command = getattr(self, "last_external_player_command", "") or ""
         if remembered_command:
             self.external_player_command = remembered_command
+            self._stop_embedded_player_process()
             self.save_external_player_command()
             self._refresh_current_player_label()
             self.animate_progress(0, 100, "External media player enabled")
@@ -4256,6 +4320,7 @@ class IPTVPlayerApp(QMainWindow):
         self.save_external_player_command()
         self._refresh_current_player_label()
         self.animate_progress(0, 100, "Internal VLC player enabled")
+        QTimer.singleShot(0, self._prewarm_embedded_player)
 
     def _show_internal_vlc_unavailable(self, fallback_command=""):
         """Explain the VLC requirement and any automatic external fallback."""
@@ -4338,6 +4403,15 @@ class IPTVPlayerApp(QMainWindow):
             if history_entry and 0 <= current_idx < len(playlist):
                 playlist[current_idx]['history'] = history_entry
             self._ensure_embedded_player_process()
+            if is_windows and self._embedded_player_process is not None:
+                try:
+                    # Windows restricts foreground activation across processes.
+                    # Grant the isolated player permission immediately before play.
+                    ctypes.windll.user32.AllowSetForegroundWindow(
+                        self._embedded_player_process.pid
+                    )
+                except Exception:
+                    pass
             self._embedded_player_command_queue.put({
                 'command': 'play',
                 'url': url,
@@ -4346,8 +4420,8 @@ class IPTVPlayerApp(QMainWindow):
                 'index': current_idx,
                 'history': history_entry,
                 'resume_ms': resume_ms,
+                'keep_above_main': self.keep_on_top_checkbox.isChecked(),
             })
-            self.animate_progress(0, 100, "Playing in internal player")
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -4462,7 +4536,14 @@ class IPTVPlayerApp(QMainWindow):
                 event = self._embedded_player_event_queue.get_nowait()
             except queue.Empty:
                 break
-            if event.get("event") != "history_progress":
+            event_type = event.get("event")
+            if event_type == "player_window_ready":
+                self._activate_embedded_player_window(
+                    event.get("window_id"),
+                    event.get("keep_topmost", False),
+                )
+                continue
+            if event_type != "history_progress":
                 continue
             entry = event.get("history")
             if not isinstance(entry, dict):
@@ -4472,18 +4553,31 @@ class IPTVPlayerApp(QMainWindow):
                 continue
             filename = account_history_file(self.history_base_file, account_id)
             try:
-                was_known = any(
-                    item.get("key") == entry.get("key")
-                    for item in load_history(filename)
-                )
                 record_history(filename, entry, self.history_size)
                 history_changed = history_changed or (
-                    not was_known and account_id == self.active_account_id
+                    account_id == self.active_account_id
                 )
             except OSError as error:
                 logging.warning("Could not save playback progress: %s", error)
         if history_changed:
             self.refresh_history_tab()
+
+    def _activate_embedded_player_window(self, window_id, keep_topmost=False):
+        """Activate the independent player from the foreground main process."""
+        if not is_windows or not window_id:
+            return
+        try:
+            hwnd = int(window_id)
+            user32 = ctypes.windll.user32
+            flags = 0x0001 | 0x0002 | 0x0040  # NOSIZE | NOMOVE | SHOWWINDOW
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+            user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, flags)
+            user32.BringWindowToTop(hwnd)
+            user32.SetForegroundWindow(hwnd)
+            if not keep_topmost:
+                user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, flags)
+        except Exception as error:
+            logging.debug("Could not activate internal player window: %s", error)
 
     def _close_embedded_player_listener(self):
         """Close resources left by an earlier isolated player instance."""

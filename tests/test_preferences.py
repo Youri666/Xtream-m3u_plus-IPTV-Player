@@ -1,3 +1,4 @@
+import configparser
 from pathlib import Path
 import tempfile
 import unittest
@@ -7,6 +8,7 @@ from iptv_player.config.preferences import (
     PlayerPreference,
     load_auto_update_preference,
     load_content_preferences,
+    remove_content_preferences,
     load_player_preference,
     load_sorting_preference,
     load_theme_preference,
@@ -83,6 +85,11 @@ class ApplicationPreferenceTests(unittest.TestCase):
                 load_content_preferences(filename),
                 {"LIVE": True, "Movies": False, "Series": True},
             )
+
+            remove_content_preferences(filename)
+            config = configparser.ConfigParser()
+            config.read(filename)
+            self.assertFalse(config.has_section("Content"))
 
     def test_legacy_vod_switch_applies_to_movies_and_series(self):
         with tempfile.TemporaryDirectory() as directory:

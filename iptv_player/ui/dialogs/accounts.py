@@ -18,6 +18,7 @@ from iptv_player.config import (
 class AccountManager(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.setWindowTitle("IPTV accounts")
         self.setMinimumSize(400, 300)
         self.parent = parent
@@ -134,6 +135,7 @@ class AccountDialog(QtWidgets.QDialog):
 
     def __init__(self, parent=None, mode=MODE_ADD, account=None):
         super().__init__(parent)
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.parent = parent
         self.mode = mode
         self.account = account

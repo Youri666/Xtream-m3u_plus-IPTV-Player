@@ -13,7 +13,10 @@ class InternalPlayerPreferenceTests(unittest.TestCase):
     def test_round_trip_preserves_controls_and_existing_volume(self):
         with tempfile.TemporaryDirectory() as directory:
             filename = Path(directory) / "userdata.ini"
-            filename.write_text("[InternalPlayer]\nvolume=37\n", encoding="utf-8")
+            filename.write_text(
+                "[InternalPlayer]\nvolume=37\nplayback_rate=1.5\n",
+                encoding="utf-8",
+            )
             expected = InternalPlayerPreferences(
                 seek_step_seconds=15,
                 volume_step_percent=3,
@@ -27,6 +30,7 @@ class InternalPlayerPreferenceTests(unittest.TestCase):
 
             self.assertEqual(load_internal_player_preferences(filename), expected)
             self.assertIn("volume = 37", filename.read_text())
+            self.assertIn("playback_rate = 1.5", filename.read_text())
 
     def test_invalid_controls_are_validated_independently(self):
         with tempfile.TemporaryDirectory() as directory:
