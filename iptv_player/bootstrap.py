@@ -144,7 +144,10 @@ def set_detailed_logging(enabled):
 
 def configure_qt_application(app):
     """Apply the same visual defaults in the main and player processes."""
+    from iptv_player.ui.theme import remember_system_palette
+
     _install_qt_message_logging()
+    remember_system_palette(app)
     app.setStyle("Fusion")
 
     # Use fonts with broad Unicode coverage so provider titles remain readable.
