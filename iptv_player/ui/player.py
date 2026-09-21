@@ -1,497 +1,103 @@
-from PyQt5.QtGui import (
-    QIcon, QFont, QImage, QPixmap, QColor, QDesktopServices, QPalette,
-    QPainter, QPen, QPolygon
-)
-from PyQt5.QtCore import (
-    Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize, QPoint, QObject, pyqtSignal,
-    QRunnable, pyqtSlot, QThreadPool, QModelIndex, QAbstractItemModel, QVariant, QUrl
-)
-from PyQt5 import QtWidgets
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QVBoxLayout, QLineEdit, QLabel, QPushButton,
-    QListWidget, QWidget, QFileDialog, QCheckBox, QSizePolicy, QHBoxLayout,
-    QDialog, QFormLayout, QDialogButtonBox, QTabWidget, QListWidgetItem,
-    QSpinBox, QMenu, QAction, QTextEdit, QGridLayout, QMessageBox, QListView,
-    QTreeWidget, QTreeWidgetItem, QTreeView, QScrollArea, QSlider, QFrame, QStyle
-)
+"""Embedded VLC player window and controls."""
 
+import configparser
 from os import path
 import sys
-import configparser
-import json
-
-from SearchUtils import normalize_search_text, title_matches_search
-
-class LiveInfoBox(QWidget):
-    def __init__(self, parent=None):
-        super().__init__()
-
-        self.parent = parent
-
-        #Create LIVE TV info box layout
-        self.live_EPG_info_box_layout = QVBoxLayout(self)
-
-        #Create Live TV Channel name label
-        self.EPG_box_label = QLabel("Select channel to view Live TV info")
-        self.EPG_box_label.setFont(QFont('Segoe UI', 14, QFont.Bold))
-
-        #Enable wordwrap for TV channel name
-        self.EPG_box_label.setWordWrap(True)
-
-        self.maxCoverHeight = 200
-
-        #Create cover image
-        self.cover          = QLabel()
-        self.cover_img      = QPixmap(self.parent.path_to_no_img)
-        self.cover.setAlignment(Qt.AlignTop)
-        self.cover.setPixmap(self.cover_img.scaledToHeight(self.maxCoverHeight))
-        self.cover.setMaximumHeight(self.maxCoverHeight)
-
-        #Create entry info window
-        self.live_EPG_info = QTreeWidget()
-        self.live_EPG_info.setColumnCount(2)
-        self.live_EPG_info.setHeaderLabels(["Date", "From", "To", "Name"])
-
-        #Set column widths of EPG info window
-        self.live_EPG_info.setColumnWidth(0, 120)
-        self.live_EPG_info.setColumnWidth(1, 50)
-        self.live_EPG_info.setColumnWidth(2, 50)
-
-        #Create stream status indicator
-        self.stream_status = QLabel()
-        self.stream_status_img = self.parent.statusPixmap(
-            self.parent.path_to_unknown_status_icon, 24
-        )
-        self.stream_status.setPixmap(self.stream_status_img)
-        self.stream_status.setFixedWidth(25)
-
-        #Create favorites button — wider + larger icon so it sits clearly next
-        #to the channel name/logo and isn't clipped (issue #17).
-        self.fav_button = QPushButton("")
-        self.fav_button.setStyleSheet("text-align: left; padding: 2px;")
-        self.fav_button.setFixedSize(32, 32)
-        self.fav_button.setIconSize(QSize(24, 24))
-        self.fav_button.setFlat(True)
-        self.fav_button.setToolTip("Toggle favorite")
-        self.fav_button.setIcon(self.parent.favorites_icon)
-        self.fav_button.clicked.connect(lambda: self.parent.favButtonPressed("LIVE", self))
-
-        #Create title layout with favorites button
-        self.title_layout = QHBoxLayout()
-        self.title_layout.addWidget(self.fav_button)
-        self.title_layout.addWidget(self.stream_status)
-        self.title_layout.addWidget(self.EPG_box_label)
-
-        #Add TV channel label and EPG data to info box
-        self.live_EPG_info_box_layout.addLayout(self.title_layout)
-        self.live_EPG_info_box_layout.addWidget(self.cover)
-        self.live_EPG_info_box_layout.addWidget(self.live_EPG_info)
-
-    def setFavorite(self, is_fav):
-        if is_fav:
-            #If favorite, set coloured icon
-            self.fav_button.setIcon(self.parent.favorites_icon_colour)
-        else:
-            #If not favorite, set normal icon
-            self.fav_button.setIcon(self.parent.favorites_icon)
-
-class MovieInfoBox(QScrollArea):
-    def __init__(self, parent=None):
-        super().__init__()
-
-        self.parent = parent
-
-        self.yt_code    = None
-        self.tmdb_code  = None
-
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setWidgetResizable(True)
-        self.setAlignment(Qt.AlignTop)
-
-        self.widget = QWidget()
-
-        self.layout = QGridLayout(self.widget)
-        self.layout.setAlignment(Qt.AlignTop)
-
-        self.maxCoverWidth = 200
-
-        #Create cover image
-        self.cover          = QLabel()
-        self.cover_img      = QPixmap(self.parent.path_to_no_img)
-        self.cover.setAlignment(Qt.AlignTop)
-        self.cover.setPixmap(self.cover_img.scaledToWidth(self.maxCoverWidth))
-        self.cover.setFixedWidth(self.maxCoverWidth)
-
-        #Create favorites button — wider + larger icon (issue #17).
-        self.fav_button = QPushButton("")
-        self.fav_button.setStyleSheet("padding: 2px;")
-        self.fav_button.setFixedSize(32, 32)
-        self.fav_button.setIconSize(QSize(24, 24))
-        self.fav_button.setFlat(True)
-        self.fav_button.setToolTip("Toggle favorite")
-        self.fav_button.setIcon(self.parent.favorites_icon)
-        self.fav_button.clicked.connect(lambda: self.parent.favButtonPressed("Movies", self))
-
-        #Create information labels
-        self.name           = QLabel("No movie selected...")
-        self.release_date   = QLabel("Release date: —")
-        self.country        = QLabel("Country: —")
-        self.genre          = QLabel("Genre: —")
-        self.duration       = QLabel("Duration: —")
-        self.rating         = QLabel("Rating: —")
-        self.director       = QLabel("Director: —")
-        self.cast           = QLabel("Cast: —")
-        self.description    = QLabel("Description: —")
-
-        self.trailer = QLabel()
-        self.trailer.setAlignment(Qt.AlignLeft)
-        self.trailer.setFixedWidth(50)
-        self.trailer.setEnabled(False)
-
-        self.tmdb = QLabel()
-        self.tmdb.setAlignment(Qt.AlignLeft)
-        self.tmdb.setFixedWidth(50)
-        self.tmdb.setEnabled(False)
-
-        #Set YouTube icon
-        self.yt_img = QPixmap(self.parent.path_to_yt_img)
-        self.trailer.setPixmap(self.yt_img.scaledToHeight(30))
-
-        #Set TMDB icon
-        self.tmdb_img = QPixmap(self.parent.path_to_tmdb_img)
-        self.tmdb.setPixmap(self.tmdb_img.scaledToHeight(30))
-
-        self.trailer.mousePressEvent    = self.TrailerClicked
-        self.tmdb.mousePressEvent       = self.TmdbClicked
-
-        self.name.setFont(QFont('Segoe UI', 14, QFont.Bold))
-
-        self.name.setWordWrap(True)
-        self.release_date.setWordWrap(True)
-        self.country.setWordWrap(True)
-        self.genre.setWordWrap(True)
-        self.duration.setWordWrap(True)
-        self.rating.setWordWrap(True)
-        self.director.setWordWrap(True)
-        self.cast.setWordWrap(True)
-        self.description.setWordWrap(True)
-
-        #Create layout with title and favorite button
-        self.title_layout = QHBoxLayout()
-        self.title_layout.addWidget(self.fav_button)
-        self.title_layout.addWidget(self.name)
-
-        #Create layout with YouTube and TMDB icon next to each other
-        self.links_layout = QHBoxLayout()
-        self.links_layout.addWidget(self.trailer)
-        self.links_layout.addWidget(self.tmdb)
-        self.links_layout.addStretch(1)
-
-        #Add widgets
-        self.layout.addLayout(self.title_layout,    0, 0, 1, 2)
-        self.layout.addWidget(self.cover,           1, 0, 10, 1)
-        self.layout.addWidget(self.release_date,    1, 1)
-        self.layout.addWidget(self.country,         2, 1)
-        self.layout.addWidget(self.genre,           3, 1)
-        self.layout.addWidget(self.duration,        4, 1)
-        self.layout.addWidget(self.rating,          5, 1)
-        self.layout.addWidget(self.director,        6, 1)
-        self.layout.addWidget(self.cast,            7, 1)
-        self.layout.addWidget(self.description,     8, 1)
-        self.layout.addLayout(self.links_layout,    9, 1)
-
-        self.setWidget(self.widget)
-
-    def TrailerClicked(self, e):
-        #Get youtube code from text and append to url
-        yt_url = f"https://www.youtube.com/watch?v={self.yt_code}"
-
-        #Open URL
-        QDesktopServices.openUrl(QUrl(yt_url))
-
-    def TmdbClicked(self, e):
-        #Get TMDB code from text and append to url
-        tmdb_url = f"https://www.themoviedb.org/movie/{self.tmdb_code}"
-
-        #Open URL
-        QDesktopServices.openUrl(QUrl(tmdb_url))
-
-    def setFavorite(self, is_fav):
-        if is_fav:
-            #If favorite, set coloured icon
-            self.fav_button.setIcon(self.parent.favorites_icon_colour)
-        else:
-            #If not favorite, set normal icon
-            self.fav_button.setIcon(self.parent.favorites_icon)
-
-class SeriesInfoBox(QScrollArea):
-    def __init__(self, parent=None):
-        super().__init__()
-
-        self.parent = parent
-
-        self.yt_code    = None
-        self.tmdb_code  = None
-
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setWidgetResizable(True)
-        self.setAlignment(Qt.AlignTop)
-
-        self.widget = QWidget()
-
-        self.layout = QGridLayout(self.widget)
-        self.layout.setAlignment(Qt.AlignTop)
-
-        self.maxCoverWidth = 200
-
-        #Create cover image
-        self.cover          = QLabel()
-        self.cover_img      = QPixmap(self.parent.path_to_no_img)
-        self.cover.setAlignment(Qt.AlignTop)
-        self.cover.setPixmap(self.cover_img.scaledToWidth(self.maxCoverWidth))
-        self.cover.setFixedWidth(self.maxCoverWidth)
-
-        #Create favorites button — wider + larger icon (issue #17).
-        self.fav_button = QPushButton("")
-        self.fav_button.setStyleSheet("padding: 2px;")
-        self.fav_button.setFixedSize(32, 32)
-        self.fav_button.setIconSize(QSize(24, 24))
-        self.fav_button.setFlat(True)
-        self.fav_button.setToolTip("Toggle favorite")
-        self.fav_button.setIcon(self.parent.favorites_icon)
-        self.fav_button.clicked.connect(lambda: self.parent.favButtonPressed("Series", self))
-
-        #Create information labels
-        self.name           = QLabel("No series selected...")
-        self.release_date   = QLabel("Release date: —")
-        self.genre          = QLabel("Genre: —")
-        self.num_seasons    = QLabel("Seasons: —")
-        self.duration       = QLabel("Episode duration: —")
-        self.rating         = QLabel("Rating: —")
-        self.director       = QLabel("Director: —")
-        self.cast           = QLabel("Cast: —")
-        self.description    = QLabel("Description: —")
-
-        self.trailer = QLabel()
-        self.trailer.setAlignment(Qt.AlignLeft)
-        self.trailer.setFixedWidth(50)
-        self.trailer.setEnabled(False)
-
-        self.tmdb = QLabel()
-        self.tmdb.setAlignment(Qt.AlignLeft)
-        self.tmdb.setFixedWidth(50)
-        self.tmdb.setEnabled(False)
-
-        #Set YouTube icon
-        self.yt_img = QPixmap(self.parent.path_to_yt_img)
-        self.trailer.setPixmap(self.yt_img.scaledToHeight(30))
-
-        #Set TMDB icon
-        self.tmdb_img = QPixmap(self.parent.path_to_tmdb_img)
-        self.tmdb.setPixmap(self.tmdb_img.scaledToHeight(30))
-
-        self.trailer.mousePressEvent    = self.TrailerClicked
-        self.tmdb.mousePressEvent       = self.TmdbClicked
-
-        self.name.setFont(QFont('Segoe UI', 14, QFont.Bold))
-
-        #Enable wordwrap for all labels
-        self.name.setWordWrap(True)
-        self.release_date.setWordWrap(True)
-        self.genre.setWordWrap(True)
-        self.num_seasons.setWordWrap(True)
-        self.duration.setWordWrap(True)
-        self.rating.setWordWrap(True)
-        self.director.setWordWrap(True)
-        self.cast.setWordWrap(True)
-        self.description.setWordWrap(True)
-
-        #Create layout with title and favorite button
-        self.title_layout = QHBoxLayout()
-        self.title_layout.addWidget(self.fav_button)
-        self.title_layout.addWidget(self.name)
-
-        #Create layout with YouTube and TMDB icon next to each other
-        self.links_layout = QHBoxLayout()
-        self.links_layout.addWidget(self.trailer)
-        self.links_layout.addWidget(self.tmdb)
-        self.links_layout.addStretch(1)
-
-        #Add widgets
-        self.layout.addLayout(self.title_layout,    0, 0, 1, 2)
-        self.layout.addWidget(self.cover,           1, 0, 10, 1)
-        self.layout.addWidget(self.release_date,    1, 1)
-        self.layout.addWidget(self.genre,           2, 1)
-        self.layout.addWidget(self.num_seasons,     3, 1)
-        self.layout.addWidget(self.duration,        4, 1)
-        self.layout.addWidget(self.rating,          5, 1)
-        self.layout.addWidget(self.director,        6, 1)
-        self.layout.addWidget(self.cast,            7, 1)
-        self.layout.addWidget(self.description,     8, 1)
-        self.layout.addLayout(self.links_layout,    9, 1)
-
-        #Add widget with all items to the scrollarea (self)
-        self.setWidget(self.widget)
-
-    def TrailerClicked(self, e):
-        #Get youtube code from text and append to url
-        yt_url = f"https://www.youtube.com/watch?v={self.yt_code}"
-
-        #Open URL
-        QDesktopServices.openUrl(QUrl(yt_url))
-
-    def TmdbClicked(self, e):
-        #Get TMDB code from text and append to url
-        tmdb_url = f"https://www.themoviedb.org/tv/{self.tmdb_code}"
-
-        #Open URL
-        QDesktopServices.openUrl(QUrl(tmdb_url))
-
-    def setFavorite(self, is_fav):
-        if is_fav:
-            #If favorite, set coloured icon
-            self.fav_button.setIcon(self.parent.favorites_icon_colour)
-        else:
-            #If not favorite, set normal icon
-            self.fav_button.setIcon(self.parent.favorites_icon)
-
-
-_DARK_BTN_STYLE = """
-QPushButton {
-    background: rgba(45, 45, 48, 130);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 16px;
-}
-QPushButton:hover { background: rgba(91, 141, 239, 200); }
-QPushButton:disabled { color: #888; background: rgba(45,45,48,80); }
-"""
-
-_DARK_OVERLAY_STYLE = """
-QWidget#playerOverlay {
-    background: rgb(20, 20, 22);
-}
-QWidget#playerTopBar {
-    background: rgb(20, 20, 22);
-}
-QLabel#titleLabel { color: white; font-size: 14px; font-weight: bold; }
-QLabel#timeLabel  { color: #eee; font-size: 11px; }
-QSlider#seekSlider::groove:horizontal { height: 6px; background: rgba(255,255,255,70); border-radius: 3px; }
-QSlider#seekSlider::handle:horizontal { background: #7c3aed; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px; }
-QSlider#seekSlider::handle:horizontal:hover { background: #9b6dff; }
-QSlider#seekSlider::sub-page:horizontal { background: #7c3aed; border-radius: 3px; }
-QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,60); border-radius: 2px; }
-QSlider::handle:horizontal { background: #7c3aed; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }
-QSlider::sub-page:horizontal { background: #7c3aed; border-radius: 2px; }
-"""
-
-_DARK_SIDEBAR_STYLE = """
-QWidget#sidebarRoot { background: rgba(20, 20, 22, 240); }
-QListWidget#playlistList {
-    background: transparent;
-    color: white;
-    border: none;
-    outline: 0;
-    font-size: 13px;
-}
-QListWidget#playlistList::item { padding: 8px 10px; border-left: 3px solid transparent; }
-QListWidget#playlistList::item:hover { background: rgba(91,141,239,40); }
-QListWidget#playlistList::item:selected {
-    background: rgba(91,141,239,80);
-    border-left: 3px solid #7c3aed;
-    color: white;
-}
-QLineEdit#sidebarSearch {
-    background: rgba(255,255,255,15);
-    color: white;
-    border: 1px solid rgba(255,255,255,30);
-    border-radius: 4px;
-    padding: 6px 8px;
-    font-size: 12px;
-}
-"""
-
-_LIGHT_BTN_STYLE = """
-QPushButton {
-    background: rgba(245, 245, 245, 220);
-    color: #202020;
-    border: 1px solid rgba(80, 80, 80, 90);
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 14px;
-}
-QPushButton:hover { background: rgba(91, 141, 239, 210); color: white; }
-QPushButton:disabled { color: #999; background: rgba(225,225,225,180); }
-"""
-
-_LIGHT_OVERLAY_STYLE = """
-QWidget#playerOverlay {
-    background: rgb(245, 245, 245);
-}
-QWidget#playerTopBar {
-    background: rgb(245, 245, 245);
-}
-QLabel#titleLabel { color: #202020; font-size: 14px; font-weight: bold; }
-QLabel#timeLabel  { color: #303030; font-size: 11px; }
-QSlider#seekSlider::groove:horizontal { height: 6px; background: rgba(0,0,0,60); border-radius: 3px; }
-QSlider#seekSlider::handle:horizontal { background: #5b8def; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px; }
-QSlider#seekSlider::handle:horizontal:hover { background: #376fd3; }
-QSlider#seekSlider::sub-page:horizontal { background: #5b8def; border-radius: 3px; }
-QSlider::groove:horizontal { height: 4px; background: rgba(0,0,0,55); border-radius: 2px; }
-QSlider::handle:horizontal { background: #5b8def; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }
-QSlider::sub-page:horizontal { background: #5b8def; border-radius: 2px; }
-"""
-
-_LIGHT_SIDEBAR_STYLE = """
-QWidget#sidebarRoot { background: rgba(248, 248, 248, 245); }
-QListWidget#playlistList {
-    background: transparent;
-    color: #202020;
-    border: none;
-    outline: 0;
-    font-size: 13px;
-}
-QListWidget#playlistList::item { padding: 8px 10px; border-left: 3px solid transparent; }
-QListWidget#playlistList::item:hover { background: rgba(91,141,239,40); }
-QListWidget#playlistList::item:selected {
-    background: rgba(91,141,239,110);
-    border-left: 3px solid #5b8def;
-    color: #101010;
-}
-QLineEdit#sidebarSearch {
-    background: white;
-    color: #202020;
-    border: 1px solid rgba(80,80,80,90);
-    border-radius: 4px;
-    padding: 6px 8px;
-    font-size: 12px;
-}
-"""
+import time
+
+from PyQt5.QtCore import QByteArray, QEvent, QPoint, QSize, Qt, QTimer
+from PyQt5.QtGui import (
+    QColor,
+    QIcon,
+    QPainter,
+    QPalette,
+    QPen,
+    QPixmap,
+    QPolygon,
+)
+from PyQt5.QtWidgets import (
+    QAction,
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QSlider,
+    QStyle,
+    QToolTip,
+    QVBoxLayout,
+    QWidget,
+)
+
+from iptv_player.config import write_config_file
+from iptv_player.constants import DEFAULT_RESUME_BEHAVIOR, RESUME_BEHAVIORS
+from iptv_player.storage.history import resume_position
+from iptv_player.ui.theme import (
+    application_palette_is_dark,
+    apply_windows_title_bar_theme,
+)
+from iptv_player.ui.player_theme import (
+    DARK_BUTTON_STYLE,
+    DARK_OVERLAY_STYLE,
+    DARK_SIDEBAR_STYLE,
+    LIGHT_BUTTON_STYLE,
+    LIGHT_OVERLAY_STYLE,
+    LIGHT_SIDEBAR_STYLE,
+)
+from iptv_player.utils.search import normalize_search_text, title_matches_search
 
 
 class _ClickableSlider(QSlider):
-    """QSlider variant where clicking the track jumps to that position (instead of
-    paging in the default ±10% step). Emits sliderPressed/Released around the
-    click so the parent's seek logic still gets fired."""
+    """Seek slider that previews a dragged position and applies it on release."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._dragging = False
+
+    def _value_at_event(self, event):
+        """Map a pointer position to the slider range."""
+        if self.orientation() == Qt.Horizontal:
+            ratio = max(0.0, min(1.0, event.x() / max(1, self.width())))
+        else:
+            ratio = max(0.0, min(1.0, 1.0 - event.y() / max(1, self.height())))
+        return int(self.minimum() + ratio * (self.maximum() - self.minimum()))
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and self.maximum() != self.minimum():
-            # Compute the position under the click as a value in [minimum, maximum].
-            if self.orientation() == Qt.Horizontal:
-                ratio = max(0.0, min(1.0, event.x() / max(1, self.width())))
-            else:
-                ratio = max(0.0, min(1.0, 1.0 - event.y() / max(1, self.height())))
-            val = self.minimum() + ratio * (self.maximum() - self.minimum())
-            self.setValue(int(val))
+            self._dragging = True
+            self.setValue(self._value_at_event(event))
+            self.grabMouse()
             self.sliderPressed.emit()
-            self.sliderReleased.emit()
             event.accept()
             return
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._dragging and event.buttons() & Qt.LeftButton:
+            value = self._value_at_event(event)
+            self.setValue(value)
+            self.sliderMoved.emit(value)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._dragging and event.button() == Qt.LeftButton:
+            value = self._value_at_event(event)
+            self.setValue(value)
+            self.sliderMoved.emit(value)
+            self._dragging = False
+            self.releaseMouse()
+            self.sliderReleased.emit()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
 
 class EmbeddedPlayerWindow(QMainWindow):
@@ -503,7 +109,8 @@ class EmbeddedPlayerWindow(QMainWindow):
     - Left-edge sidebar with the current playlist + a live filter; click to play
     - Next/Previous walk the visible playlist, disabled at the edges (no wrap)
     - Subtitle button shows up only when libvlc reports >1 SPU track
-    - Keyboard: Space=play/pause, F=fullscreen, A/S=cycle audio/subtitles, [/]=prev/next,
+    - Keyboard: Space=play/pause, F=fullscreen, A/S=cycle audio/subtitles,
+      Page Up/Page Down=previous/next,
       Left/Right=seek ±10s, Up/Down=volume, +/-=speed, M=mute
 
     The whole thing is a single QMainWindow so multi-monitor + window
@@ -514,7 +121,8 @@ class EmbeddedPlayerWindow(QMainWindow):
     def __init__(
         self, parent=None, user_agent="", settings_path=None,
         seek_step_seconds=10, volume_step_percent=2, speed_step=0.25,
-        audio_language="", subtitle_language=""
+        audio_language="", subtitle_language="", resume_behavior="ask",
+        progress_callback=None
     ):
         super().__init__(parent)
         self.setWindowTitle("Internal Player")
@@ -539,6 +147,11 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._is_fullscreen = False
         self._muted = False
         self._last_wheel_event_id = None
+        self._paused_by_minimize = False
+        self._seek_osd_total_ms = 0
+        self._seek_target_ms = 0
+        self._seek_osd_active = False
+        self._pending_playback_rate_attempts = 0
         # Start from safe values; set_control_steps performs defensive parsing
         # after every control has been created and can update its tooltip.
         self._seek_step_ms = 10000
@@ -546,9 +159,22 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._speed_step = 0.25
         self._audio_language = ""
         self._subtitle_language = ""
+        self._progress_callback = progress_callback
+        self._current_history = None
+        self._pending_resume_ms = 0
+        self._pending_resume_attempts = 0
+        self._deferred_present = False
+        self._deferred_present_polls = 0
+        self._deferred_keep_topmost = False
+        self._last_progress_report = 0.0
+        self._resume_behavior = (
+            resume_behavior if resume_behavior in RESUME_BEHAVIORS
+            else DEFAULT_RESUME_BEHAVIOR
+        )
         self._app_parent = parent
         self._explicit_settings_path = settings_path
         self._volume = self._load_volume_pref()
+        self._playback_rate = self._load_playback_rate_pref()
         self._volume_before_mute = self._volume if self._volume > 0 else 80
         self.player.audio_set_volume(self._volume)
         self.player.audio_set_mute(False)
@@ -564,7 +190,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         # ---------- Top overlay (title + sidebar toggle) ----------
         self.top_bar = QWidget(self)
         self.top_bar.setObjectName("playerTopBar")
-        self.top_bar.setFixedHeight(44)
+        self.top_bar.setFixedHeight(40)
         self.title_label = QLabel("")
         self.title_label.setObjectName("titleLabel")
         self.title_label.setMinimumWidth(200)
@@ -572,14 +198,14 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_sidebar.setToolTip("Show/hide playlist (L)")
         self.btn_sidebar.clicked.connect(self.toggle_sidebar)
         top_lay = QHBoxLayout(self.top_bar)
-        top_lay.setContentsMargins(12, 6, 12, 6)
+        top_lay.setContentsMargins(10, 4, 10, 4)
         top_lay.addWidget(self.btn_sidebar)
         top_lay.addWidget(self.title_label, 1)
 
         # ---------- Bottom overlay (seek + buttons + volume) ----------
         self.overlay = QWidget(self)
         self.overlay.setObjectName("playerOverlay")
-        self.overlay.setFixedHeight(110)
+        self.overlay.setFixedHeight(72)
 
         # Custom slider that jumps to clicked position. The previous QSlider only
         # supported drag-to-seek; clicking the track did a +10% page-step which
@@ -587,6 +213,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.seek_slider = _ClickableSlider(Qt.Horizontal)
         self.seek_slider.setObjectName("seekSlider")
         self.seek_slider.setRange(0, 1000)
+        self.seek_slider.setFixedHeight(14)
         self.seek_slider.setCursor(Qt.PointingHandCursor)
         self.seek_slider.sliderPressed.connect(self._seek_pressed)
         self.seek_slider.sliderMoved.connect(self._seek_moved)
@@ -604,7 +231,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_next   = QPushButton()
         self.btn_slow   = QPushButton("−")
         self.btn_fast   = QPushButton("+")
-        self.rate_label = QLabel("1.00x")
+        self.rate_label = QLabel(f"{self._playback_rate:.2f}x")
         self.btn_mute   = QPushButton()
         self.vol_slider = QSlider(Qt.Horizontal)
         self.vol_slider.setRange(0, 100)
@@ -620,20 +247,20 @@ class EmbeddedPlayerWindow(QMainWindow):
         for b in (self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
                   self.btn_next, self.btn_slow, self.btn_fast, self.btn_mute,
                   self.btn_audio, self.btn_subs, self.btn_fs, self.btn_sidebar):
-            b.setFixedHeight(34)
-            b.setIconSize(QSize(20, 20))
+            b.setFixedHeight(30)
+            b.setIconSize(QSize(18, 18))
             b.setCursor(Qt.PointingHandCursor)
             b.setFocusPolicy(Qt.NoFocus)
 
         # Play and pause use glyphs with different natural widths. A fixed button
         # width keeps every neighbouring control stationary when the icon changes.
-        self.btn_play.setFixedWidth(44)
+        self.btn_play.setFixedWidth(40)
 
-        self.btn_prev.setToolTip("Previous (])")
+        self.btn_prev.setToolTip("Previous (Page Up)")
         self.btn_rewind.setToolTip("Rewind (Left arrow)")
         self.btn_play.setToolTip("Play / Pause (Space)")
         self.btn_ffwd.setToolTip("Forward (Right arrow)")
-        self.btn_next.setToolTip("Next ([)")
+        self.btn_next.setToolTip("Next (Page Down)")
         self.btn_slow.setToolTip("Slower (-)")
         self.btn_fast.setToolTip("Faster (+)")
         self.btn_mute.setToolTip("Mute (M)")
@@ -655,13 +282,13 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_fs.clicked.connect(self.toggle_fullscreen)
 
         seek_row = QHBoxLayout()
-        seek_row.setContentsMargins(12, 4, 12, 0)
+        seek_row.setContentsMargins(10, 2, 10, 0)
         seek_row.addWidget(self.seek_slider, 1)
         seek_row.addSpacing(8)
         seek_row.addWidget(self.time_label)
 
         btn_row = QHBoxLayout()
-        btn_row.setContentsMargins(12, 0, 12, 8)
+        btn_row.setContentsMargins(10, 0, 10, 4)
         btn_row.setSpacing(4)
         btn_row.addWidget(self.btn_prev)
         btn_row.addWidget(self.btn_rewind)
@@ -684,7 +311,7 @@ class EmbeddedPlayerWindow(QMainWindow):
 
         overlay_lay = QVBoxLayout(self.overlay)
         overlay_lay.setContentsMargins(0, 0, 0, 0)
-        overlay_lay.setSpacing(2)
+        overlay_lay.setSpacing(0)
         overlay_lay.addLayout(seek_row)
         overlay_lay.addLayout(btn_row)
 
@@ -748,7 +375,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.track_osd.hide()
         self._track_osd_timer = QTimer(self)
         self._track_osd_timer.setSingleShot(True)
-        self._track_osd_timer.timeout.connect(self.track_osd.hide)
+        self._track_osd_timer.timeout.connect(self._hide_track_osd)
 
         # ---------- Auto-hide timer ----------
         self._hide_timer = QTimer(self)
@@ -771,6 +398,12 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._poll_timer.timeout.connect(self._poll_state)
         self._poll_timer.start()
 
+        # Native libVLC video surfaces can lag behind a Qt layout resize. Rebind
+        # once resizing settles so the child surface receives the final geometry.
+        self._video_resize_timer = QTimer(self)
+        self._video_resize_timer.setSingleShot(True)
+        self._video_resize_timer.timeout.connect(self._refresh_video_output_size)
+
         # Periodically check the cursor's global position; if it's inside the
         # player window and we're hidden, wake. This catches any mouse-move that
         # neither Qt's eventFilter nor libvlc's forwarding picked up.
@@ -788,8 +421,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         QShortcut(QKeySequence(Qt.Key_A),     self, activated=self._cycle_audio)
         QShortcut(QKeySequence(Qt.Key_S),     self, activated=self._cycle_subs)
         QShortcut(QKeySequence(Qt.Key_M),     self, activated=self.toggle_mute)
-        QShortcut(QKeySequence(Qt.Key_BracketLeft),  self, activated=self.next)      # nebula uses ]
-        QShortcut(QKeySequence(Qt.Key_BracketRight), self, activated=self.previous)
+        QShortcut(QKeySequence(Qt.Key_PageUp), self, activated=self.previous)
+        QShortcut(QKeySequence(Qt.Key_PageDown), self, activated=self.next)
         QShortcut(QKeySequence(Qt.Key_Left),  self, activated=lambda: self.seek_by(-self._seek_step_ms))
         QShortcut(QKeySequence(Qt.Key_Right), self, activated=lambda: self.seek_by(self._seek_step_ms))
         QShortcut(QKeySequence(Qt.Key_Up),    self, activated=lambda: self._step_volume(self._volume_step))
@@ -803,6 +436,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             seek_step_seconds, volume_step_percent, speed_step
         )
         self.set_track_preferences(audio_language, subtitle_language)
+        self._restore_window_geometry()
         self.apply_theme()
         self._wake_controls()
 
@@ -840,14 +474,21 @@ class EmbeddedPlayerWindow(QMainWindow):
     def _tinted_standard_icon(self, standard_pixmap):
         """Tint a Qt standard icon so it remains visible on the active theme."""
         source = self.style().standardIcon(standard_pixmap).pixmap(24, 24)
-        tinted = QPixmap(source.size())
-        tinted.fill(Qt.transparent)
-        painter = QPainter(tinted)
-        painter.drawPixmap(0, 0, source)
-        painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
-        painter.fillRect(tinted.rect(), self._icon_color)
-        painter.end()
-        return QIcon(tinted)
+
+        def tinted_pixmap(color):
+            pixmap = QPixmap(source.size())
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            painter.drawPixmap(0, 0, source)
+            painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+            painter.fillRect(pixmap.rect(), color)
+            painter.end()
+            return pixmap
+
+        icon = QIcon()
+        icon.addPixmap(tinted_pixmap(self._icon_color), QIcon.Normal)
+        icon.addPixmap(tinted_pixmap(self._disabled_icon_color), QIcon.Disabled)
+        return icon
 
     @staticmethod
     def _player_window_icon():
@@ -908,10 +549,11 @@ class EmbeddedPlayerWindow(QMainWindow):
         )
         dark = luminance < 128
         self._icon_color = QColor("#f2f2f2" if dark else "#202020")
+        self._disabled_icon_color = QColor("#707075" if dark else "#a0a0a0")
         self.btn_sidebar.setIcon(self._menu_icon(self._icon_color))
-        button_style = _DARK_BTN_STYLE if dark else _LIGHT_BTN_STYLE
-        overlay_style = _DARK_OVERLAY_STYLE if dark else _LIGHT_OVERLAY_STYLE
-        sidebar_style = _DARK_SIDEBAR_STYLE if dark else _LIGHT_SIDEBAR_STYLE
+        button_style = DARK_BUTTON_STYLE if dark else LIGHT_BUTTON_STYLE
+        overlay_style = DARK_OVERLAY_STYLE if dark else LIGHT_OVERLAY_STYLE
+        sidebar_style = DARK_SIDEBAR_STYLE if dark else LIGHT_SIDEBAR_STYLE
         label_color = "#ccc" if dark else "#303030"
 
         for button in (
@@ -976,7 +618,12 @@ class EmbeddedPlayerWindow(QMainWindow):
         except Exception:
             return False
 
-    def play_url(self, url, title="", playlist=None, index=0):
+    def play_url(
+        self, url, title="", playlist=None, index=0, resume_ms=0,
+        keep_above_main=False
+    ):
+        was_visible = self.isVisible()
+        self._report_progress(force=True)
         if playlist is not None:
             self._playlist = list(playlist)
             self._current_idx = max(0, min(index, len(self._playlist) - 1)) if self._playlist else 0
@@ -1000,15 +647,34 @@ class EmbeddedPlayerWindow(QMainWindow):
             media.add_option(":no-spu")
         elif self._subtitle_language:
             media.add_option(f":sub-language={self._subtitle_language}")
+        if resume_ms:
+            # Ask VLC to begin at the saved position before it decodes the first
+            # visible frame. The polling seek below remains a precision fallback.
+            media.add_option(f":start-time={max(0, int(resume_ms)) / 1000:.3f}")
         self.player.set_media(media)
-        self.show()
-        # Apply native caption colors after the HWND is visible because Windows
-        # may initialize its final non-client appearance during the first show.
-        self.apply_theme()
-        self.raise_()
-        self.activateWindow()
+        self._current_history = (
+            dict(self._playlist[self._current_idx].get("history") or {})
+            if self._playlist else None
+        )
+        self._pending_playback_rate_attempts = 20
+        self._pending_resume_ms = max(0, int(resume_ms or 0))
+        self._pending_resume_attempts = 20 if self._pending_resume_ms else 0
+        # Hide a new window until its initial resume seek completes. Playlist
+        # navigation reuses the visible window and must never make it disappear.
+        self._deferred_present = bool(self._pending_resume_ms) and not was_visible
+        self._deferred_present_polls = 12 if self._deferred_present else 0
+        self._deferred_keep_topmost = bool(keep_above_main)
+        if not sys.platform.startswith("win"):
+            # Use Qt's portable window-manager hint on macOS and Linux. The
+            # player remains an independent top-level window.
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, bool(keep_above_main))
+        if self._deferred_present:
+            self.hide()
         self._bind_video_output()
         self.player.play()
+        if not self._deferred_present and not was_visible:
+            self._present_player(keep_above_main)
+        self._last_progress_report = 0.0
         self._set_standard_icon(self.btn_play, QStyle.SP_MediaPause)
         self._update_pl_pos()
         self._wake_controls()
@@ -1036,6 +702,73 @@ class EmbeddedPlayerWindow(QMainWindow):
         except Exception:
             pass
 
+    def _bring_to_front(self, keep_topmost=False):
+        """Present the isolated player above the main window without keeping it topmost."""
+        if sys.platform.startswith("win"):
+            try:
+                import ctypes
+
+                hwnd = int(self.winId())
+                user32 = ctypes.windll.user32
+                # Mark the hidden native window topmost before Qt displays it so
+                # there is no single frame underneath the main window.
+                flags = 0x0001 | 0x0002  # NOSIZE | NOMOVE
+                user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, flags)
+            except Exception:
+                pass
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        if sys.platform.startswith("win"):
+            try:
+                ctypes.windll.user32.SetForegroundWindow(int(self.winId()))
+                if not keep_topmost:
+                    QTimer.singleShot(500, self._release_temporary_topmost)
+            except Exception:
+                pass
+
+    def _present_player(self, keep_topmost=False):
+        """Show a prepared player and request foreground activation from its parent."""
+        self._deferred_present = False
+        self._bring_to_front(keep_topmost=keep_topmost)
+        # Apply native caption colors after the final HWND becomes visible.
+        self.apply_theme()
+        if self._progress_callback is None:
+            return
+        try:
+            self._progress_callback({
+                "event": "player_window_ready",
+                "window_id": int(self.winId()),
+                "keep_topmost": bool(keep_topmost),
+            })
+        except (EOFError, OSError, TypeError, ValueError):
+            pass
+
+    def _release_temporary_topmost(self):
+        """Return the player to normal stacking after Windows has presented it."""
+        if not sys.platform.startswith("win") or not self.isVisible():
+            return
+        try:
+            import ctypes
+
+            hwnd = int(self.winId())
+            flags = 0x0001 | 0x0002 | 0x0040  # NOSIZE | NOMOVE | SHOWWINDOW
+            ctypes.windll.user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, flags)
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+
+    def _refresh_video_output_size(self):
+        """Synchronize libVLC's native child surface with the final Qt geometry."""
+        if not self.isVisible():
+            return
+        try:
+            self.video_frame.updateGeometry()
+            self._bind_video_output()
+            self.player.video_set_scale(0)
+        except Exception:
+            pass
+
     # ---------- transport ----------
     def toggle_play_pause(self):
         if self.player.is_playing():
@@ -1054,13 +787,24 @@ class EmbeddedPlayerWindow(QMainWindow):
         cur = self.player.get_time()
         if cur < 0:
             return
-        new = max(0, cur + ms)
+        if self._track_osd_timer.isActive() and self._seek_osd_active:
+            self._seek_osd_total_ms += ms
+            new = self._seek_target_ms + ms
+        else:
+            self._seek_osd_total_ms = ms
+            new = cur + ms
+        length = self.player.get_length()
+        new = max(0, min(new, length if length > 0 else new))
+        self._seek_target_ms = new
         self.player.set_time(int(new))
-        seconds = abs(ms) / 1000
+        seconds = abs(self._seek_osd_total_ms) / 1000
         amount = f"{seconds:g}"
-        direction = "+" if ms >= 0 else "−"
+        direction = "+" if self._seek_osd_total_ms >= 0 else "−"
         unit = "second" if seconds == 1 else "seconds"
-        self._show_track_osd(f"{direction}{amount} {unit}")
+        self._show_track_osd(
+            f"{direction}{amount} {unit}\n{self._fmt_ms(new)}",
+            seek=True,
+        )
         self._wake_controls()
 
     def set_volume(self, value):
@@ -1105,26 +849,39 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._wake_controls()
 
     def _adjust_rate(self, delta):
-        try:
-            rate = max(0.25, min(4.0, self.player.get_rate() + delta))
-        except Exception:
-            rate = 1.0
-        self.player.set_rate(rate)
-        self.rate_label.setText(f"{rate:.2f}x")
+        self._playback_rate = max(
+            0.25, min(4.0, round(self._playback_rate + delta, 2))
+        )
+        self.player.set_rate(self._playback_rate)
+        self.rate_label.setText(f"{self._playback_rate:.2f}x")
+        self._save_playback_rate_pref()
         self._wake_controls()
 
     # ---------- next / previous ----------
     def next(self):
         if self._current_idx + 1 >= len(self._playlist):
             return
+        self._store_current_playlist_progress()
         self._current_idx += 1
         self._play_current()
 
     def previous(self):
         if self._current_idx <= 0:
             return
+        self._store_current_playlist_progress()
         self._current_idx -= 1
         self._play_current()
+
+    def _store_current_playlist_progress(self):
+        """Refresh the local playlist copy before navigating to another item."""
+        self._report_progress(force=True)
+        if (
+            self._current_history
+            and 0 <= self._current_idx < len(self._playlist)
+        ):
+            self._playlist[self._current_idx]["history"] = dict(
+                self._current_history
+            )
 
     def _play_current(self):
         if not self._playlist:
@@ -1134,7 +891,50 @@ class EmbeddedPlayerWindow(QMainWindow):
         if not url:
             # Skip ahead if the entry has no playable URL (e.g. series-level item).
             return
-        self.play_url(url, title=entry.get('name', ''), playlist=self._playlist, index=self._current_idx)
+        resume_ms = self._resume_for_playlist_entry(entry)
+        if resume_ms is None:
+            return
+        self.play_url(
+            url,
+            title=entry.get('name', ''),
+            playlist=self._playlist,
+            index=self._current_idx,
+            resume_ms=resume_ms,
+        )
+
+    def set_resume_behavior(self, behavior):
+        """Update how previously started playlist entries are handled."""
+        self._resume_behavior = (
+            behavior if behavior in RESUME_BEHAVIORS else DEFAULT_RESUME_BEHAVIOR
+        )
+
+    def _resume_for_playlist_entry(self, entry):
+        """Choose a resume position when navigating inside the player playlist."""
+        history = entry.get("history") or {}
+        position_ms = resume_position(history)
+        if not position_ms or self._resume_behavior == "restart":
+            return 0
+        if self._resume_behavior == "resume":
+            return position_ms
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Question)
+        dialog.setWindowTitle("Resume playback")
+        dialog.setText(
+            f"Resume '{entry.get('name', '')}' from {self._fmt_ms(position_ms)}?"
+        )
+        dialog.setStandardButtons(
+            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel
+        )
+        dialog.setDefaultButton(QMessageBox.Yes)
+        dialog.setPalette(QApplication.instance().palette())
+        apply_windows_title_bar_theme(
+            dialog,
+            application_palette_is_dark(QApplication.instance()),
+        )
+        answer = dialog.exec_()
+        if answer == QMessageBox.Cancel:
+            return None
+        return position_ms if answer == QMessageBox.Yes else 0
 
     def _update_pl_pos(self):
         n = len(self._playlist)
@@ -1269,14 +1069,22 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._show_track_osd(f"Subtitles: {selected_name}")
         self._wake_controls()
 
-    def _show_track_osd(self, text):
+    def _show_track_osd(self, text, seek=False):
         """Show a brief track-selection message over the video picture."""
+        self._seek_osd_active = bool(seek)
         self.track_osd.setText(text)
         self.track_osd.adjustSize()
         self._reposition_track_osd()
         self.track_osd.show()
         self.track_osd.raise_()
         self._track_osd_timer.start(1800)
+
+    def _hide_track_osd(self):
+        """Hide the OSD and end any accumulated keyboard seek sequence."""
+        self.track_osd.hide()
+        self._seek_osd_active = False
+        self._seek_osd_total_ms = 0
+        self._seek_target_ms = 0
 
     # ---------- fullscreen ----------
     def toggle_fullscreen(self):
@@ -1359,6 +1167,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         idx = item.data(Qt.UserRole)
         if not isinstance(idx, int) or idx < 0 or idx >= len(self._playlist):
             return
+        self._store_current_playlist_progress()
         self._current_idx = idx
         self._play_current()
         if not self._pinned_sidebar:
@@ -1385,6 +1194,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         if not self._is_fullscreen:
             return
         if self._sidebar_visible:
+            return
+        if self._seeking:
             return
         if not self.player.is_playing():
             return
@@ -1456,38 +1267,138 @@ class EmbeddedPlayerWindow(QMainWindow):
             ):
                 self._hide_timer.start(3000)
 
-            length = self.player.get_length()
+            length = self._playback_length()
             cur    = self.player.get_time()
-            if length > 0 and not self._seeking:
-                self.seek_slider.setEnabled(True)
-                self.seek_slider.setValue(int(cur / length * 1000))
-                self.time_label.setText(f"{self._fmt_ms(cur)} / {self._fmt_ms(length)}")
-            else:
-                # Live stream — disable scrubbing, show LIVE label.
+            resume_completed = False
+            if self._pending_resume_ms and length > 0 and self.player.is_playing():
+                target = min(self._pending_resume_ms, length)
+                if cur >= target - 500:
+                    self._pending_resume_ms = 0
+                    self._pending_resume_attempts = 0
+                    resume_completed = True
+                elif self._pending_resume_attempts > 0:
+                    # VLC can reject an early seek while media metadata is still
+                    # opening. Retry briefly and confirm the reported position.
+                    self.player.set_time(target)
+                    self._pending_resume_attempts -= 1
+                else:
+                    self._pending_resume_ms = 0
+                    resume_completed = True
+                cur = self.player.get_time()
+            if self._deferred_present:
+                self._deferred_present_polls -= 1
+                if resume_completed or self._deferred_present_polls <= 0:
+                    self._present_player(self._deferred_keep_topmost)
+            is_live = (self._current_history or {}).get("type") == "LIVE"
+            if is_live:
                 self.seek_slider.setEnabled(False)
                 self.seek_slider.setValue(0)
                 self.time_label.setText("LIVE")
+            elif length > 0:
+                self.seek_slider.setEnabled(True)
+                if not self._seeking:
+                    self.seek_slider.setValue(int(max(0, cur) / length * 1000))
+                    self.time_label.setText(
+                        f"{self._fmt_ms(cur)} / {self._fmt_ms(length)}"
+                    )
+            else:
+                # VOD duration can be unavailable briefly while VLC opens media.
+                self.seek_slider.setEnabled(False)
+                self.seek_slider.setValue(0)
+                self.time_label.setText("Loading...")
             self._update_subs_button()
             self._update_audio_button()
+            self._apply_pending_playback_rate()
+            self._report_progress()
         except Exception:
+            pass
+
+    def _report_progress(self, force=False):
+        """Send playback progress to the main process at ten-second intervals."""
+        if not self._current_history or self._progress_callback is None:
+            return
+        now = time.monotonic()
+        if not force and now - self._last_progress_report < 10:
+            return
+        try:
+            entry = dict(self._current_history)
+            duration_ms = int(self.player.get_length())
+            position_ms = int(self.player.get_time())
+            if entry.get("type") != "LIVE" and duration_ms <= 0:
+                # Never replace a valid resume point with VLC's transient opening
+                # values while a movie or episode is still loading.
+                return
+            entry["position_ms"] = max(0, position_ms)
+            entry["duration_ms"] = max(0, duration_ms)
+            self._current_history = entry
+            self._progress_callback({
+                "event": "history_progress",
+                "history": entry,
+            })
+            self._last_progress_report = now
+        except (EOFError, OSError, TypeError, ValueError):
             pass
 
     def _seek_pressed(self):
         # Set the seeking flag the moment the user grabs (or clicks) the slider,
         # so the 500 ms poll timer doesn't yank the handle back while they drag.
         self._seeking = True
+        self._hide_timer.stop()
+        self.overlay.show()
+        self._show_seek_preview(self.seek_slider.value())
 
     def _seek_moved(self, value):
         self._seeking = True
+        self._show_seek_preview(value)
 
     def _seek_released(self):
         try:
-            length = self.player.get_length()
+            length = self._playback_length()
             if length > 0:
                 self.player.set_time(int(self.seek_slider.value() / 1000 * length))
         finally:
             self._seeking = False
+            QToolTip.hideText()
             self._wake_controls()
+
+    def _show_seek_preview(self, slider_value):
+        """Show the timestamp represented by the seek handle while it is dragged."""
+        length = self._playback_length()
+        if length <= 0:
+            return
+        target = int(max(0, min(1000, slider_value)) / 1000 * length)
+        handle_x = int(self.seek_slider.width() * slider_value / 1000)
+        point = self.seek_slider.mapToGlobal(QPoint(handle_x, -28))
+        QToolTip.showText(point, self._fmt_ms(target), self.seek_slider)
+
+    def _playback_length(self):
+        """Return VLC's duration or the last valid VOD duration during opening."""
+        try:
+            length = int(self.player.get_length())
+        except (TypeError, ValueError):
+            length = 0
+        if length > 0:
+            return length
+        history = self._current_history or {}
+        if history.get("type") == "LIVE":
+            return 0
+        try:
+            return max(0, int(history.get("duration_ms", 0)))
+        except (TypeError, ValueError):
+            return 0
+
+    def _apply_pending_playback_rate(self):
+        """Restore the global rate once VLC accepts controls for the new media."""
+        if not self._pending_playback_rate_attempts or not self.player.is_playing():
+            return
+        try:
+            self.player.set_rate(self._playback_rate)
+            self.rate_label.setText(f"{self._playback_rate:.2f}x")
+            self._pending_playback_rate_attempts -= 1
+            if abs(float(self.player.get_rate()) - self._playback_rate) < 0.01:
+                self._pending_playback_rate_attempts = 0
+        except (TypeError, ValueError):
+            self._pending_playback_rate_attempts = 0
 
     @staticmethod
     def _fmt_ms(ms):
@@ -1528,8 +1439,70 @@ class EmbeddedPlayerWindow(QMainWindow):
             if not config.has_section("InternalPlayer"):
                 config.add_section("InternalPlayer")
             config.set("InternalPlayer", "volume", str(self._volume))
-            with open(settings_path, "w") as settings_file:
-                config.write(settings_file)
+            write_config_file(settings_path, config)
+        except (OSError, configparser.Error, UnicodeDecodeError):
+            pass
+
+    def _restore_window_geometry(self):
+        """Restore the player's last screen, position, dimensions, and window state."""
+        settings_path = self._settings_path()
+        if not settings_path or not path.isfile(settings_path):
+            return
+        try:
+            config = configparser.ConfigParser()
+            config.read(settings_path)
+            encoded = config.get("InternalPlayerWindow", "geometry", fallback="")
+            if encoded:
+                self.restoreGeometry(QByteArray.fromBase64(encoded.encode("ascii")))
+                visible = any(
+                    screen.availableGeometry().intersects(self.frameGeometry())
+                    for screen in QApplication.screens()
+                )
+                if not visible and QApplication.primaryScreen() is not None:
+                    area = QApplication.primaryScreen().availableGeometry()
+                    self.move(area.center() - self.rect().center())
+        except (OSError, ValueError, configparser.Error, UnicodeDecodeError):
+            pass
+
+    def _save_window_geometry(self):
+        """Persist the native player geometry for the next isolated process."""
+        settings_path = self._settings_path()
+        if not settings_path:
+            return
+        try:
+            config = configparser.ConfigParser()
+            config.read(settings_path)
+            if not config.has_section("InternalPlayerWindow"):
+                config.add_section("InternalPlayerWindow")
+            encoded = bytes(self.saveGeometry().toBase64()).decode("ascii")
+            config.set("InternalPlayerWindow", "geometry", encoded)
+            write_config_file(settings_path, config)
+        except (OSError, configparser.Error, UnicodeDecodeError):
+            pass
+
+    def _load_playback_rate_pref(self):
+        settings_path = self._settings_path()
+        if not settings_path or not path.isfile(settings_path):
+            return 1.0
+        try:
+            config = configparser.ConfigParser()
+            config.read(settings_path)
+            rate = config.getfloat("InternalPlayer", "playback_rate", fallback=1.0)
+            return max(0.25, min(4.0, round(rate, 2)))
+        except (OSError, ValueError, configparser.Error, UnicodeDecodeError):
+            return 1.0
+
+    def _save_playback_rate_pref(self):
+        settings_path = self._settings_path()
+        if not settings_path:
+            return
+        try:
+            config = configparser.ConfigParser()
+            config.read(settings_path)
+            if not config.has_section("InternalPlayer"):
+                config.add_section("InternalPlayer")
+            config.set("InternalPlayer", "playback_rate", str(self._playback_rate))
+            write_config_file(settings_path, config)
         except (OSError, configparser.Error, UnicodeDecodeError):
             pass
 
@@ -1564,7 +1537,6 @@ class EmbeddedPlayerWindow(QMainWindow):
         return False
 
     def eventFilter(self, obj, event):
-        from PyQt5.QtCore import QEvent
         et = event.type()
 
         # An eventFilter installed on QApplication is invoked with the RECEIVING
@@ -1627,10 +1599,30 @@ class EmbeddedPlayerWindow(QMainWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._reposition_overlays()
+        if hasattr(self, "_video_resize_timer"):
+            self._video_resize_timer.start(80)
+
+    def changeEvent(self, event):
+        """Pause only for minimization and resume only when that pause was automatic."""
+        super().changeEvent(event)
+        if event.type() != QEvent.WindowStateChange:
+            return
+        if self.isMinimized():
+            if self.player.is_playing():
+                self.player.pause()
+                self._paused_by_minimize = True
+                self._set_standard_icon(self.btn_play, QStyle.SP_MediaPlay)
+        elif self._paused_by_minimize:
+            self.player.play()
+            self._paused_by_minimize = False
+            self._set_standard_icon(self.btn_play, QStyle.SP_MediaPause)
 
     def closeEvent(self, event):
         try:
+            self._report_progress(force=True)
             self._save_volume_pref()
+            self._save_playback_rate_pref()
+            self._save_window_geometry()
             self.player.stop()
         except Exception:
             pass

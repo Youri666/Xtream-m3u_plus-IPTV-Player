@@ -1,93 +1,39 @@
-import sys
-import os
-from os import path
-import time
-import requests
-import subprocess
-import configparser
-import re
-import json
-import html
-from lxml import etree, html
-from datetime import datetime
-from dateutil import parser, tz
-import xml.etree.ElementTree as ET
-from PyQt5.QtGui import QIcon, QFont, QImage, QPixmap, QColor
-from PyQt5.QtCore import (
-    Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize, QObject, pyqtSignal, 
-    QRunnable, pyqtSlot, QThreadPool, QModelIndex, QAbstractItemModel, QVariant
-)
 from PyQt5 import QtWidgets
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QVBoxLayout, QLineEdit, QLabel, QPushButton,
-    QListWidget, QWidget, QFileDialog, QCheckBox, QSizePolicy, QHBoxLayout,
-    QDialog, QFormLayout, QDialogButtonBox, QTabWidget, QListWidgetItem,
-    QSpinBox, QMenu, QAction, QTextEdit, QGridLayout, QMessageBox, QListView,
-    QTreeWidget, QTreeWidgetItem, QTreeView
+    QFormLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
 )
 
-
-class CasePreservingConfigParser(configparser.ConfigParser):
-    """Preserve account labels while reading legacy option names flexibly."""
-
-    optionxform = staticmethod(str)
-
-    def _existing_option(self, section, option):
-        """Return the stored spelling of an option when only its case differs."""
-        if section != self.default_section and not self.has_section(section):
-            return option
-        requested = str(option).casefold()
-        available = self.defaults() if section == self.default_section else self._sections[section]
-        for existing in available:
-            if existing.casefold() == requested:
-                return existing
-        return option
-
-    def get(self, section, option, *, raw=False, vars=None, fallback=configparser._UNSET):
-        return super().get(
-            section,
-            self._existing_option(section, option),
-            raw=raw,
-            vars=vars,
-            fallback=fallback,
-        )
-
-    def has_option(self, section, option):
-        return super().has_option(section, self._existing_option(section, option))
-
-
-def create_config_parser():
-    """Create the shared backward-compatible INI parser."""
-    return CasePreservingConfigParser()
-
+from iptv_player.config import (
+    account_name_error,
+    load_account,
+    load_accounts,
+    save_account,
+)
+from iptv_player.provider.credentials import parse_xtream_m3u_url
+from iptv_player.provider.workers import AccountInfoWorker
 
 class AccountManager(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.setWindowTitle("IPTV accounts")
         self.setMinimumSize(400, 300)
         self.parent = parent
 
         account_manager_layout = QtWidgets.QGridLayout(self)
 
-        #Create startup account label with options widget
-        self.startup_account_label = QLabel("Startup account:")
-
-        self.startup_account_options = QtWidgets.QComboBox()
-        self.startup_account_options.currentTextChanged.connect(self.set_startup_credentials)
-
         #Create accounts list
         self.accounts_list = QtWidgets.QListWidget()
-        self.accounts_list.itemDoubleClicked.connect(self.double_click_account)
 
         #Create buttons for adding, selecting and deleting accounts
         self.add_button = QPushButton("Add")
         self.add_button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogNewFolder))
         self.add_button.clicked.connect(self.add_account)
-
-        self.select_button = QPushButton("Select")
-        self.select_button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DialogYesButton))
-        self.select_button.clicked.connect(self.select_account)
 
         self.edit_button = QPushButton("Edit")
         self.edit_button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogDetailedView))
@@ -98,52 +44,19 @@ class AccountManager(QtWidgets.QDialog):
         self.delete_button.clicked.connect(self.delete_account)
 
         #Add widgets to layout
-        account_manager_layout.addWidget(self.startup_account_label,        0, 0)
-        account_manager_layout.addWidget(self.startup_account_options,      0, 1, 1, 2)
-        account_manager_layout.addWidget(self.accounts_list,                1, 0, 1, 4)
-        account_manager_layout.addWidget(self.add_button,                   2, 0)
-        account_manager_layout.addWidget(self.select_button,                2, 1)
-        account_manager_layout.addWidget(self.edit_button,                  2, 2)
-        account_manager_layout.addWidget(self.delete_button,                2, 3)
+        account_manager_layout.addWidget(self.accounts_list,                0, 0, 1, 3)
+        account_manager_layout.addWidget(self.add_button,                   1, 0)
+        account_manager_layout.addWidget(self.edit_button,                  1, 1)
+        account_manager_layout.addWidget(self.delete_button,                1, 2)
 
         #Load saved accounts from .ini file
         self.load_saved_accounts()
 
-    def set_startup_credentials(self):
-        selected_item = self.startup_account_options.currentText()
-
-        config = create_config_parser()
-        config.read(self.parent.user_data_file)
-
-        if 'Startup credentials' not in config:
-            config['Startup credentials'] = {}
-
-        config['Startup credentials']['startup_credentials'] = f"{selected_item}"
-
-        with open(self.parent.user_data_file, 'w') as config_file:
-            config.write(config_file)
-
     def load_saved_accounts(self):
-        self.startup_account_options.currentTextChanged.disconnect(self.set_startup_credentials)
-
         self.accounts_list.clear()
-        self.startup_account_options.clear()
-        self.startup_account_options.addItem("None")
 
-        config = create_config_parser()
-        config.read(self.parent.user_data_file)
-
-        if 'Credentials' in config:
-            for key in config['Credentials']:
-                self.accounts_list.addItem(key)
-                self.startup_account_options.addItem(key)
-
-        if 'Startup credentials' in config:
-            selected_startup_credentials = config['Startup credentials']['startup_credentials']
-            idx = self.startup_account_options.findText(f"{selected_startup_credentials}")
-            self.startup_account_options.setCurrentIndex(idx)
-
-        self.startup_account_options.currentTextChanged.connect(self.set_startup_credentials)
+        for name in load_accounts(self.parent.user_data_file):
+            self.accounts_list.addItem(name)
 
     def edit_account(self):
         selected_item = self.accounts_list.currentItem()
@@ -151,13 +64,10 @@ class AccountManager(QtWidgets.QDialog):
         if selected_item:
             name = selected_item.text()
             editing_active_account = (
-                getattr(self.parent, 'active_account_name', '') == name
+                getattr(self.parent, "active_account_name", "") == name
             )
-            config = create_config_parser()
-            config.read(self.parent.user_data_file)
-
-            if 'Credentials' in config and name in config['Credentials']:
-                account_data = config['Credentials'][name]
+            account_data = load_account(self.parent.user_data_file, name)
+            if account_data is not None:
                 parts = account_data.split('|')
                 method = parts[0]
                 credentials = parts[1:]
@@ -181,7 +91,7 @@ class AccountManager(QtWidgets.QDialog):
                         if editing_active_account:
                             # Reapply changed URLs and credentials immediately so
                             # the in-memory catalog never keeps stale stream links.
-                            self._activate_account(updated_name)
+                            self.parent.activate_saved_account(updated_name)
 
     def add_account(self):
         dialog = AccountDialog(self, AccountDialog.MODE_ADD)
@@ -201,105 +111,16 @@ class AccountManager(QtWidgets.QDialog):
                 self.load_saved_accounts()
 
     def save_credentials(self, credentials_dict):
-        # Load the configuration file
-        config = create_config_parser()
-        config.read(self.parent.user_data_file)
-
-        # Extract the credentials from the dictionary
         method = credentials_dict['method']
         name = credentials_dict['name']
         credentials = credentials_dict['credentials']
-
-        # Remove the old name if it has been changed (renaming)
-        if 'old_name' in credentials_dict:
-            old_name = credentials_dict['old_name']
-            if old_name != name and old_name in config['Credentials']:
-                del config['Credentials'][old_name]
-                # Update the startup credentials if the old name was used
-                if 'Startup credentials' in config and config['Startup credentials']['startup_credentials'] == old_name:
-                    config['Startup credentials']['startup_credentials'] = name
-
-        # Ensure the 'Credentials' section exists
-        if 'Credentials' not in config:
-            config['Credentials'] = {}
-
-        # Save the credentials
-        if method == 'manual':
-            server, username, password, live_url_format, movie_url_format, series_url_format = credentials
-            config['Credentials'][name] = f"manual|{server}|{username}|{password}|{live_url_format}|{movie_url_format}|{series_url_format}"
-
-        elif method == 'm3u_plus':
-            m3u_url, live_url_format, movie_url_format, series_url_format = credentials
-            config['Credentials'][name] = f"m3u_plus|{m3u_url}|{live_url_format}|{movie_url_format}|{series_url_format}"
-
-        # Write the updated configuration back to the file
-        with open(self.parent.user_data_file, 'w') as config_file:
-            config.write(config_file)
-
-    def select_account(self):
-        selected_item = self.accounts_list.currentItem()
-
-        if selected_item and self._activate_account(selected_item.text()):
-            self.accept()
-
-    def _activate_account(self, name):
-        """Load one saved account into the application and refresh its catalog."""
-        config = create_config_parser()
-        config.read(self.parent.user_data_file)
-
-        if 'Credentials' not in config or name not in config['Credentials']:
-            return False
-
-        data = config['Credentials'][name]
-
-        if data.startswith('manual|'):
-            parts = data.split('|')
-            if len(parts) < 7:
-                return False
-            (
-                server,
-                username,
-                password,
-                live_url_format,
-                movie_url_format,
-                series_url_format,
-            ) = parts[1:7]
-
-            self.parent.server            = server
-            self.parent.username          = username
-            self.parent.password          = password
-            self.parent.live_url_format   = live_url_format
-            self.parent.movie_url_format  = movie_url_format
-            self.parent.series_url_format = series_url_format
-            self.parent.active_account_name = name
-            self.parent.login()
-            return True
-
-        if data.startswith('m3u_plus|'):
-            parts = data.split('|')
-            if len(parts) < 5:
-                return False
-            (
-                m3u_url,
-                live_url_format,
-                movie_url_format,
-                series_url_format,
-            ) = parts[1:5]
-
-            self.parent.live_url_format   = live_url_format
-            self.parent.movie_url_format  = movie_url_format
-            self.parent.series_url_format = series_url_format
-
-            if self.parent.extract_credentials_from_m3u_plus_url(m3u_url):
-                self.parent.active_account_name = name
-                self.parent.login()
-                return True
-
-        return False
-
-    def double_click_account(self, item):
-        self.select_account()
-        self.accept()
+        save_account(
+            self.parent.user_data_file,
+            method,
+            name,
+            credentials,
+            old_name=credentials_dict.get('old_name'),
+        )
 
     def delete_account(self):
         selected_item = self.accounts_list.currentItem()
@@ -307,19 +128,7 @@ class AccountManager(QtWidgets.QDialog):
         if selected_item:
             name = selected_item.text()
 
-            config = create_config_parser()
-            config.read(self.parent.user_data_file)
-
-            if 'Credentials' in config and name in config['Credentials']:
-                del config['Credentials'][name]
-
-                # Update startup credentials if the deleted account was used for startup
-                if 'Startup credentials' in config and config['Startup credentials']['startup_credentials'] == name:
-                    config['Startup credentials']['startup_credentials'] = "None"
-
-                with open(self.parent.user_data_file, 'w') as config_file:
-                    config.write(config_file)
-
+            if self.parent.delete_saved_account(name):
                 self.load_saved_accounts()
 
 class AccountDialog(QtWidgets.QDialog):
@@ -328,13 +137,14 @@ class AccountDialog(QtWidgets.QDialog):
 
     def __init__(self, parent=None, mode=MODE_ADD, account=None):
         super().__init__(parent)
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.parent = parent
         self.mode = mode
         self.account = account
         self.setWindowTitle("Edit Credentials" if self.mode == self.MODE_EDIT else "Add Credentials")
-        self.setupUi()
+        self.setup_ui()
 
-    def setupUi(self):
+    def setup_ui(self):
         layout = QVBoxLayout(self)
 
         self.manual_entry_name    = "Manual/Xtream entry"
@@ -404,6 +214,15 @@ class AccountDialog(QtWidgets.QDialog):
 
         self.method_selector.currentIndexChanged.connect(self.stack.setCurrentIndex)
 
+        test_layout = QtWidgets.QHBoxLayout()
+        self.test_connection_button = QPushButton("Test connection")
+        self.test_connection_button.clicked.connect(self.test_connection)
+        self.test_connection_status = QLabel()
+        self.test_connection_status.setWordWrap(True)
+        test_layout.addWidget(self.test_connection_button)
+        test_layout.addWidget(self.test_connection_status, 1)
+        layout.addLayout(test_layout)
+
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
             Qt.Horizontal, self)
@@ -432,21 +251,120 @@ class AccountDialog(QtWidgets.QDialog):
                 self.m3u_movie_url_format_entry.setText(credentials[3])
                 self.m3u_series_url_format_entry.setText(credentials[4])
 
-        font_metrics = self.fontMetrics()
-        max_width = max(
-            font_metrics.width(self.name_entry_manual.text()),
-            font_metrics.width(self.server_entry.text()),
-            font_metrics.width(self.live_url_format_entry.text()),
-            font_metrics.width(self.movie_url_format_entry.text()),
-            font_metrics.width(self.series_url_format_entry.text()),
-            font_metrics.width(self.name_entry_m3u.text()),
-            font_metrics.width(self.m3u_url_entry.text()),
-            font_metrics.width(self.m3u_live_url_format_entry.text()),
-            font_metrics.width(self.m3u_movie_url_format_entry.text()),
-            font_metrics.width(self.m3u_series_url_format_entry.text())
+        self._resize_for_url_fields()
+
+    def _resize_for_url_fields(self):
+        """Choose a readable initial width while keeping the dialog resizable."""
+        fields = (
+            self.server_entry,
+            self.live_url_format_entry,
+            self.movie_url_format_entry,
+            self.series_url_format_entry,
+            self.m3u_url_entry,
+            self.m3u_live_url_format_entry,
+            self.m3u_movie_url_format_entry,
+            self.m3u_series_url_format_entry,
+        )
+        metrics = self.fontMetrics()
+        content_width = max(
+            metrics.horizontalAdvance(field.text() or field.placeholderText())
+            for field in fields
+        )
+        target_width = max(850, content_width + 220)
+
+        screen = QtWidgets.QApplication.primaryScreen()
+        if screen is not None:
+            target_width = min(target_width, int(screen.availableGeometry().width() * 0.9))
+
+        self.resize(target_width, self.sizeHint().height())
+
+    def _connection_credentials(self):
+        """Return the currently entered server credentials without saving them."""
+        if self.method_selector.currentText() == self.manual_entry_name:
+            server = self.server_entry.text().strip()
+            username = self.username_entry.text().strip()
+            password = self.password_entry.text().strip()
+            if server and username and password:
+                return server, username, password
+            return None
+        return parse_xtream_m3u_url(self.m3u_url_entry.text().strip())
+
+    def test_connection(self):
+        """Check account metadata without downloading any provider catalog."""
+        credentials = self._connection_credentials()
+        if credentials is None:
+            self._show_connection_result(
+                False,
+                "Enter a valid server URL, username, and password first.",
+                title="Incomplete credentials",
+            )
+            return
+
+        server, username, password = credentials
+        self.test_connection_button.setEnabled(False)
+        self.test_connection_status.setText("Testing…")
+        main_window = self.parent.parent
+        worker = AccountInfoWorker(
+            server,
+            username,
+            password,
+            main_window.current_user_agent,
+        )
+        worker.signals.finished.connect(self._connection_test_finished)
+        worker.signals.error.connect(self._connection_test_failed)
+        self._connection_test_worker = worker
+        main_window.account_info_threadpool.start(worker)
+
+    def _connection_test_finished(self, account_info):
+        """Display authentication and account status returned by the provider."""
+        self._connection_test_worker = None
+        self.test_connection_button.setEnabled(True)
+        user_info = account_info.get("user_info", {})
+        if not isinstance(user_info, dict):
+            user_info = {}
+        authenticated = str(user_info.get("auth", "0")) == "1"
+        status = str(user_info.get("status", "Unknown"))
+        if not authenticated:
+            self._show_connection_result(
+                False,
+                "The provider responded, but the credentials were not accepted.",
+            )
+            return
+        self._show_connection_result(
+            True,
+            f"The credentials are valid. Account status: {status}.",
         )
 
-        self.setMinimumWidth(max_width + 150)
+    def _connection_test_failed(self, _error):
+        """Report a network or invalid-response failure without exposing secrets."""
+        self._connection_test_worker = None
+        self.test_connection_button.setEnabled(True)
+        self._show_connection_result(
+            False,
+            "Could not retrieve account information. Check the server URL and "
+            "your network connection, then try again.",
+        )
+
+    def _show_connection_result(self, success, message, title=""):
+        """Show a detailed themed dialog and a compact inline status."""
+        word = "OK" if success else "Failed"
+        color = "#2ea44f" if success else "#d64545"
+        self.test_connection_status.setText(
+            f'<span style="color:{color}">●</span> {word}'
+        )
+
+        dialog = QtWidgets.QMessageBox(self)
+        dialog.setWindowTitle(
+            title or ("Connection successful" if success else "Connection failed")
+        )
+        dialog.setText(message)
+        dialog.setIcon(
+            QtWidgets.QMessageBox.Information
+            if success else QtWidgets.QMessageBox.Warning
+        )
+        dialog.setStandardButtons(QtWidgets.QMessageBox.Ok)
+        self.parent.parent._prepare_dialog_theme(dialog)
+        dialog.exec_()
     
     def validate_and_accept(self):
         method = self.method_selector.currentText()
@@ -460,8 +378,6 @@ class AccountDialog(QtWidgets.QDialog):
             if not name or not server or not username or not password:
                 QtWidgets.QMessageBox.warning(self, "Input Error", "Please fill all fields for Manual Entry.")
                 return
-
-            self.accept()
         else:
             name    = self.name_entry_m3u.text().strip()
             m3u_url = self.m3u_url_entry.text().strip()
@@ -470,7 +386,34 @@ class AccountDialog(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.warning(self, "Input Error", "Please fill all fields for m3u_plus URL Entry.")
                 return
 
-            self.accept()
+        validation_error = account_name_error(name)
+        if validation_error:
+            QtWidgets.QMessageBox.warning(self, "Invalid Account Name", validation_error)
+            return
+
+        existing_names = load_accounts(self.parent.parent.user_data_file)
+        original_name = self.account[1] if self.account else None
+        duplicate_name = next(
+            (
+                existing_name
+                for existing_name in existing_names
+                if existing_name.casefold() == name.casefold()
+                and (
+                    original_name is None
+                    or existing_name.casefold() != original_name.casefold()
+                )
+            ),
+            None,
+        )
+        if duplicate_name:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Duplicate Account Name",
+                f"An account named '{duplicate_name}' already exists.",
+            )
+            return
+
+        self.accept()
 
     def get_credentials(self):
         method = self.method_selector.currentText()

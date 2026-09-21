@@ -5,12 +5,15 @@ __pycache__/
 Pyinstaller/
 Raw IPTV data/
 all_cached_data.json
+provider_catalog_cache.*.json
 userdata.ini
 build/
 *.spec
 lib/
 IPTV screenshots/
 favorites.json
+provider_favorites.*.json
+provider_preferences.*.json
 dist/
 vlc_log.txt
 /.idea/

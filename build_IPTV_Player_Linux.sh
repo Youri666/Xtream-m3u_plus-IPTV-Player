@@ -5,7 +5,7 @@ set -e
 # Use the same Python interpreter for dependency checks and the build.
 if command -v python3 &> /dev/null; then
   PYTHON_BIN=python3
-elif command -v python &> /dev/null; then
+elif command -v python &> /dev/null && python -c 'import sys; raise SystemExit(sys.version_info.major != 3)' &> /dev/null; then
   PYTHON_BIN=python
 else
   echo "Python was not found. Install Python 3 and try again."
@@ -36,9 +36,15 @@ fi
 echo "Application dependencies are available."
 
 # Set variables
-MAIN_SCRIPT="IPTV M3U_Plus PLAYER by MY-1.py"
+MAIN_SCRIPT="IPTVPlayer.py"
 BUILD_PATH="build"
 DIST_PATH="dist"
+
+# Remove generated specification files after both successful and failed builds.
+cleanup_spec_files() {
+  rm -f "IPTV Player.spec"
+}
+trap cleanup_spec_files EXIT
 
 # Remove previous build and dist folders
 if [ -d "$BUILD_PATH" ]; then
@@ -51,45 +57,49 @@ if [ -d "$DIST_PATH" ]; then
   rm -rf "$DIST_PATH"
 fi
 
-# Run PyInstaller and explicitly collect the lazily imported VLC binding.
+# PyInstaller writes specification files beside the script; remove stale variants.
+rm -f "IPTV Player.spec"
+
+# Package one desktop application; detailed diagnostics are enabled in the app.
+PYINSTALLER_ARGS=(
+  --clean
+  --onefile
+  --noconfirm
+  --hidden-import vlc
+  --icon "Images/TV_icon.png"
+  --distpath "$DIST_PATH"
+  --workpath "$BUILD_PATH"
+  --add-data "Images/TV_icon.ico:Images"
+  --add-data "Images/404_not_found.png:Images"
+  --add-data "Images/no_image.jpg:Images"
+  --add-data "Images/loading-icon.png:Images"
+  --add-data "Images/tv_tab_icon.ico:Images"
+  --add-data "Images/movies_tab_icon.ico:Images"
+  --add-data "Images/series_tab_icon.ico:Images"
+  --add-data "Images/home_tab_icon.ico:Images"
+  --add-data "Images/favorite_tab_icon.ico:Images"
+  --add-data "Images/favorite_tab_icon_colour.ico:Images"
+  --add-data "Images/info_tab_icon.ico:Images"
+  --add-data "Images/settings_tab_icon.ico:Images"
+  --add-data "Images/search_bar_icon.ico:Images"
+  --add-data "Images/sorting_icon.ico:Images"
+  --add-data "Images/clear_button_icon.ico:Images"
+  --add-data "Images/go_back_icon.ico:Images"
+  --add-data "Images/account_manager_icon.ico:Images"
+  --add-data "Images/film_camera_icon.ico:Images"
+  --add-data "Images/primary_full-TMDB.svg:Images"
+  --add-data "Images/yt_icon_rgb.png:Images"
+  --add-data "Images/unknown_status.png:Images"
+  --add-data "Images/online_status.png:Images"
+  --add-data "Images/maybe_status.png:Images"
+  --add-data "Images/offline_status.png:Images"
+)
+
 "$PYTHON_BIN" -m PyInstaller \
-  --clean \
-  --onefile \
+  "${PYINSTALLER_ARGS[@]}" \
   --noconsole \
-  --noconfirm \
-  --hidden-import vlc \
-  --icon "Images/TV_icon.png" \
   --name "IPTV Player" \
-  --distpath "$DIST_PATH" \
-  --workpath "$BUILD_PATH" \
-  --add-data "Images/TV_icon.ico:Images" \
-  --add-data "Images/404_not_found.png:Images" \
-  --add-data "Images/no_image.jpg:Images" \
-  --add-data "Images/loading-icon.png:Images" \
-  --add-data "Images/home_tab_icon.ico:Images" \
-  --add-data "Images/tv_tab_icon.ico:Images" \
-  --add-data "Images/movies_tab_icon.ico:Images" \
-  --add-data "Images/series_tab_icon.ico:Images" \
-  --add-data "Images/favorite_tab_icon.ico:Images" \
-  --add-data "Images/favorite_tab_icon_colour.ico:Images" \
-  --add-data "Images/info_tab_icon.ico:Images" \
-  --add-data "Images/settings_tab_icon.ico:Images" \
-  --add-data "Images/search_bar_icon.ico:Images" \
-  --add-data "Images/sorting_icon.ico:Images" \
-  --add-data "Images/clear_button_icon.ico:Images" \
-  --add-data "Images/go_back_icon.ico:Images" \
-  --add-data "Images/account_manager_icon.ico:Images" \
-  --add-data "Images/film_camera_icon.ico:Images" \
-  --add-data "Images/primary_full-TMDB.svg:Images" \
-  --add-data "Images/yt_icon_rgb.png:Images" \
-  --add-data "Images/unknown_status.png:Images" \
-  --add-data "Images/online_status.png:Images" \
-  --add-data "Images/maybe_status.png:Images" \
-  --add-data "Images/offline_status.png:Images" \
-  --add-data "Threadpools.py:." \
-  --add-data "CustomPyQtWidgets.py:." \
-  --add-data "AccountManager.py:." \
   "$MAIN_SCRIPT"
 
 echo
-echo "Build completed: $DIST_PATH/IPTV Player"
+echo "Build completed. Output is available in $DIST_PATH."
