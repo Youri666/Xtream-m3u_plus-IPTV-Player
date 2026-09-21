@@ -1,37 +1,25 @@
-![GitHub all releases](https://img.shields.io/github/downloads/LapinFou/Xtream-m3u_plus-IPTV-Player/total?color=blue&label=Total%20Downloads&logo=github)
-![GitHub Release](https://img.shields.io/github/v/release/LapinFou/Xtream-m3u_plus-IPTV-Player?label=Latest%20Stable&logo=github)
-![GitHub License](https://img.shields.io/github/license/LapinFou/Xtream-m3u_plus-IPTV-Player?label=License&logo=github)
-![GitHub stars](https://img.shields.io/github/stars/LapinFou/Xtream-m3u_plus-IPTV-Player)
+![GitHub all releases](https://img.shields.io/github/downloads/Youri666/Xtream-m3u_plus-IPTV-Player/total?color=blue&label=Total%20Downloads&logo=github)
+![GitHub Release](https://img.shields.io/github/v/release/Youri666/Xtream-m3u_plus-IPTV-Player?label=Latest%20Stable&logo=github)
+![GitHub License](https://img.shields.io/github/license/Youri666/Xtream-m3u_plus-IPTV-Player?label=License&logo=github)
+![GitHub stars](https://img.shields.io/github/stars/Youri666/Xtream-m3u_plus-IPTV-Player)
 
 # FREE OPENSOURCE M3U/XTREME IPTV PLAYER
 
 This IPTV player, built with Python and PyQt5, supports M3U_plus playlists and Xtream Codes API, allowing users to manage and play IPTV channels, movies, and series.
 
-> Feel free to report issues when encountering any problems: [Issues](https://github.com/LapinFou/Xtream-m3u_plus-IPTV-Player/issues)
+> Feel free to report issues when encountering any problems: [Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues)
 
 # Download
 
-## V3.0.1 Beta
+## V3.0.1
 
-Version **V3.0.1** is currently available as a beta/test release for users who want to try the new V3 architecture and features before the final stable release.
+Version **V3.0.1** is the latest stable release of IPTV Player.
 
-[**Download V3.0.1 Beta / Test Release**](https://github.com/LapinFou/Xtream-m3u_plus-IPTV-Player/releases)
-
-> V3.0.1 is currently in beta. It includes major internal changes and may still contain regressions or unfinished behavior.
->
-> **Beta notice:** V3 is still in beta. As a precaution, it is recommended to make a backup copy of your existing V2 application folder, including its configuration and user data files, before testing V3.
->
-> No compatibility issue is expected, but keeping a backup makes it easy to return to your current V2 setup if needed.
-
-## Development branch
-
-The current V3 development branch is available here:
-
-[**codex/v3-refactor**](https://github.com/LapinFou/Xtream-m3u_plus-IPTV-Player/tree/codex/v3-refactor)
+[**Download V3.0.1**](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases)
 
 ## All releases
 
-[**View all releases**](https://github.com/LapinFou/Xtream-m3u_plus-IPTV-Player/releases)
+[**View all releases**](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases)
 
 # What's new in V3
 
@@ -45,7 +33,7 @@ Version 3 is a major refactoring of the application aimed at making the codebase
 | **Better multi-account support** | IPTV accounts now use stable internal identifiers. Provider caches, favorites, category state, and category preferences are isolated per account. The active account is shown in the window title and accounts can be switched more quickly. |
 | **Improved provider and cache handling** | Xtream API communication, credential parsing, stream URL generation, EPG decoding, provider details, catalog preparation, JSON storage, and caching are now handled by dedicated reusable components. Provider catalogs are stored locally in separate caches for each IPTV account, improving data isolation and reducing loading times when cached data can be reused. |
 | **Improved search and sorting** | Title search relevance has been improved and search views now reuse the same sorting logic as the main playlists, providing more consistent results throughout the application. |
-| **Player improvements** | Internal and external player handling has been reorganized and made more robust. The application now handles unavailable internal VLC configurations more cleanly, external VLC receives the media title, and the embedded player's controls have been made more compact and consistent. |
+| **Player improvements** | Internal and external player handling has been reorganized and made more robust. The application now handles unavailable internal VLC configurations more cleanly, external VLC receives the media title, and the embedded player's controls have been made more compact and consistent. Internal playback automatically pauses when the player is minimized and resumes when the window is restored. |
 | **User interface improvements** | Category lists now display item counts, account dialogs better accommodate long URLs, passwords can be shown while editing accounts, favorites refresh immediately after changes, and several UI components have been cleaned up and standardized. |
 | **Unified build and debug workflows** | Windows, MacOS, Rocky Linux, Fedora, and Red Hat Enterprise Linux 9 build workflows now follow the same release/debug approach, use more consistent Python detection, and provide improved diagnostics for troubleshooting packaged builds. |
 | **Improved stability and diagnostics** | Network settings, application resources, update checks, player preferences, general preferences, and advanced settings have been centralized. Additional diagnostics and cleanup logic make runtime and startup problems easier to identify. |
