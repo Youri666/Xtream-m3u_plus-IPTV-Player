@@ -38,6 +38,10 @@ from PyQt5.QtWidgets import (
 from iptv_player.config import write_config_file
 from iptv_player.constants import DEFAULT_RESUME_BEHAVIOR, RESUME_BEHAVIORS
 from iptv_player.storage.history import resume_position
+from iptv_player.ui.theme import (
+    application_palette_is_dark,
+    apply_windows_title_bar_theme,
+)
 from iptv_player.ui.player_theme import (
     DARK_BUTTON_STYLE,
     DARK_OVERLAY_STYLE,
@@ -470,14 +474,21 @@ class EmbeddedPlayerWindow(QMainWindow):
     def _tinted_standard_icon(self, standard_pixmap):
         """Tint a Qt standard icon so it remains visible on the active theme."""
         source = self.style().standardIcon(standard_pixmap).pixmap(24, 24)
-        tinted = QPixmap(source.size())
-        tinted.fill(Qt.transparent)
-        painter = QPainter(tinted)
-        painter.drawPixmap(0, 0, source)
-        painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
-        painter.fillRect(tinted.rect(), self._icon_color)
-        painter.end()
-        return QIcon(tinted)
+
+        def tinted_pixmap(color):
+            pixmap = QPixmap(source.size())
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            painter.drawPixmap(0, 0, source)
+            painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+            painter.fillRect(pixmap.rect(), color)
+            painter.end()
+            return pixmap
+
+        icon = QIcon()
+        icon.addPixmap(tinted_pixmap(self._icon_color), QIcon.Normal)
+        icon.addPixmap(tinted_pixmap(self._disabled_icon_color), QIcon.Disabled)
+        return icon
 
     @staticmethod
     def _player_window_icon():
@@ -538,6 +549,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         )
         dark = luminance < 128
         self._icon_color = QColor("#f2f2f2" if dark else "#202020")
+        self._disabled_icon_color = QColor("#707075" if dark else "#a0a0a0")
         self.btn_sidebar.setIcon(self._menu_icon(self._icon_color))
         button_style = DARK_BUTTON_STYLE if dark else LIGHT_BUTTON_STYLE
         overlay_style = DARK_OVERLAY_STYLE if dark else LIGHT_OVERLAY_STYLE
@@ -904,13 +916,22 @@ class EmbeddedPlayerWindow(QMainWindow):
             return 0
         if self._resume_behavior == "resume":
             return position_ms
-        answer = QMessageBox.question(
-            self,
-            "Resume playback",
-            f"Resume '{entry.get('name', '')}' from {self._fmt_ms(position_ms)}?",
-            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-            QMessageBox.Yes,
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Question)
+        dialog.setWindowTitle("Resume playback")
+        dialog.setText(
+            f"Resume '{entry.get('name', '')}' from {self._fmt_ms(position_ms)}?"
         )
+        dialog.setStandardButtons(
+            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel
+        )
+        dialog.setDefaultButton(QMessageBox.Yes)
+        dialog.setPalette(QApplication.instance().palette())
+        apply_windows_title_bar_theme(
+            dialog,
+            application_palette_is_dark(QApplication.instance()),
+        )
+        answer = dialog.exec_()
         if answer == QMessageBox.Cancel:
             return None
         return position_ms if answer == QMessageBox.Yes else 0
