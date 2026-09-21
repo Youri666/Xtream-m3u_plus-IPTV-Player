@@ -62,7 +62,6 @@ For external playback, VLC and SMPlayer are supported:
 # Future plans
 
 - **M3U file support:** Select a local M3U file or a URL to an M3U file and load its data.
-- **History tab:** Work in progress. The History tab is already present, but its full functionality is still under development.
 - **TMDB integration:** Extend movie and series information using the TMDB API.
 
 
