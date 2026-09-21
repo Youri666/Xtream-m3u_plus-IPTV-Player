@@ -98,6 +98,18 @@ class FetchDataWorker(QRunnable):
         )
         self.force_provider_refresh = bool(force_provider_refresh)
         self.signals           = FetchDataWorkerSignals()
+        # Provider selection can change while this runnable is queued. Snapshot
+        # every account-specific value so an older request cannot read or write the
+        # newly selected account's files.
+        self.user_agent = getattr(parent, 'current_user_agent', '')
+        self.cache_base_file = parent.cache_file
+        self.legacy_cache_file = getattr(
+            parent, 'legacy_cache_file', parent.cache_file
+        )
+        self.cache_file_identifier = (
+            getattr(parent, 'active_account_id', '') or self._cache_account_key()
+        )
+        self.favorites_file = parent.favorites_file
 
     def _cache_account_key(self):
         """Identify a provider account without writing credentials to the cache."""
@@ -124,7 +136,7 @@ class FetchDataWorker(QRunnable):
             # Fall back to the default UA when the user hasn't picked one — sending an
             # empty User-Agent makes some providers return 403 or empty category lists
             # (related to issues #69 and #10).
-            ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
+            ua = (self.user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
             print("Going to fetch IPTV data")
 
             iptv_info_data = {}
@@ -133,24 +145,18 @@ class FetchDataWorker(QRunnable):
             # files have no metadata and are refreshed once before becoming trusted.
             cached_data = {}
             cache_account_key = self._cache_account_key()
-            cache_file_identifier = (
-                getattr(self.parent, 'active_account_id', '') or cache_account_key
-            )
             dedicated_cache_file = account_cache_file(
-                self.parent.cache_file, cache_file_identifier
+                self.cache_base_file, self.cache_file_identifier
             )
             cache_file_to_load = dedicated_cache_file
-            legacy_cache_file = getattr(
-                self.parent, 'legacy_cache_file', self.parent.cache_file
-            )
             previous_hashed_cache_file = account_cache_file(
-                self.parent.cache_file, cache_account_key
+                self.cache_base_file, cache_account_key
             )
             if not path.isfile(cache_file_to_load):
                 # Accept both cache layouts used before account ids became the
                 # shared filename suffix for provider data and favorites.
                 for migration_candidate in (
-                    previous_hashed_cache_file, legacy_cache_file
+                    previous_hashed_cache_file, self.legacy_cache_file
                 ):
                     if path.isfile(migration_candidate):
                         cache_file_to_load = migration_candidate
@@ -285,7 +291,7 @@ class FetchDataWorker(QRunnable):
             print("Preparing streaming data")
             prepare_catalog_entries(
                 entries_per_stream_type,
-                read_json_mapping(self.parent.favorites_file),
+                read_json_mapping(self.favorites_file),
                 self.generate_url,
             )
 

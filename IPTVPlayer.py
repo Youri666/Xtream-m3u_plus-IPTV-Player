@@ -329,6 +329,7 @@ class IPTVPlayerApp(QMainWindow):
         self.active_account_name = ""
         self.active_account_id = ""
         self._catalog_loaded = False
+        self._catalog_request_generation = 0
 
         # Keep data, EPG, and image fetching ordered and gentle on the provider.
         self.threadpool = QThreadPool()
@@ -448,6 +449,7 @@ class IPTVPlayerApp(QMainWindow):
         """Store the active account label and expose it in the window title."""
         self._reset_provider_view_state()
         self._catalog_loaded = False
+        self._catalog_request_generation += 1
         self.active_account_name = str(name or "").strip()
         self.active_account_id = (
             load_account_id(self.user_data_file, self.active_account_name) or ""
@@ -2925,12 +2927,34 @@ class IPTVPlayerApp(QMainWindow):
             self.catalog_cache_max_age_hours,
             force_refresh
         )
+        self._catalog_request_generation += 1
+        dataWorker.signals.request_generation = self._catalog_request_generation
         dataWorker.signals.finished.connect(self.process_data)
         dataWorker.signals.error.connect(self.on_fetch_data_error)
-        dataWorker.signals.progress_bar.connect(self.animate_progress)
-        dataWorker.signals.show_error_msg.connect(self.show_error_msg)
-        dataWorker.signals.show_info_msg.connect(self.show_info_msg)
+        dataWorker.signals.progress_bar.connect(self._catalog_progress)
+        dataWorker.signals.show_error_msg.connect(self._catalog_error_message)
+        dataWorker.signals.show_info_msg.connect(self._catalog_info_message)
         self.threadpool.start(dataWorker)
+
+    def _current_catalog_signal(self):
+        """Return whether a worker signal belongs to the selected account request."""
+        generation = getattr(self.sender(), 'request_generation', None)
+        return (
+            generation is None
+            or generation == self._catalog_request_generation
+        )
+
+    def _catalog_progress(self, start, end, text):
+        if self._current_catalog_signal():
+            self.animate_progress(start, end, text)
+
+    def _catalog_error_message(self, title, message):
+        if self._current_catalog_signal():
+            self.show_error_msg(title, message)
+
+    def _catalog_info_message(self, title, message):
+        if self._current_catalog_signal():
+            self.show_info_msg(title, message)
 
     def refresh_provider_catalog(self):
         """Fetch every enabled provider collection while retaining cache fallback."""
@@ -3114,6 +3138,9 @@ class IPTVPlayerApp(QMainWindow):
         self._update_account_info_timer()
 
     def process_data(self, iptv_info, categories_per_stream_type, entries_per_stream_type):
+        if not self._current_catalog_signal():
+            logging.debug("Ignoring catalog result from a previously selected account")
+            return
         print("Going to process IPTV data now")
 
         self.categories_per_stream_type = categories_per_stream_type
@@ -3239,6 +3266,8 @@ class IPTVPlayerApp(QMainWindow):
             QTimer.singleShot(0, self._prewarm_embedded_player)
 
     def on_fetch_data_error(self, error_msg):
+        if not self._current_catalog_signal():
+            return
         print(f"Error occurred while fetching data: {error_msg}")
         self.set_progress_bar(100, "Failed fetching data", "error")
 
@@ -4474,6 +4503,7 @@ class IPTVPlayerApp(QMainWindow):
         ):
             return
 
+        self._embedded_player_process = None
         self._close_embedded_player_listener()
         auth_key = os.urandom(32)
         if is_windows:
@@ -4537,6 +4567,10 @@ class IPTVPlayerApp(QMainWindow):
                                 self._embedded_player_event_queue.put(event)
                     except (EOFError, OSError):
                         pass
+                    finally:
+                        # Wake the sender if the child exits while no command is
+                        # queued. Otherwise every restart leaks one waiting thread.
+                        command_queue.put(None)
 
                 threading.Thread(
                     target=receive_events,
@@ -4615,13 +4649,23 @@ class IPTVPlayerApp(QMainWindow):
 
     def _close_embedded_player_listener(self):
         """Close resources left by an earlier isolated player instance."""
+        command_queue = self._embedded_player_command_queue
+        sender_thread = self._embedded_player_sender_thread
+        if command_queue is not None:
+            command_queue.put(None)
         if self._embedded_player_listener is not None:
             try:
                 self._embedded_player_listener.close()
             except OSError:
                 pass
+        if (
+            sender_thread is not None
+            and sender_thread is not threading.current_thread()
+        ):
+            sender_thread.join(timeout=1.0)
         self._embedded_player_listener = None
         self._embedded_player_command_queue = None
+        self._embedded_player_sender_thread = None
 
     def _stop_embedded_player_process(self):
         """Stop the isolated player when the main application exits."""
