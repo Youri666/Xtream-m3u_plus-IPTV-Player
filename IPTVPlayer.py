@@ -108,6 +108,7 @@ from iptv_player.storage import (
     provider_preferences_file,
     remove_account_data_files,
     record_history,
+    remove_history_entry,
     repair_misclassified_history,
     resume_position,
     save_provider_preferences,
@@ -327,6 +328,7 @@ class IPTVPlayerApp(QMainWindow):
         self.series_url_format = ""
         self.active_account_name = ""
         self.active_account_id = ""
+        self._catalog_loaded = False
 
         # Keep data, EPG, and image fetching ordered and gentle on the provider.
         self.threadpool = QThreadPool()
@@ -445,6 +447,7 @@ class IPTVPlayerApp(QMainWindow):
     def set_active_account(self, name):
         """Store the active account label and expose it in the window title."""
         self._reset_provider_view_state()
+        self._catalog_loaded = False
         self.active_account_name = str(name or "").strip()
         self.active_account_id = (
             load_account_id(self.user_data_file, self.active_account_name) or ""
@@ -466,7 +469,7 @@ class IPTVPlayerApp(QMainWindow):
         )
         title = f"IPTV Player {CURRENT_VERSION}"
         if self.active_account_name:
-            title = f"{title} — {self.active_account_name}"
+            title = f"{title} ({self.active_account_name})"
         self.setWindowTitle(title)
         self._refresh_account_selectors(self.active_account_name)
         self._load_hidden_categories()
@@ -694,7 +697,7 @@ class IPTVPlayerApp(QMainWindow):
             return QByteArray()
 
     def restore_window_layout(self):
-        """Restore window geometry, active tab, and per-tab column widths."""
+        """Restore window geometry and per-tab column widths."""
         config = configparser.ConfigParser()
         try:
             config.read(self.user_data_file)
@@ -720,12 +723,6 @@ class IPTVPlayerApp(QMainWindow):
             encoded_state = window_config.get(setting_name, '')
             if encoded_state:
                 splitter.restoreState(self._decoded_widget_state(encoded_state))
-
-        active_tab = window_config.get('active_tab', '')
-        for tab_index in range(self.tab_widget.count()):
-            if self.tab_widget.tabText(tab_index) == active_tab:
-                self.tab_widget.setCurrentIndex(tab_index)
-                break
 
     def _ensure_window_is_visible(self):
         """Move a restored window back on-screen after monitor layout changes."""
@@ -760,7 +757,6 @@ class IPTVPlayerApp(QMainWindow):
             'live_splitter': self._encoded_widget_state(self.live_splitter.saveState()),
             'movies_splitter': self._encoded_widget_state(self.movies_splitter.saveState()),
             'series_splitter': self._encoded_widget_state(self.series_splitter.saveState()),
-            'active_tab': self.tab_widget.tabText(self.tab_widget.currentIndex())
         }
 
         try:
@@ -983,6 +979,18 @@ class IPTVPlayerApp(QMainWindow):
         entry = item.data(0, Qt.UserRole) if item is not None else None
         if not isinstance(entry, dict):
             return
+        if not self._catalog_loaded:
+            dialog = QMessageBox(self)
+            dialog.setIcon(QMessageBox.Information)
+            dialog.setWindowTitle("Catalog still loading")
+            dialog.setText(
+                "The provider catalog is not ready yet. Please try again when "
+                "loading has finished."
+            )
+            dialog.setStandardButtons(QMessageBox.Ok)
+            self._prepare_dialog_theme(dialog)
+            dialog.exec_()
+            return
         entry = next(
             (
                 saved for saved in load_history(self.history_file)
@@ -993,7 +1001,25 @@ class IPTVPlayerApp(QMainWindow):
         if entry.get("type") == "Series" and entry.get("series_id"):
             if self._open_history_series(entry):
                 return
-        self._open_history_catalog_entry(entry)
+        elif self._open_history_catalog_entry(entry):
+            return
+
+        self._remove_unavailable_history_entry(entry)
+
+    def _remove_unavailable_history_entry(self, entry):
+        """Delete one stale history row and explain why it disappeared."""
+        remove_history_entry(self.history_file, entry.get("key"))
+        self.refresh_history_tab()
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Information)
+        dialog.setWindowTitle("History item unavailable")
+        dialog.setText(
+            "This item is no longer available in the provider catalog and "
+            "has been removed from History."
+        )
+        dialog.setStandardButtons(QMessageBox.Ok)
+        self._prepare_dialog_theme(dialog)
+        dialog.exec_()
 
     def _open_history_catalog_entry(self, history_entry):
         """Restore a LIVE or Movies category and select its remembered item."""
@@ -1051,11 +1077,14 @@ class IPTVPlayerApp(QMainWindow):
         )
         actual_category_id = str(catalog_entry.get("category_id", ""))
         fallback_item = None
+        all_item = None
         for row in range(category_list.count()):
             candidate = category_list.item(row)
             data = candidate.data(Qt.UserRole) or {}
             candidate_name = data.get("category_name", candidate.text())
             candidate_id = str(data.get("category_id", ""))
+            if candidate_name == self.all_categories_text:
+                all_item = candidate
             if candidate_id == actual_category_id:
                 fallback_item = candidate
             if (
@@ -1064,7 +1093,7 @@ class IPTVPlayerApp(QMainWindow):
                 and candidate_id == source_id
             ):
                 return candidate
-        return fallback_item
+        return fallback_item or all_item
 
     def _open_history_series(self, history_entry):
         """Restore the category and season where a history episode was launched."""
@@ -3203,6 +3232,7 @@ class IPTVPlayerApp(QMainWindow):
             )
             self.refresh_history_tab()
 
+        self._catalog_loaded = True
         self.set_progress_bar(100, f"Finished loading")
         QtWidgets.qApp.processEvents()
         if self.external_player_command == INTERNAL_VLC_COMMAND:
@@ -3321,6 +3351,7 @@ class IPTVPlayerApp(QMainWindow):
             pending = self._pending_history_series
             if isinstance(pending, dict):
                 self._pending_history_series = None
+                episode_found = False
                 season_key = str(pending.get("season", ""))
                 episodes = series_info_data['episodes'].get(season_key)
                 if episodes is None:
@@ -3343,7 +3374,10 @@ class IPTVPlayerApp(QMainWindow):
                         ):
                             episode_list.setCurrentItem(episode_item)
                             episode_list.scrollToItem(episode_item)
+                            episode_found = True
                             break
+                if not episode_found:
+                    self._remove_unavailable_history_entry(pending)
 
             self.animate_progress(0, 100, "Loading finished")
 

@@ -61,6 +61,19 @@ def clear_history(filename):
         pass
 
 
+def remove_history_entry(filename, key):
+    """Remove one history entry by its stable key and return whether it existed."""
+    entries = load_history(filename)
+    retained = [entry for entry in entries if entry.get("key") != key]
+    if len(retained) == len(entries):
+        return False
+    write_json_file(filename, {
+        "schema_version": HISTORY_SCHEMA_VERSION,
+        "items": retained,
+    })
+    return True
+
+
 def repair_misclassified_history(filename, live_ids, movie_ids):
     """Repair rows saved as Series while another Series view remained open."""
     entries = load_history(filename)

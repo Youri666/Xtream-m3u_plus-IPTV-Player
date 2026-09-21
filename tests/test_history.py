@@ -5,6 +5,7 @@ import unittest
 from iptv_player.storage.history import (
     load_history,
     record_history,
+    remove_history_entry,
     repair_misclassified_history,
     resume_position,
 )
@@ -36,6 +37,19 @@ class PlaybackHistoryTests(unittest.TestCase):
             resume_position({"position_ms": 40_000, "duration_ms": 90_000}),
             40_000,
         )
+
+    def test_removes_one_unavailable_history_entry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            filename = Path(directory) / "history.json"
+            record_history(filename, self._entry("movie-1", "Movies", "First"), 10)
+            record_history(filename, self._entry("movie-2", "Movies", "Second"), 10)
+
+            self.assertTrue(remove_history_entry(filename, "movie-1"))
+            self.assertFalse(remove_history_entry(filename, "missing"))
+            self.assertEqual(
+                [entry["key"] for entry in load_history(filename)],
+                ["movie-2"],
+            )
 
     def test_private_url_and_account_id_are_not_persisted(self):
         with tempfile.TemporaryDirectory() as directory:

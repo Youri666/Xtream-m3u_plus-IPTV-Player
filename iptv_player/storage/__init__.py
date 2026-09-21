@@ -13,6 +13,7 @@ from .history import (
     clear_history,
     load_history,
     record_history,
+    remove_history_entry,
     repair_misclassified_history,
     resume_position,
 )
@@ -34,6 +35,7 @@ __all__ = (
     "read_json_mapping",
     "remove_account_data_files",
     "record_history",
+    "remove_history_entry",
     "repair_misclassified_history",
     "resume_position",
     "set_favorite",

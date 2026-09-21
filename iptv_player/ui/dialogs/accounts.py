@@ -14,6 +14,8 @@ from iptv_player.config import (
     load_accounts,
     save_account,
 )
+from iptv_player.provider.credentials import parse_xtream_m3u_url
+from iptv_player.provider.workers import AccountInfoWorker
 
 class AccountManager(QtWidgets.QDialog):
     def __init__(self, parent=None):
@@ -212,6 +214,15 @@ class AccountDialog(QtWidgets.QDialog):
 
         self.method_selector.currentIndexChanged.connect(self.stack.setCurrentIndex)
 
+        test_layout = QtWidgets.QHBoxLayout()
+        self.test_connection_button = QPushButton("Test connection")
+        self.test_connection_button.clicked.connect(self.test_connection)
+        self.test_connection_status = QLabel()
+        self.test_connection_status.setWordWrap(True)
+        test_layout.addWidget(self.test_connection_button)
+        test_layout.addWidget(self.test_connection_status, 1)
+        layout.addLayout(test_layout)
+
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
             Qt.Horizontal, self)
@@ -266,6 +277,94 @@ class AccountDialog(QtWidgets.QDialog):
             target_width = min(target_width, int(screen.availableGeometry().width() * 0.9))
 
         self.resize(target_width, self.sizeHint().height())
+
+    def _connection_credentials(self):
+        """Return the currently entered server credentials without saving them."""
+        if self.method_selector.currentText() == self.manual_entry_name:
+            server = self.server_entry.text().strip()
+            username = self.username_entry.text().strip()
+            password = self.password_entry.text().strip()
+            if server and username and password:
+                return server, username, password
+            return None
+        return parse_xtream_m3u_url(self.m3u_url_entry.text().strip())
+
+    def test_connection(self):
+        """Check account metadata without downloading any provider catalog."""
+        credentials = self._connection_credentials()
+        if credentials is None:
+            self._show_connection_result(
+                False,
+                "Enter a valid server URL, username, and password first.",
+                title="Incomplete credentials",
+            )
+            return
+
+        server, username, password = credentials
+        self.test_connection_button.setEnabled(False)
+        self.test_connection_status.setText("Testing…")
+        main_window = self.parent.parent
+        worker = AccountInfoWorker(
+            server,
+            username,
+            password,
+            main_window.current_user_agent,
+        )
+        worker.signals.finished.connect(self._connection_test_finished)
+        worker.signals.error.connect(self._connection_test_failed)
+        self._connection_test_worker = worker
+        main_window.account_info_threadpool.start(worker)
+
+    def _connection_test_finished(self, account_info):
+        """Display authentication and account status returned by the provider."""
+        self._connection_test_worker = None
+        self.test_connection_button.setEnabled(True)
+        user_info = account_info.get("user_info", {})
+        if not isinstance(user_info, dict):
+            user_info = {}
+        authenticated = str(user_info.get("auth", "0")) == "1"
+        status = str(user_info.get("status", "Unknown"))
+        if not authenticated:
+            self._show_connection_result(
+                False,
+                "The provider responded, but the credentials were not accepted.",
+            )
+            return
+        self._show_connection_result(
+            True,
+            f"The credentials are valid. Account status: {status}.",
+        )
+
+    def _connection_test_failed(self, _error):
+        """Report a network or invalid-response failure without exposing secrets."""
+        self._connection_test_worker = None
+        self.test_connection_button.setEnabled(True)
+        self._show_connection_result(
+            False,
+            "Could not retrieve account information. Check the server URL and "
+            "your network connection, then try again.",
+        )
+
+    def _show_connection_result(self, success, message, title=""):
+        """Show a detailed themed dialog and a compact inline status."""
+        word = "OK" if success else "Failed"
+        color = "#2ea44f" if success else "#d64545"
+        self.test_connection_status.setText(
+            f'<span style="color:{color}">●</span> {word}'
+        )
+
+        dialog = QtWidgets.QMessageBox(self)
+        dialog.setWindowTitle(
+            title or ("Connection successful" if success else "Connection failed")
+        )
+        dialog.setText(message)
+        dialog.setIcon(
+            QtWidgets.QMessageBox.Information
+            if success else QtWidgets.QMessageBox.Warning
+        )
+        dialog.setStandardButtons(QtWidgets.QMessageBox.Ok)
+        self.parent.parent._prepare_dialog_theme(dialog)
+        dialog.exec_()
     
     def validate_and_accept(self):
         method = self.method_selector.currentText()

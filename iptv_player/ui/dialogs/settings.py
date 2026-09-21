@@ -1,9 +1,11 @@
 """Settings dialogs used by the main IPTV Player window."""
 
 from PyQt5.QtCore import QLocale, Qt
+from PyQt5.QtGui import QColor, QPainter, QPen
 from PyQt5.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -15,6 +17,10 @@ from PyQt5.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QSpinBox,
+    QStyle,
+    QStyleOptionButton,
+    QStyleOptionViewItem,
+    QStyledItemDelegate,
     QVBoxLayout,
     QWidget,
 )
@@ -31,6 +37,81 @@ from iptv_player.provider.network import (
     MAX_LIVE_STATUS_RETRIES,
     NETWORK_SETTINGS,
 )
+
+
+class _CategoryCheckDelegate(QStyledItemDelegate):
+    """Use the same native checkbox indicator as the Settings controls."""
+
+    def paint(self, painter, option, index):
+        view_option = QStyleOptionViewItem(option)
+        self.initStyleOption(view_option, index)
+        super().paint(painter, view_option, index)
+        if not index.flags() & Qt.ItemIsUserCheckable:
+            return
+
+        style = view_option.widget.style()
+        indicator = style.subElementRect(
+            QStyle.SE_ItemViewItemCheckIndicator,
+            view_option,
+            view_option.widget,
+        )
+        if view_option.palette.window().color().lightness() < 128:
+            painter.save()
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.fillRect(indicator, QColor("#ffffff"))
+            painter.setPen(QPen(QColor("#707070"), 1))
+            painter.drawRect(indicator.adjusted(0, 0, -1, -1))
+            if index.data(Qt.CheckStateRole) == Qt.Checked:
+                painter.setPen(QPen(QColor("#111111"), 2))
+                painter.drawLine(
+                    indicator.left() + 3,
+                    indicator.center().y(),
+                    indicator.left() + 6,
+                    indicator.bottom() - 3,
+                )
+                painter.drawLine(
+                    indicator.left() + 6,
+                    indicator.bottom() - 3,
+                    indicator.right() - 2,
+                    indicator.top() + 3,
+                )
+            painter.restore()
+            return
+
+        checkbox_option = QStyleOptionButton()
+        checkbox_option.rect = indicator
+        checkbox_option.palette = view_option.palette
+        checkbox_option.state = QStyle.State_Enabled
+        if index.data(Qt.CheckStateRole) == Qt.Checked:
+            checkbox_option.state |= QStyle.State_On
+        else:
+            checkbox_option.state |= QStyle.State_Off
+        style.drawPrimitive(
+            QStyle.PE_IndicatorCheckBox,
+            checkbox_option,
+            painter,
+            view_option.widget,
+        )
+
+
+class _CategoryListWidget(QListWidget):
+    """Support range selection and keyboard toggling for category checks."""
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Space:
+            selected_items = self.selectedItems()
+            if not selected_items and self.currentItem() is not None:
+                selected_items = [self.currentItem()]
+            for item in selected_items:
+                next_state = (
+                    Qt.Unchecked
+                    if item.checkState() == Qt.Checked
+                    else Qt.Checked
+                )
+                item.setCheckState(next_state)
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class NetworkSettingsDialog(QDialog):
@@ -264,11 +345,15 @@ class CategoryVisibilityDialog(QDialog):
             "automatically checked."
         ))
 
-        self.category_list = QListWidget()
+        self.category_list = _CategoryListWidget()
+        self.category_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         # Match the Settings background so native Qt checkbox indicators retain
         # their intended contrast in both light and dark themes.
         self.category_list.setStyleSheet(
             "QListWidget { background-color: palette(window); }"
+        )
+        self.category_list.setItemDelegate(
+            _CategoryCheckDelegate(self.category_list)
         )
         for category in sorted(
             categories,

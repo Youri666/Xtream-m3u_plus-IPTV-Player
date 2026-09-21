@@ -610,6 +610,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self, url, title="", playlist=None, index=0, resume_ms=0,
         keep_above_main=False
     ):
+        was_visible = self.isVisible()
         self._report_progress(force=True)
         if playlist is not None:
             self._playlist = list(playlist)
@@ -646,7 +647,9 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._pending_playback_rate_attempts = 20
         self._pending_resume_ms = max(0, int(resume_ms or 0))
         self._pending_resume_attempts = 20 if self._pending_resume_ms else 0
-        self._deferred_present = bool(self._pending_resume_ms)
+        # Hide a new window until its initial resume seek completes. Playlist
+        # navigation reuses the visible window and must never make it disappear.
+        self._deferred_present = bool(self._pending_resume_ms) and not was_visible
         self._deferred_present_polls = 12 if self._deferred_present else 0
         self._deferred_keep_topmost = bool(keep_above_main)
         if not sys.platform.startswith("win"):
@@ -657,7 +660,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             self.hide()
         self._bind_video_output()
         self.player.play()
-        if not self._deferred_present:
+        if not self._deferred_present and not was_visible:
             self._present_player(keep_above_main)
         self._last_progress_report = 0.0
         self._set_standard_icon(self.btn_play, QStyle.SP_MediaPause)
@@ -846,14 +849,27 @@ class EmbeddedPlayerWindow(QMainWindow):
     def next(self):
         if self._current_idx + 1 >= len(self._playlist):
             return
+        self._store_current_playlist_progress()
         self._current_idx += 1
         self._play_current()
 
     def previous(self):
         if self._current_idx <= 0:
             return
+        self._store_current_playlist_progress()
         self._current_idx -= 1
         self._play_current()
+
+    def _store_current_playlist_progress(self):
+        """Refresh the local playlist copy before navigating to another item."""
+        self._report_progress(force=True)
+        if (
+            self._current_history
+            and 0 <= self._current_idx < len(self._playlist)
+        ):
+            self._playlist[self._current_idx]["history"] = dict(
+                self._current_history
+            )
 
     def _play_current(self):
         if not self._playlist:
@@ -1130,6 +1146,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         idx = item.data(Qt.UserRole)
         if not isinstance(idx, int) or idx < 0 or idx >= len(self._playlist):
             return
+        self._store_current_playlist_progress()
         self._current_idx = idx
         self._play_current()
         if not self._pinned_sidebar:

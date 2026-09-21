@@ -33,6 +33,7 @@ def external_player_command(
                 command.append(f"--http-user-agent={user_agent}")
             if title:
                 command.append(f"--meta-title={title}")
+                command.append(f"--input-title-format={title}")
         elif player_lower.endswith(("mpv", "mpv.com")) and user_agent:
             command.append(f"--user-agent={user_agent}")
         command.append(stream_url)
@@ -56,7 +57,10 @@ def external_player_command(
                 f' --http-user-agent="{user_agent}"' if user_agent else ""
             )
             title_argument = (
-                " " + subprocess.list2cmdline([f"--meta-title={title}"])
+                " " + subprocess.list2cmdline([
+                    f"--meta-title={title}",
+                    f"--input-title-format={title}",
+                ])
                 if title else ""
             )
             return (
@@ -75,6 +79,7 @@ def external_player_command(
                 command.append(f"--http-user-agent={user_agent}")
             if title:
                 command.append(f"--meta-title={title}")
+                command.append(f"--input-title-format={title}")
         command.append(stream_url)
         return command
 

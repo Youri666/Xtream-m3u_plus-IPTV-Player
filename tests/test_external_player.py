@@ -37,6 +37,7 @@ class ExternalPlayerCommandTests(unittest.TestCase):
             command,
             '"C:\\Program Files\\VideoLAN\\VLC\\vlc.exe" '
             '"--meta-title=DAN DA DAN - Episode 02" '
+            '"--input-title-format=DAN DA DAN - Episode 02" '
             '"http://example.test/series/1234.mkv"',
         )
 
@@ -92,6 +93,7 @@ class ExternalPlayerCommandTests(unittest.TestCase):
             [
                 "/usr/bin/vlc",
                 "--meta-title=Original movie title",
+                "--input-title-format=Original movie title",
                 "http://example.test/movie/1234.mkv",
             ],
         )
@@ -118,6 +120,7 @@ class ExternalPlayerCommandTests(unittest.TestCase):
                 "/Applications/VLC.app/Contents/MacOS/VLC",
                 "--http-user-agent=IPTV Player",
                 "--meta-title=Original channel title",
+                "--input-title-format=Original channel title",
                 "http://example.test/live/1",
             ],
         )
