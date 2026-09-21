@@ -7,31 +7,6 @@
 
 This IPTV player, built with Python and PyQt5, supports M3U_plus playlists and Xtream Codes API, allowing users to manage and play IPTV channels, movies, and series.
 
-## V3.0.0 Beta available for early adopters
-
-For early adopters who would like to test the upcoming V3 release, a beta version is now available here:
-[**Download V3.0.0 Beta**](https://github.com/LapinFou/Xtream-m3u_plus-IPTV-Player/releases/tag/v3.0.0)
-
-The V3 branch also includes an updated README with a user guide, screenshots, and explanations of the main new features and settings:
-[**V3 development branch and user guide**](https://github.com/LapinFou/Xtream-m3u_plus-IPTV-Player/tree/codex/v3-refactor)
-
-If you encounter any issue while testing V3, please open a ticket on my fork rather than on the main repository:
-[**Report a V3 issue**](https://github.com/LapinFou/Xtream-m3u_plus-IPTV-Player/issues)
-
-Thanks in advance to anyone willing to test and provide feedback.
-
-## What's new in V2
-
-# Download
-
-## V3.0.1
-
-Version **V3.0.1** is the latest stable release of IPTV Player.
-
-[**Download V3.0.1**](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases)
-
-## All releases
-
 [**View all releases**](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases)
 
 # What's new in V3
