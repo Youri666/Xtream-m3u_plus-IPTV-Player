@@ -1252,6 +1252,12 @@ class EmbeddedPlayerWindow(QMainWindow):
 
     # ---------- VLC poll ----------
     def _poll_state(self):
+        """Synchronize controls with VLC and retry startup operations when ready.
+
+        Opening media is asynchronous: duration and seeking may not be available
+        yet. Deferred presentation is bounded so a failed seek cannot hide the
+        player indefinitely. While dragging, the user owns the seek position.
+        """
         try:
             # player.play() returns before libVLC reaches Playing. The initial
             # _wake_controls() call can therefore see is_playing() == False and
@@ -1352,6 +1358,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._show_seek_preview(value)
 
     def _seek_released(self):
+        """Commit the preview position to VLC once, then resume normal polling."""
         try:
             length = self._playback_length()
             if length > 0:

@@ -82,6 +82,7 @@ def run_embedded_player_process():
     bridge = _PlayerCommandBridge()
 
     def handle_command(payload):
+        """Apply commands on the GUI thread; warmup needs only initialization."""
         command = payload.get("command")
         if command == "play":
             player.play_url(
@@ -114,6 +115,7 @@ def run_embedded_player_process():
     bridge.connection_closed.connect(app.quit)
 
     def receive_commands():
+        """Read blocking IPC off-thread and hand Qt operations to the signal bridge."""
         try:
             while True:
                 payload = connection.recv()

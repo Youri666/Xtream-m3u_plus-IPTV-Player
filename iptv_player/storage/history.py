@@ -28,7 +28,11 @@ def load_history(filename):
 
 
 def record_history(filename, entry, max_items_per_type):
-    """Insert or update one item and retain a bounded history per content type."""
+    """Replace an item by stable key and retain a bounded history per content type.
+
+    This replaces the whole entry rather than merging fields. Callers recording
+    a new access must merge saved progress first to preserve the resume position.
+    """
     normalized = _normalize_entry(entry)
     if normalized is None:
         return []
