@@ -5,12 +5,14 @@ from PyQt5.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
 )
 
 from iptv_player.config import (
     account_name_error,
     load_account,
+    load_account_epg_offset,
     load_accounts,
     save_account,
 )
@@ -84,7 +86,8 @@ class AccountManager(QtWidgets.QDialog):
                             'method': updated_method,
                             'old_name': name,
                             'name': updated_name,
-                            'credentials': updated_credentials
+                            'credentials': updated_credentials,
+                            'epg_offset_minutes': dialog.epg_offset_minutes.value(),
                         }
                         self.save_credentials(credentials_dict)
                         self.load_saved_accounts()
@@ -105,7 +108,8 @@ class AccountManager(QtWidgets.QDialog):
                 credentials_dict = {
                     'method': method,
                     'name': name,
-                    'credentials': credentials
+                    'credentials': credentials,
+                    'epg_offset_minutes': dialog.epg_offset_minutes.value(),
                 }
                 self.save_credentials(credentials_dict)
                 self.load_saved_accounts()
@@ -120,6 +124,7 @@ class AccountManager(QtWidgets.QDialog):
             name,
             credentials,
             old_name=credentials_dict.get('old_name'),
+            epg_offset_minutes=credentials_dict.get('epg_offset_minutes', 0),
         )
 
     def delete_account(self):
@@ -148,13 +153,13 @@ class AccountDialog(QtWidgets.QDialog):
         layout = QVBoxLayout(self)
 
         self.manual_entry_name    = "Manual/Xtream entry"
-        self.m3u_plus_entry_name  = "M3U_plus URL entry"
+        self.m3u_plus_entry_name  = "Xtream M3U Plus URL"
         self.default_url_formats  = self.parent.parent.default_url_formats
 
         # Connection method
         self.method_selector = QtWidgets.QComboBox()
         self.method_selector.addItems([self.manual_entry_name, self.m3u_plus_entry_name])
-        layout.addWidget(QtWidgets.QLabel("Select Method:"))
+        layout.addWidget(QtWidgets.QLabel("Select method"))
         layout.addWidget(self.method_selector)
 
         # Stack of forms
@@ -164,6 +169,7 @@ class AccountDialog(QtWidgets.QDialog):
         # Manual form
         self.manual_form = QtWidgets.QWidget()
         manual_layout = QFormLayout(self.manual_form)
+        manual_layout.setContentsMargins(9, 9, 9, 0)
 
         self.name_entry_manual  = QLineEdit()
         self.server_entry       = QLineEdit()
@@ -174,13 +180,28 @@ class AccountDialog(QtWidgets.QDialog):
         self.movie_url_format_entry = QLineEdit(self.default_url_formats['movie'])
         self.series_url_format_entry = QLineEdit(self.default_url_formats['series'])
 
-        manual_layout.addRow("Name:", self.name_entry_manual)
-        manual_layout.addRow("Server URL:", self.server_entry)
-        manual_layout.addRow("Username:", self.username_entry)
-        manual_layout.addRow("Password:", self.password_entry)
-        manual_layout.addRow("Live URL Format:", self.live_url_format_entry)
-        manual_layout.addRow("Movie URL Format:", self.movie_url_format_entry)
-        manual_layout.addRow("Series URL Format:", self.series_url_format_entry)
+        live_format_tooltip = (
+            "<b>Live TV not working while Movies and Series do?</b><br>"
+            "Some providers require a different Live URL format. Try one of these:<br><br>"
+            "{server}/{username}/{password}/{stream_id}<br>"
+            "{server}/{username}/{password}/{stream_id}.ts<br>"
+            "{server}/{username}/{password}/{stream_id}.m3u8<br>"
+            "{server}/{username}/{password}/live/{stream_id}<br>"
+            "{server}/{username}/{password}/live/{stream_id}.ts<br>"
+            "{server}/{username}/{password}/live/{stream_id}.m3u8<br>"
+            "{server}/live/{username}/{password}/{stream_id}<br>"
+            "{server}/live/{username}/{password}/{stream_id}.ts<br>"
+            "{server}/live/{username}/{password}/{stream_id}.m3u8"
+        )
+        self.live_url_format_entry.setToolTip(live_format_tooltip)
+
+        manual_layout.addRow("Name", self.name_entry_manual)
+        manual_layout.addRow("Server URL", self.server_entry)
+        manual_layout.addRow("Username", self.username_entry)
+        manual_layout.addRow("Password", self.password_entry)
+        manual_layout.addRow("Live URL format", self.live_url_format_entry)
+        manual_layout.addRow("Movie URL format", self.movie_url_format_entry)
+        manual_layout.addRow("Series URL format", self.series_url_format_entry)
 
         #Set placeholder texts for xtream credentials
         self.name_entry_manual.setPlaceholderText("Custom account name")
@@ -191,6 +212,7 @@ class AccountDialog(QtWidgets.QDialog):
         # M3U form
         self.m3u_form = QtWidgets.QWidget()
         m3u_layout = QFormLayout(self.m3u_form)
+        m3u_layout.setContentsMargins(9, 9, 9, 0)
 
         self.name_entry_m3u = QLineEdit()
         self.m3u_url_entry  = QLineEdit()
@@ -198,12 +220,13 @@ class AccountDialog(QtWidgets.QDialog):
         self.m3u_live_url_format_entry = QLineEdit(self.default_url_formats['live'])
         self.m3u_movie_url_format_entry = QLineEdit(self.default_url_formats['movie'])
         self.m3u_series_url_format_entry = QLineEdit(self.default_url_formats['series'])
+        self.m3u_live_url_format_entry.setToolTip(live_format_tooltip)
 
-        m3u_layout.addRow("Name:", self.name_entry_m3u)
-        m3u_layout.addRow("m3u_plus URL:", self.m3u_url_entry)
-        m3u_layout.addRow("Live URL Format:", self.m3u_live_url_format_entry)
-        m3u_layout.addRow("Movie URL Format:", self.m3u_movie_url_format_entry)
-        m3u_layout.addRow("Series URL Format:", self.m3u_series_url_format_entry)
+        m3u_layout.addRow("Name", self.name_entry_m3u)
+        m3u_layout.addRow("Xtream get.php URL", self.m3u_url_entry)
+        m3u_layout.addRow("Live URL format", self.m3u_live_url_format_entry)
+        m3u_layout.addRow("Movie URL format", self.m3u_movie_url_format_entry)
+        m3u_layout.addRow("Series URL format", self.m3u_series_url_format_entry)
 
         #Set placeholder texts for m3u credentials
         self.name_entry_m3u.setPlaceholderText("Custom account name")
@@ -212,7 +235,35 @@ class AccountDialog(QtWidgets.QDialog):
         self.stack.addWidget(self.manual_form)
         self.stack.addWidget(self.m3u_form)
 
-        self.method_selector.currentIndexChanged.connect(self.stack.setCurrentIndex)
+        self.m3u_explanation = QLabel(
+            "This option accepts an Xtream get.php URL containing account "
+            "credentials. Generic M3U playlist files and URLs are not supported."
+        )
+        self.m3u_explanation.setWordWrap(True)
+        layout.addWidget(self.m3u_explanation)
+
+        self.epg_offset_minutes = QSpinBox()
+        self.epg_offset_minutes.setRange(-720, 720)
+        self.epg_offset_minutes.setSingleStep(30)
+        self.epg_offset_minutes.setSuffix(" minutes")
+        self.epg_offset_minutes.setToolTip(
+            "Shift this account's EPG times from -12 to +12 hours"
+        )
+        self.epg_offset_minutes.setFixedWidth(150)
+        epg_layout = QtWidgets.QHBoxLayout()
+        epg_layout.setContentsMargins(9, 0, 9, 0)
+        epg_layout.setSpacing(6)
+        epg_label = QLabel("EPG time offset")
+        label_column_width = self.fontMetrics().horizontalAdvance(
+            "Series URL format"
+        )
+        epg_label.setFixedWidth(label_column_width)
+        epg_layout.addWidget(epg_label)
+        epg_layout.addWidget(self.epg_offset_minutes)
+        epg_layout.addStretch()
+        layout.addLayout(epg_layout)
+
+        self.method_selector.currentIndexChanged.connect(self._method_changed)
 
         test_layout = QtWidgets.QHBoxLayout()
         self.test_connection_button = QPushButton("Test connection")
@@ -234,6 +285,11 @@ class AccountDialog(QtWidgets.QDialog):
         # Set form data if in edit mode
         if self.mode == self.MODE_EDIT and self.account:
             method, *credentials = self.account
+            self.epg_offset_minutes.setValue(
+                load_account_epg_offset(
+                    self.parent.parent.user_data_file, credentials[0]
+                )
+            )
             if method == 'manual':
                 self.method_selector.setCurrentText(self.manual_entry_name)
                 self.name_entry_manual.setText(credentials[0])
@@ -251,7 +307,14 @@ class AccountDialog(QtWidgets.QDialog):
                 self.m3u_movie_url_format_entry.setText(credentials[3])
                 self.m3u_series_url_format_entry.setText(credentials[4])
 
+        self._method_changed(self.method_selector.currentIndex())
+
         self._resize_for_url_fields()
+
+    def _method_changed(self, index):
+        """Switch credential forms and explain the Xtream-only URL mode."""
+        self.stack.setCurrentIndex(index)
+        self.m3u_explanation.setVisible(index == 1)
 
     def _resize_for_url_fields(self):
         """Choose a readable initial width while keeping the dialog resizable."""
@@ -383,7 +446,11 @@ class AccountDialog(QtWidgets.QDialog):
             m3u_url = self.m3u_url_entry.text().strip()
 
             if not name or not m3u_url:
-                QtWidgets.QMessageBox.warning(self, "Input Error", "Please fill all fields for m3u_plus URL Entry.")
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Input Error",
+                    "Please enter an account name and a valid Xtream get.php URL.",
+                )
                 return
 
         validation_error = account_name_error(name)

@@ -6,6 +6,7 @@ from iptv_player.config.accounts import (
     account_name_error,
     delete_account,
     load_account,
+    load_account_epg_offset,
     load_account_id,
     load_accounts,
     load_startup_account,
@@ -64,6 +65,42 @@ class AccountStorageTests(unittest.TestCase):
                 load_account(str(file_path), "Living Room"),
                 "manual|host|user|password|live|movie|series",
             )
+            self.assertEqual(load_account_epg_offset(str(file_path), "Living Room"), 0)
+
+    def test_epg_offset_is_account_specific_and_survives_rename(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "userdata.ini"
+            save_account(
+                str(file_path),
+                "m3u_plus",
+                "Old name",
+                ["url", "live", "movie", "series"],
+                epg_offset_minutes=90,
+            )
+
+            self.assertEqual(load_account_epg_offset(str(file_path), "Old name"), 90)
+            save_account(
+                str(file_path),
+                "m3u_plus",
+                "New name",
+                ["url", "live", "movie", "series"],
+                old_name="Old name",
+                epg_offset_minutes=-30,
+            )
+            self.assertEqual(load_account_epg_offset(str(file_path), "New name"), -30)
+
+    def test_epg_offset_uses_safe_defaults_and_bounds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "userdata.ini"
+            save_account(
+                str(file_path),
+                "m3u_plus",
+                "Bounded",
+                ["url", "live", "movie", "series"],
+                epg_offset_minutes=1_000,
+            )
+            self.assertEqual(load_account_epg_offset(str(file_path), "Bounded"), 720)
+            self.assertEqual(load_account_epg_offset(str(file_path), "Missing"), 0)
 
     def test_name_punctuation_is_stored_as_display_data(self):
         with tempfile.TemporaryDirectory() as directory:

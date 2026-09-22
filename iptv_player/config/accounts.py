@@ -46,6 +46,19 @@ def load_account_id(file_path, name):
     return account_id
 
 
+def load_account_epg_offset(file_path, name):
+    """Return the account-specific EPG offset in bounded minutes."""
+    config = _read_config(file_path)
+    _account_id, section = _find_account(config, name)
+    if section is None:
+        return 0
+    try:
+        value = section.getint("epg_offset_minutes", fallback=0)
+    except (ValueError, configparser.Error):
+        value = 0
+    return max(-720, min(value, 720))
+
+
 def load_startup_account(file_path):
     """Return the display name of the account selected for automatic startup."""
     config = _read_config(file_path)
@@ -72,7 +85,9 @@ def save_startup_account(file_path, name):
     write_config_file(file_path, config)
 
 
-def save_account(file_path, method, name, credentials, old_name=None):
+def save_account(
+    file_path, method, name, credentials, old_name=None, epg_offset_minutes=0
+):
     """Create or replace an account while retaining its internal identifier."""
     validation_error = account_name_error(name)
     if validation_error:
@@ -93,6 +108,9 @@ def save_account(file_path, method, name, credentials, old_name=None):
 
     section["name"] = name
     section["credentials"] = serialize_account(method, credentials)
+    section["epg_offset_minutes"] = str(
+        max(-720, min(int(epg_offset_minutes), 720))
+    )
 
     if "Startup credentials" not in config:
         config["Startup credentials"] = {}
