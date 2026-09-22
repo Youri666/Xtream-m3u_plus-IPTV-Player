@@ -9,6 +9,21 @@ This IPTV player, built with Python and PyQt5, supports Xtream Codes accounts, i
 
 [**View all releases**](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases)
 
+> [!IMPORTANT]
+> **V3.1.0 Beta is available for testing.** This preview adds faster account switching, customizable per-account tabs, EPG time offsets, and several Internal Player improvements. Download it from the [Releases page](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases) and report any problem through [GitHub Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues).
+
+## What's new in V3.1.0 Beta
+
+- Quickly switch between IPTV accounts from the selector above the tabs.
+- Reorder tabs independently for each account and choose a default tab or **Last selected tab**.
+- Keep the same functional tab selected when switching between accounts.
+- Adjust EPG times independently for each IPTV account.
+- Automatically continue with the next playlist item, optionally before the final credits end.
+- Seek by dragging the progress bar or using the mouse wheel over the player controls.
+- Configure the Internal Player network buffer.
+- Close IPTV Player automatically after accepting an available update.
+- Improved account setup guidance, Xtream URL wording, Linux documentation, and general interface consistency.
+
 # What's new in V3
 
 Version 3 is a major refactoring of the application aimed at making the codebase easier to maintain, test, debug, and extend. Most of the existing functionality has been reorganized into clearer and more reusable components, while several user-facing improvements have also been introduced.

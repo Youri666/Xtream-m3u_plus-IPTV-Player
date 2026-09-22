@@ -19,6 +19,11 @@ def version_components(version):
     return tuple(int(component) for component in re.findall(r"\d+", version or ""))
 
 
+def is_prerelease_version(version):
+    """Return whether a release tag contains a prerelease suffix."""
+    return bool(re.search(r"\d(?:[-_.]?(?:alpha|beta|rc))", version or "", re.I))
+
+
 def is_newer_version(candidate, current):
     """Return whether a candidate tag represents a newer application version."""
     candidate_parts = version_components(candidate)
@@ -26,7 +31,9 @@ def is_newer_version(candidate, current):
     width = max(len(candidate_parts), len(current_parts))
     candidate_parts += (0,) * (width - len(candidate_parts))
     current_parts += (0,) * (width - len(current_parts))
-    return candidate_parts > current_parts
+    if candidate_parts != current_parts:
+        return candidate_parts > current_parts
+    return is_prerelease_version(current) and not is_prerelease_version(candidate)
 
 
 def fetch_latest_release(repository, connection_timeout, request_get=None):
