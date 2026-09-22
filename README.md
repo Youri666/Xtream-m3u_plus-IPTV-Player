@@ -279,6 +279,12 @@ The loader preserves a schema number newer than the current application understa
 <details>
 <summary><h2>How to compile the source code</h2></summary>
 
+All build scripts create a local `.venv`, install PyInstaller and the application
+dependencies from `requirements-build.txt`, and use that isolated environment.
+An Internet connection is required the first time. Delete `.venv` to recreate it
+after changing the installed Python version. No Python packages need to be
+installed globally.
+
 <details>
 <summary><h3>Windows</h3></summary>
 
@@ -290,24 +296,9 @@ During installation:
 - Use administrator privileges when appropriate.
 - Add `python.exe` to the system `PATH`.
 
-#### 2. Install the dependencies
+VLC must also be installed if you want to use the Internal Player.
 
-Open a Windows Command Prompt in the project directory:
-
-```bash
-python -m pip install --upgrade pip
-python -m pip install --upgrade setuptools
-python -m pip install --upgrade pyinstaller
-python -m pip install -r requirements.txt
-```
-
-#### 3. Verify PyInstaller
-
-```bash
-pyinstaller --version
-```
-
-#### 4. Build
+#### 2. Build
 
 Run:
 
@@ -327,14 +318,7 @@ The generated files are written to the `dist` directory.
 - Install the latest Python 3 from [python.org](https://www.python.org/downloads/macos/).
 - Install the latest VLC from [videolan.org](https://www.videolan.org/vlc/) in `/Applications`.
 
-#### 2. Install the build dependencies
-
-```bash
-python3 -m pip install --upgrade pip setuptools pyinstaller
-python3 -m pip install -r requirements.txt
-```
-
-#### 3. Build the application
+#### 2. Build the application
 
 Make the MacOS build script executable:
 
@@ -357,7 +341,7 @@ dist/IPTV Player Vx.x.x.dmg
 
 The `.app` bundle can be used for local testing. The versioned `.dmg` package is intended for distribution.
 
-#### 4. Install the application
+#### 3. Install the application
 
 Open the generated `.dmg` file and drag `IPTV Player.app` onto the `Applications` shortcut.
 
@@ -372,12 +356,12 @@ Because the application is not currently code-signed, MacOS may require you to C
 
 #### 1. Install the required development packages
 
-Install Python 3 and the Python development files using `dnf`.
+Install Python 3, its development files, and pip using `dnf`.
 
 For example:
 
 ```bash
-sudo dnf install python3 python3-devel
+sudo dnf install python3 python3-devel python3-pip
 ```
 
 If you build Python yourself, configure it with shared-library support:
@@ -386,28 +370,9 @@ If you build Python yourself, configure it with shared-library support:
 ./configure --enable-shared
 ```
 
-#### 2. Install the Python dependencies
+Install VLC/libVLC separately if you want to use the Internal Player.
 
-```bash
-python3 -m pip install --upgrade pip
-python3 -m pip install --upgrade setuptools
-python3 -m pip install --upgrade pyinstaller
-python3 -m pip install -r requirements.txt
-```
-
-If necessary:
-
-```bash
-export PATH="$PATH:$HOME/.local/bin"
-```
-
-#### 3. Verify PyInstaller
-
-```bash
-pyinstaller --version
-```
-
-#### 4. Build
+#### 2. Build
 
 ```bash
 chmod +x build_IPTV_Player_Linux.sh

@@ -15,6 +15,7 @@ favorites.json
 provider_favorites.*.json
 provider_preferences.*.json
 dist/
+dist2/
 vlc_log.txt
 /.idea/
 /.venv/

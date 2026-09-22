@@ -12,20 +12,18 @@ else
   exit 1
 fi
 
-# Check if PyInstaller is installed for the selected Python interpreter.
-if ! "$PYTHON_BIN" -m PyInstaller --version &> /dev/null; then
-  echo "PyInstaller not found. Please install it with '$PYTHON_BIN -m pip install pyinstaller'"
-  exit 1
+VENV_PATH=".venv"
+VENV_PYTHON="$VENV_PATH/bin/python"
+
+# Keep build tools and application dependencies isolated from the system Python.
+if [ ! -x "$VENV_PYTHON" ]; then
+  echo "Creating local Python environment in $VENV_PATH..."
+  "$PYTHON_BIN" -m venv "$VENV_PATH"
 fi
 
-# Every dependency must belong to the interpreter used for packaging.
-if ! "$PYTHON_BIN" -c "import PyQt5, requests, lxml, dateutil, vlc" &> /dev/null; then
-  echo "Installing missing application dependencies..."
-  if ! "$PYTHON_BIN" -m pip install -r requirements.txt; then
-    echo "ERROR: Application dependencies could not be installed."
-    exit 1
-  fi
-fi
+PYTHON_BIN="$VENV_PYTHON"
+echo "Installing build dependencies in $VENV_PATH..."
+"$PYTHON_BIN" -m pip install -r requirements-build.txt
 
 # Confirm all modules can be collected before deleting previous builds.
 if ! "$PYTHON_BIN" -c "import PyQt5, requests, lxml, dateutil, vlc" &> /dev/null; then
@@ -34,6 +32,8 @@ if ! "$PYTHON_BIN" -c "import PyQt5, requests, lxml, dateutil, vlc" &> /dev/null
 fi
 
 echo "Application dependencies are available."
+echo "PyInstaller version:"
+"$PYTHON_BIN" -m PyInstaller --version
 
 # Set variables
 MAIN_SCRIPT="IPTVPlayer.py"
