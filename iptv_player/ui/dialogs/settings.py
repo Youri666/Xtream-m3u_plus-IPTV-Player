@@ -455,12 +455,38 @@ class InternalPlayerSettingsDialog(QDialog):
         resume_index = self.resume_behavior.findData(parent.internal_resume_behavior)
         self.resume_behavior.setCurrentIndex(max(0, resume_index))
 
+        self.auto_play_next = QCheckBox("Automatically play the next item")
+        self.auto_play_next.setChecked(parent.internal_auto_play_next)
+
+        self.auto_advance_seconds = QSpinBox()
+        self.auto_advance_seconds.setRange(0, 300)
+        self.auto_advance_seconds.setSuffix(" seconds")
+        self.auto_advance_seconds.setSpecialValueText("At the end")
+        self.auto_advance_seconds.setValue(parent.internal_auto_advance_seconds)
+        self.auto_advance_seconds.setEnabled(parent.internal_auto_play_next)
+        self.auto_advance_seconds.setToolTip(
+            "Start the next item this many seconds before the current item ends"
+        )
+        self.auto_play_next.toggled.connect(self.auto_advance_seconds.setEnabled)
+
+        self.network_caching_ms = QSpinBox()
+        self.network_caching_ms.setRange(0, 60000)
+        self.network_caching_ms.setSingleStep(100)
+        self.network_caching_ms.setSuffix(" ms")
+        self.network_caching_ms.setValue(parent.internal_network_caching_ms)
+        self.network_caching_ms.setToolTip(
+            "VLC buffering time for network streams; the VLC default is 1000 ms"
+        )
+
         layout.addRow("Seek step:", self.seek_step)
         layout.addRow("Volume step:", self.volume_step)
         layout.addRow("Playback speed step:", self.speed_step)
         layout.addRow("Preferred audio:", self.audio_language)
         layout.addRow("Preferred subtitles:", self.subtitle_language)
         layout.addRow("Previously started media:", self.resume_behavior)
+        layout.addRow(self.auto_play_next)
+        layout.addRow("Play next item:", self.auto_advance_seconds)
+        layout.addRow("Network buffer:", self.network_caching_ms)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
