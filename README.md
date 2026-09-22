@@ -5,7 +5,7 @@
 
 # FREE OPENSOURCE M3U/XTREME IPTV PLAYER
 
-This IPTV player, built with Python and PyQt5, supports M3U_plus playlists and Xtream Codes API, allowing users to manage and play IPTV channels, movies, and series.
+This IPTV player, built with Python and PyQt5, supports Xtream Codes accounts, including credential extraction from Xtream M3U Plus `get.php` URLs. Generic M3U playlist files and URLs are not supported.
 
 [**View all releases**](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases)
 
@@ -18,18 +18,18 @@ Version 3 is a major refactoring of the application aimed at making the codebase
 | **Major codebase refactoring** | The application has been reorganized into a proper package structure with clearer separation between UI, provider communication, configuration, media playback, caching, application startup, and shared utilities. Obsolete compatibility code and duplicated logic have also been removed. |
 | **Improved maintainability and testing** | Shared components have been extracted and standardized, including themes, navigation widgets, settings dialogs, information panels, sorting, search, account management, provider access, and application bootstrap logic. Regression tests were also introduced to help prevent future changes from breaking existing behavior. |
 | **Safer configuration management** | Configuration handling has been extensively refactored. INI writes are now centralized and atomic, application defaults and preferences are managed consistently, and configuration migrations allow older user settings to be upgraded safely between versions. |
-| **Better multi-account support** | IPTV accounts now use stable internal identifiers. Provider caches, favorites, category state, and category preferences are isolated per account. The active account is shown in the window title and accounts can be switched more quickly. |
+| **Better multi-account support** | IPTV accounts now use stable internal identifiers. Provider caches, favorites, category state, and category preferences are isolated per account. The active account is shown in a selector above the tabs so accounts can be switched quickly. |
 | **Improved provider and cache handling** | Xtream API communication, credential parsing, stream URL generation, EPG decoding, provider details, catalog preparation, JSON storage, and caching are now handled by dedicated reusable components. Provider catalogs are stored locally in separate caches for each IPTV account, improving data isolation and reducing loading times when cached data can be reused. |
 | **Improved search and sorting** | Title search relevance has been improved and search views now reuse the same sorting logic as the main playlists, providing more consistent results throughout the application. |
-| **Player improvements** | Internal and external player handling has been reorganized and made more robust. The application now handles unavailable internal VLC configurations more cleanly, external VLC receives the media title, and the embedded player's controls have been made more compact and consistent. Internal playback automatically pauses when the player is minimized and resumes when the window is restored. |
+| **Player improvements** | Internal and external player handling has been reorganized and made more robust. The application now handles unavailable internal VLC configurations more cleanly, external VLC receives the media title, and the embedded player's controls have been made more compact and consistent. Internal playback automatically pauses when minimized and resumes when restored. Optional automatic episode advancement can skip the final seconds, while the progress bar supports drag seeking and mouse-wheel seeking. |
 | **User interface improvements** | Category lists now display item counts, account dialogs better accommodate long URLs, passwords can be shown while editing accounts, favorites refresh immediately after changes, and several UI components have been cleaned up and standardized. |
-| **Unified build and debug workflows** | Windows, MacOS, Rocky Linux, Fedora, and Red Hat Enterprise Linux 9 build workflows now follow the same release/debug approach, use more consistent Python detection, and provide improved diagnostics for troubleshooting packaged builds. |
+| **Unified build and debug workflows** | Windows, MacOS, and Linux build workflows now follow the same release/debug approach, use more consistent Python detection, and provide improved diagnostics for troubleshooting packaged builds. |
 | **Improved stability and diagnostics** | Network settings, application resources, update checks, player preferences, general preferences, and advanced settings have been centralized. Additional diagnostics and cleanup logic make runtime and startup problems easier to identify. |
 
 # Features
 
-- **Windows, MacOS, Rocky Linux, Fedora and Red Hat Enterprise Linux 9 support**
-- **M3U_plus support:** Load and play live TV, movies, and series.
+- **Windows, MacOS, and Linux support**
+- **Xtream M3U Plus URL support:** Extract account credentials from an Xtream `get.php` URL and load the catalog through the Xtream API. Generic M3U playlists are not supported.
 - **Xtream Codes API:** Log in with Xtream credentials and dynamically load content.
 - **Categorized playlists:** Content is organized into Live TV, Movies, and Series tabs for easy navigation.
 - **Favorites:** Add items to Favorites and find them in the dedicated Favorites category.
@@ -50,7 +50,7 @@ Version 3 is a major refactoring of the application aimed at making the codebase
 - **Info tab:** Display IPTV account status and account information.
 - **Adjustable column widths:** Resize columns in each tab by dragging their edges.
 - **Error handling:** Graceful handling of loading, configuration, and playback errors.
-- **Cross-platform builds:** Dedicated build scripts are provided for Windows, MacOS, Rocky Linux, Fedora, and Red Hat Enterprise Linux 9.
+- **Cross-platform builds:** Dedicated build scripts are provided for Windows, MacOS, and Linux.
 
 ### Recommended media players
 
@@ -103,7 +103,7 @@ Its content is refreshed automatically when the tab is opened. A manual refresh 
 
 The refresh interval can be configured in **Advanced Settings**. To avoid unnecessary requests, the information is only refreshed while the **Info** tab is actually being viewed.
 
-The application title bar also shows the name of the currently selected IPTV provider/account after the application name.
+The selector above the tabs shows the active IPTV account and allows it to be changed quickly.
 
 ![Info tab showing account information and refresh controls](Screenshots/info-tab.png)
 
@@ -122,7 +122,7 @@ The **IPTV accounts** button opens the account manager, where accounts can be ad
 Two account input methods are available:
 
 - **Manual/Xtream entry:** enter the server URL, username, password, and stream URL formats manually.
-- **M3U_plus URL entry:** paste an M3U_plus URL and let the application extract the required credentials.
+- **Xtream M3U Plus URL:** paste an Xtream `get.php` URL and let the application extract the required credentials. Generic M3U playlist files and URLs are not supported.
 
 ![Manual Xtream account configuration](Screenshots/add-account-xtream.png)
 
@@ -154,6 +154,8 @@ If none of these formats work, please open an issue on the V3 repository: [Issue
 ### Content and appearance
 
 The **LIVE**, **Movies**, and **Series** options control which content sections are displayed. Disabled content types are also hidden from related parts of the application, such as History.
+
+The **Default tab** setting selects the tab opened for each IPTV account. Choose **Last selected tab** to restore the most recently used tab for that account.
 
 **Keep on top** keeps the main window above other windows.
 
@@ -192,7 +194,7 @@ The internal player has its own configurable options:
 
 ![Internal player settings](Screenshots/internal-player-settings.png)
 
-These settings control seek steps, volume steps, playback-speed steps, preferred audio and subtitle languages, and what should happen when opening media that was previously started.
+These settings control seek steps, volume steps, playback-speed steps, preferred audio and subtitle languages, what should happen when opening media that was previously started, and whether playback should automatically continue with the next item. Automatic advancement can occur at the end or a configurable number of seconds before the end to skip credits. The streaming buffer size can also be adjusted.
 
 When **Previously started media** is set to **Ask**, the player can offer to **Resume**, **Restart**, or **Cancel** playback.
 
@@ -227,13 +229,16 @@ The playlist panel can be shown or hidden with the button in the upper-left corn
 
 Playback controls provide previous/next navigation, play/pause, seeking, playback speed, volume, audio track selection, subtitles when available, and fullscreen mode.
 
+The progress bar supports standard drag seeking: hold the left mouse button, move to the desired position, and release to seek. The mouse wheel can also seek backward or forward while the pointer is over the playback controls. Multiple wheel steps are accumulated briefly before the new position is applied, allowing precise adjustments. Over the volume control or video area, the wheel continues to adjust volume.
+
 ### Keyboard shortcuts
 
 - **Page Up / Page Down** — previous / next item
 - **Left / Right Arrow** — seek backward / forward
 - **Space** — play / pause
 - **+ / -** — increase / decrease playback speed
-- **Mouse wheel** — increase / decrease volume
+- **Mouse wheel over playback controls** — seek backward / forward
+- **Mouse wheel over the volume control or video area** — increase / decrease volume
 - **M** — mute / unmute
 - **A** — cycle through available audio tracks
 - **S** — cycle through available subtitles
@@ -352,7 +357,7 @@ Because the application is not currently code-signed, MacOS may require you to C
 </details>
 
 <details>
-<summary><h3>Rocky Linux / Fedora / Red Hat Enterprise Linux 9</h3></summary>
+<summary><h3>Linux</h3></summary>
 
 #### 1. Install the required development packages
 

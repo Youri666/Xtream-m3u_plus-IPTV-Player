@@ -65,6 +65,7 @@ from iptv_player.config import (
     application_resource_path,
     delete_account,
     load_account,
+    load_account_epg_offset,
     load_account_id,
     load_accounts,
     load_auto_update_preference,
@@ -128,6 +129,7 @@ from iptv_player.storage import (
 from iptv_player.provider.cache import account_cache_key
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 from iptv_player.provider.credentials import parse_xtream_m3u_url
+from iptv_player.provider.epg import apply_epg_offset
 from iptv_player.player_process import run_embedded_player_process
 from iptv_player.external_player import (
     ExternalPlayerNotExecutableError,
@@ -188,6 +190,8 @@ CONTENT_TAB_SPECS = (
     },
 )
 CONTENT_TYPES = tuple(spec['stream_type'] for spec in CONTENT_TAB_SPECS)
+DEFAULT_TAB_ORDER = ("History", "LIVE", "Movies", "Series", "Info", "Settings")
+LAST_SELECTED_TAB = "Last selected tab"
 
 
 
@@ -325,6 +329,11 @@ class IPTVPlayerApp(QMainWindow):
         self.content_enabled = {
             stream_type: True for stream_type in CONTENT_TYPES
         }
+        self.default_tab_key = "History"
+        self.last_selected_tab_key = "History"
+        self._applying_tab_order = False
+        self._restoring_tab_preferences = False
+        self.epg_offset_minutes = 0
 
         self.category_search_bars   = {}
         self.streaming_search_bars  = {}
@@ -437,6 +446,7 @@ class IPTVPlayerApp(QMainWindow):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
 
+        main_layout.addWidget(self.account_switcher_bar)
         main_layout.addWidget(self.tab_widget)
         main_layout.addWidget(self.progress_bar)
 
@@ -459,7 +469,17 @@ class IPTVPlayerApp(QMainWindow):
             logging.debug("Could not prewarm internal VLC: %s", error)
 
     def set_active_account(self, name):
-        """Store the active account label and expose it in the window title."""
+        """Store the active account and load its isolated preferences."""
+        previous_tab_key = None
+        if self.active_account_name:
+            current_widget = self.tab_widget.currentWidget()
+            previous_tab_key = next(
+                (
+                    key for key, widget in self._tab_widgets_by_key().items()
+                    if widget is current_widget
+                ),
+                None,
+            )
         self._reset_provider_view_state()
         self._catalog_loaded = False
         self._catalog_request_generation += 1
@@ -482,14 +502,15 @@ class IPTVPlayerApp(QMainWindow):
             str(account_history_file(self.history_base_file, self.active_account_id))
             if self.active_account_id else ""
         )
-        title = f"IPTV Player {CURRENT_VERSION}"
-        if self.active_account_name:
-            title = f"{title} ({self.active_account_name})"
-        self.setWindowTitle(title)
+        self.setWindowTitle(f"IPTV Player {CURRENT_VERSION}")
         self._refresh_account_selectors(self.active_account_name)
+        self.epg_offset_minutes = load_account_epg_offset(
+            self.user_data_file, self.active_account_name
+        )
         self._load_hidden_categories()
         self._load_account_sort_preferences()
         self._load_account_content_preferences()
+        self._load_account_tab_preferences(previous_tab_key)
         self.refresh_history_tab()
 
     def activate_saved_account(self, name):
@@ -545,37 +566,54 @@ class IPTVPlayerApp(QMainWindow):
 
     def _refresh_account_selectors(self, preferred_active_name=None):
         """Synchronize startup and active account selectors without activating one."""
-        active_selector = getattr(self, "account_selector", None)
+        active_selectors = [
+            selector for selector in (
+                getattr(self, "account_selector", None),
+                getattr(self, "header_account_selector", None),
+            ) if selector is not None
+        ]
         startup_selector = getattr(self, "startup_account_selector", None)
-        if active_selector is None or startup_selector is None:
+        if not active_selectors or startup_selector is None:
             return
 
         account_names = list(load_accounts(self.user_data_file))
         startup_name = load_startup_account(self.user_data_file)
-        active_selector.blockSignals(True)
+        account_switcher_bar = getattr(self, "account_switcher_bar", None)
+        if account_switcher_bar is not None:
+            account_switcher_bar.setVisible(len(account_names) > 1)
+        for selector in active_selectors:
+            selector.blockSignals(True)
         startup_selector.blockSignals(True)
-        active_selector.clear()
+        for selector in active_selectors:
+            selector.clear()
         startup_selector.clear()
         startup_selector.addItem("None")
         if account_names:
-            active_selector.addItems(account_names)
+            for selector in active_selectors:
+                for account_name in account_names:
+                    selector.addItem(self.account_manager_icon, account_name)
             startup_selector.addItems(account_names)
             selected_name = preferred_active_name or self.active_account_name
-            active_index = active_selector.findText(
-                selected_name, Qt.MatchFixedString
-            )
+            active_indexes = [
+                selector.findText(selected_name, Qt.MatchFixedString)
+                for selector in active_selectors
+            ]
             startup_index = startup_selector.findText(
                 startup_name, Qt.MatchFixedString
             )
-            active_selector.setCurrentIndex(active_index)
+            for selector, active_index in zip(active_selectors, active_indexes):
+                selector.setCurrentIndex(active_index)
             startup_selector.setCurrentIndex(max(0, startup_index))
-            active_selector.setEnabled(True)
+            for selector in active_selectors:
+                selector.setEnabled(True)
             startup_selector.setEnabled(True)
         else:
-            active_selector.addItem("No accounts configured")
-            active_selector.setEnabled(False)
+            for selector in active_selectors:
+                selector.addItem("No accounts configured")
+                selector.setEnabled(False)
             startup_selector.setEnabled(False)
-        active_selector.blockSignals(False)
+        for selector in active_selectors:
+            selector.blockSignals(False)
         startup_selector.blockSignals(False)
 
     def _startup_account_changed(self, name):
@@ -905,14 +943,15 @@ class IPTVPlayerApp(QMainWindow):
 
     def init_tab_widget(self):
         self.tab_widget = QTabWidget()
+        self.tab_widget.setMovable(True)
 
         self.history_tab  = QWidget()
         self.info_tab     = QWidget()
-        settings_tab      = QWidget()
+        self.settings_tab = QWidget()
 
         self.history_tab_layout     = QHBoxLayout(self.history_tab)
         self.info_tab_layout        = QVBoxLayout(self.info_tab)
-        self.settings_layout        = QGridLayout(settings_tab)
+        self.settings_layout        = QGridLayout(self.settings_tab)
 
         self.content_tabs = {}
         self.content_tab_layouts = {}
@@ -938,8 +977,168 @@ class IPTVPlayerApp(QMainWindow):
                 spec['label'],
             )
         self.tab_widget.addTab(self.info_tab,   self.info_icon,         "Info")
-        self.tab_widget.addTab(settings_tab,    self.settings_icon,     "Settings")
+        self.tab_widget.addTab(self.settings_tab, self.settings_icon, "Settings")
+        self.tab_widget.tabBar().tabMoved.connect(self._tab_moved)
         self.tab_widget.currentChanged.connect(self._on_current_tab_changed)
+
+    def _tab_widgets_by_key(self):
+        """Return stable tab identifiers independently of their current positions."""
+        widgets = {
+            "History": self.history_tab,
+            "Info": self.info_tab,
+            "Settings": self.settings_tab,
+        }
+        widgets.update(self.content_tabs)
+        return widgets
+
+    def _current_tab_order(self):
+        """Return every tab identifier in the order currently shown by Qt."""
+        widget_keys = {
+            widget: key for key, widget in self._tab_widgets_by_key().items()
+        }
+        return [
+            widget_keys[self.tab_widget.widget(index)]
+            for index in range(self.tab_widget.count())
+            if self.tab_widget.widget(index) in widget_keys
+        ]
+
+    def _apply_tab_order(self, saved_order):
+        """Apply a validated provider order while retaining newly introduced tabs."""
+        valid_order = []
+        for key in list(saved_order or ()) + list(DEFAULT_TAB_ORDER):
+            if key in DEFAULT_TAB_ORDER and key not in valid_order:
+                valid_order.append(key)
+
+        widgets = self._tab_widgets_by_key()
+        self._applying_tab_order = True
+        try:
+            for target_index, key in enumerate(valid_order):
+                current_index = self.tab_widget.indexOf(widgets[key])
+                if current_index != target_index:
+                    self.tab_widget.tabBar().moveTab(current_index, target_index)
+        finally:
+            self._applying_tab_order = False
+
+    def _available_default_tabs(self):
+        """Return visible tabs in their user-defined order."""
+        return [
+            self.tab_widget.tabText(index)
+            for index in range(self.tab_widget.count())
+            if self.tab_widget.isTabVisible(index)
+        ]
+
+    def _refresh_default_tab_options(self, persist_if_changed=False):
+        """Keep the default-tab choices consistent with enabled content."""
+        if not hasattr(self, "default_tab_selector"):
+            return
+        available = self._available_default_tabs()
+        previous = self.default_tab_key
+        if previous != LAST_SELECTED_TAB and previous not in available:
+            self.default_tab_key = (
+                "History" if "History" in available
+                else (available[0] if available else "Settings")
+            )
+
+        self.default_tab_selector.blockSignals(True)
+        self.default_tab_selector.clear()
+        self.default_tab_selector.addItem(LAST_SELECTED_TAB)
+        self.default_tab_selector.addItems(available)
+        self.default_tab_selector.setCurrentText(self.default_tab_key)
+        self.default_tab_selector.blockSignals(False)
+        if persist_if_changed and self.default_tab_key != previous:
+            self._save_account_tab_preferences()
+
+    def _load_account_tab_preferences(self, preferred_tab=None):
+        """Restore the tab order and startup tab owned by the active account."""
+        saved = (
+            load_provider_preferences(self.provider_preferences_file)
+            if self.provider_preferences_file else {}
+        )
+        self._restoring_tab_preferences = True
+        try:
+            self._apply_tab_order(saved.get("tab_order", DEFAULT_TAB_ORDER))
+            requested_default = saved.get("default_tab", "History")
+            self.default_tab_key = (
+                requested_default
+                if requested_default in (*DEFAULT_TAB_ORDER, LAST_SELECTED_TAB)
+                else "History"
+            )
+            requested_last = saved.get("last_selected_tab", "History")
+            self.last_selected_tab_key = (
+                requested_last if requested_last in DEFAULT_TAB_ORDER else "History"
+            )
+            self._refresh_default_tab_options()
+            if preferred_tab is None:
+                self._select_default_tab()
+            else:
+                self._select_tab_with_history_fallback(preferred_tab)
+        finally:
+            self._restoring_tab_preferences = False
+
+    def _save_account_tab_preferences(self, last_selected_tab=None):
+        """Persist tab order and startup tab for the active IPTV account."""
+        if not self.provider_preferences_file:
+            return
+        current = load_provider_preferences(self.provider_preferences_file)
+        try:
+            save_provider_preferences(
+                self.provider_preferences_file,
+                current.get("hidden_categories", {}),
+                current.get("category_sorting", {}),
+                current.get("content_enabled", {}),
+                self._current_tab_order(),
+                self.default_tab_key,
+                last_selected_tab,
+            )
+        except OSError as error:
+            logging.warning("Could not save tab preferences: %s", error)
+
+    def _tab_moved(self, _from_index, _to_index):
+        """Persist drag-and-drop tab changes without reacting during restoration."""
+        if self._applying_tab_order:
+            return
+        self._refresh_default_tab_options()
+        self._save_account_tab_preferences()
+
+    def _default_tab_changed(self, tab_key):
+        """Persist the default visible tab selected in Settings."""
+        if not tab_key:
+            return
+        self.default_tab_key = tab_key
+        current_tab = self.tab_widget.tabText(self.tab_widget.currentIndex())
+        if tab_key == LAST_SELECTED_TAB and current_tab in DEFAULT_TAB_ORDER:
+            self.last_selected_tab_key = current_tab
+            self._save_account_tab_preferences(current_tab)
+        else:
+            self._save_account_tab_preferences()
+
+    def _select_default_tab(self):
+        """Select the configured tab after account preferences are restored."""
+        target = (
+            self.last_selected_tab_key
+            if self.default_tab_key == LAST_SELECTED_TAB
+            else self.default_tab_key
+        )
+        self._select_tab_with_history_fallback(target)
+
+    def _select_tab_with_history_fallback(self, tab_key):
+        """Select a visible tab by identity, falling back to History when hidden."""
+        widgets = self._tab_widgets_by_key()
+        widget = widgets.get(tab_key)
+        index = self.tab_widget.indexOf(widget) if widget is not None else -1
+        if index >= 0 and self.tab_widget.isTabVisible(index):
+            self.tab_widget.setCurrentIndex(index)
+            return
+
+        history_index = self.tab_widget.indexOf(self.history_tab)
+        if history_index >= 0 and self.tab_widget.isTabVisible(history_index):
+            self.tab_widget.setCurrentIndex(history_index)
+            return
+
+        for candidate_index in range(self.tab_widget.count()):
+            if self.tab_widget.isTabVisible(candidate_index):
+                self.tab_widget.setCurrentIndex(candidate_index)
+                return
 
     def init_history_tab(self):
         """Create one recent-playback panel for each enabled content type."""
@@ -2181,6 +2380,29 @@ class IPTVPlayerApp(QMainWindow):
             self._quick_account_changed
         )
 
+        self.header_account_selector = QtWidgets.QComboBox()
+        self.header_account_selector.setToolTip("Switch to another IPTV account")
+        self.header_account_selector.setMinimumContentsLength(18)
+        self.header_account_selector.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.header_account_selector.setMinimumWidth(220)
+        self.header_account_selector.setMaximumWidth(360)
+        self.header_account_selector.currentTextChanged.connect(
+            self._quick_account_changed
+        )
+
+        # Give the switcher a parent immediately. Calling setVisible() while it is
+        # still parentless would briefly create a separate top-level window during
+        # application startup before the main layout adopts it.
+        self.account_switcher_bar = QWidget(self)
+        account_switcher_layout = QHBoxLayout(self.account_switcher_bar)
+        account_switcher_layout.setContentsMargins(0, 0, 0, 0)
+        account_switcher_layout.setSpacing(6)
+        account_switcher_layout.addWidget(QLabel("Account:"))
+        account_switcher_layout.addWidget(self.header_account_selector)
+        account_switcher_layout.addStretch()
+
         self.startup_account_selector = QtWidgets.QComboBox()
         self.startup_account_selector.setToolTip(
             "Choose the IPTV account loaded automatically at startup"
@@ -2287,6 +2509,16 @@ class IPTVPlayerApp(QMainWindow):
             )
             self.content_checkboxes[stream_type] = checkbox
             self.content_group_layout.addWidget(checkbox)
+        self.content_group_layout.addSpacing(20)
+        self.content_group_layout.addWidget(QLabel("Default tab:"))
+        self.default_tab_selector = QComboBox()
+        self.default_tab_selector.setToolTip(
+            "Choose the tab selected when this IPTV account is loaded"
+        )
+        self.default_tab_selector.currentTextChanged.connect(
+            self._default_tab_changed
+        )
+        self.content_group_layout.addWidget(self.default_tab_selector)
         self.content_group_layout.addStretch()
 
         self.keep_on_top_checkbox = QCheckBox("Keep on top")
@@ -2365,6 +2597,7 @@ class IPTVPlayerApp(QMainWindow):
             checkbox.blockSignals(True)
             checkbox.setChecked(self.content_enabled[stream_type])
             checkbox.blockSignals(False)
+        self._refresh_default_tab_options()
 
     def _load_account_content_preferences(self):
         """Load enabled content types belonging only to the active account."""
@@ -2581,6 +2814,8 @@ class IPTVPlayerApp(QMainWindow):
 
                 if reply == QMessageBox.Yes:
                     QDesktopServices.openUrl(QUrl(release.download_page))
+                    self.close()
+                    return
 
             elif enable_update_msg:
                 update_dialog = QMessageBox(self)
@@ -2765,6 +3000,8 @@ class IPTVPlayerApp(QMainWindow):
         except OSError as e:
             print(f"Could not write user data file: {e}")
 
+        self._refresh_default_tab_options(persist_if_changed=True)
+
         # A newly visible tab needs provider data immediately. Reload every enabled
         # type as one consistent snapshot; the worker still skips disabled endpoints.
         # With no active account, the normal login path will load it later.
@@ -2781,10 +3018,14 @@ class IPTVPlayerApp(QMainWindow):
         # urllib.parse so the query parameters can appear in any order, and we follow
         # shortened-URL redirects (bit.ly etc.) before parsing (see issues #2 and #13).
         def _show_invalid():
-            self.animate_progress(0, 100, "Invalid m3u_plus or m3u URL", "error")
+            self.animate_progress(0, 100, "Invalid Xtream M3U Plus URL", "error")
             dlg = QMessageBox(self)
             dlg.setWindowTitle("Error!")
-            dlg.setText("M3U plus URL is invalid!\nPlease enter a valid Xtream get.php URL.")
+            dlg.setText(
+                "Xtream M3U Plus URL is invalid!\n"
+                "Please enter a valid Xtream get.php URL. Generic M3U playlists "
+                "are not supported."
+            )
             dlg.exec()
 
         try:
@@ -2999,6 +3240,14 @@ class IPTVPlayerApp(QMainWindow):
     def _on_current_tab_changed(self, index):
         """Apply tab-specific refresh and temporary sorting behavior."""
         logging.debug("Active tab changed: %s", self.tab_widget.tabText(index))
+        if (
+            not self._restoring_tab_preferences
+            and self.default_tab_key == LAST_SELECTED_TAB
+        ):
+            selected_tab = self.tab_widget.tabText(index)
+            if selected_tab in DEFAULT_TAB_ORDER:
+                self.last_selected_tab_key = selected_tab
+                self._save_account_tab_preferences(selected_tab)
         if hasattr(self, 'category_search_bars'):
             stream_type = self.tab_widget.tabText(index)
             if stream_type in ('LIVE', 'Movies', 'Series'):
@@ -3884,12 +4133,14 @@ class IPTVPlayerApp(QMainWindow):
 
             items = []
 
-            for epg_entry in epg_data:
+            for epg_entry in apply_epg_offset(
+                epg_data, self.epg_offset_minutes
+            ):
                 start_timestamp = epg_entry['start_time']
                 stop_timestamp  = epg_entry['stop_time']
                 program_name    = epg_entry['program_name']
                 description     = epg_entry['description']
-                date            = epg_entry['date']
+                date = epg_entry['date']
 
                 # Convert timestamps to string in correct format
                 start_time = start_timestamp.strftime("%H:%M")

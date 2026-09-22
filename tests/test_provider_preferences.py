@@ -29,6 +29,9 @@ class ProviderPreferencesTests(unittest.TestCase):
                 {"LIVE": ["12"]},
                 {"fallback": "z_a", "preferences": {"LIVE": {}}},
                 {"LIVE": False, "Movies": True, "Series": True},
+                ["History", "Movies", "LIVE", "Series", "Info", "Settings"],
+                "Movies",
+                "Series",
             )
 
             self.assertEqual(
@@ -42,8 +45,27 @@ class ProviderPreferencesTests(unittest.TestCase):
                     "content_enabled": {
                         "LIVE": False, "Movies": True, "Series": True,
                     },
+                    "tab_order": [
+                        "History", "Movies", "LIVE", "Series", "Info", "Settings",
+                    ],
+                    "default_tab": "Movies",
+                    "last_selected_tab": "Series",
                 },
             )
+
+            save_provider_preferences(
+                filename,
+                {"LIVE": ["34"]},
+                {"fallback": "a_z", "preferences": {}},
+                {"LIVE": True, "Movies": True, "Series": True},
+            )
+            updated = load_provider_preferences(filename)
+            self.assertEqual(
+                updated["tab_order"],
+                ["History", "Movies", "LIVE", "Series", "Info", "Settings"],
+            )
+            self.assertEqual(updated["default_tab"], "Movies")
+            self.assertEqual(updated["last_selected_tab"], "Series")
 
     def test_invalid_sections_use_safe_defaults(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -62,6 +84,9 @@ class ProviderPreferencesTests(unittest.TestCase):
                     "hidden_categories": {},
                     "category_sorting": {},
                     "content_enabled": {},
+                    "tab_order": [],
+                    "default_tab": "History",
+                    "last_selected_tab": "History",
                 },
             )
 

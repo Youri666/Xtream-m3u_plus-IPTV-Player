@@ -2,7 +2,11 @@ import base64
 import unittest
 from datetime import datetime
 
-from iptv_player.provider.epg import decode_epg_data, decode_epg_text
+from iptv_player.provider.epg import (
+    apply_epg_offset,
+    decode_epg_data,
+    decode_epg_text,
+)
 
 
 class EpgDecodingTests(unittest.TestCase):
@@ -35,6 +39,22 @@ class EpgDecodingTests(unittest.TestCase):
         self.assertEqual(
             result[0]["date"], datetime.fromtimestamp(start).strftime("%d-%m-%Y")
         )
+
+    def test_applies_offset_without_mutating_decoded_listing(self):
+        entry = {
+            "start_time": datetime(2026, 9, 21, 23, 30),
+            "stop_time": datetime(2026, 9, 22, 0, 30),
+            "program_name": "Late News",
+            "description": "Headlines",
+            "date": "21-09-2026",
+        }
+
+        result = apply_epg_offset([entry], 90)
+
+        self.assertEqual(result[0]["start_time"], datetime(2026, 9, 22, 1, 0))
+        self.assertEqual(result[0]["stop_time"], datetime(2026, 9, 22, 2, 0))
+        self.assertEqual(result[0]["date"], "22-09-2026")
+        self.assertEqual(entry["start_time"], datetime(2026, 9, 21, 23, 30))
 
 
 if __name__ == "__main__":
