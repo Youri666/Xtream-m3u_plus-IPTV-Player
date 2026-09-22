@@ -315,6 +315,13 @@ class AccountDialog(QtWidgets.QDialog):
         """Switch credential forms and explain the Xtream-only URL mode."""
         self.stack.setCurrentIndex(index)
         self.m3u_explanation.setVisible(index == 1)
+        current_form = self.stack.currentWidget()
+        self.stack.setFixedHeight(current_form.sizeHint().height())
+        self.layout().activate()
+        self.resize(
+            self.width(),
+            max(self.minimumHeight(), self.sizeHint().height()),
+        )
 
     def _resize_for_url_fields(self):
         """Choose a readable initial width while keeping the dialog resizable."""
