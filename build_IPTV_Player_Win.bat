@@ -1,5 +1,7 @@
 @echo off
 SET PYTHON_BIN=
+SET VENV_PATH=.venv
+SET VENV_PYTHON=.venv\Scripts\python.exe
 
 REM Detect a Python 3 interpreter instead of asking users which command works.
 py -3 --version >nul 2>&1
@@ -14,35 +16,33 @@ IF NOT DEFINED PYTHON_BIN (
   exit /b 1
 )
 
-REM Use the detected interpreter for dependency checks and the build.
-echo.
-echo PyInstaller version:
-%PYTHON_BIN% -m PyInstaller --version
-IF ERRORLEVEL 1 (
-  echo.
-  echo ERROR: PyInstaller is unavailable for the selected Python interpreter.
-  echo Install it with: %PYTHON_BIN% -m pip install pyinstaller
-  pause
-  exit /b 1
-)
-
-REM Every dependency must belong to the interpreter used for packaging.
-%PYTHON_BIN% -c "import PyQt5, requests, lxml, dateutil, vlc" >nul 2>&1
-IF ERRORLEVEL 1 (
-  echo.
-  echo Installing missing application dependencies...
-  %PYTHON_BIN% -m pip install -r requirements.txt
+REM Keep build tools and application dependencies isolated from the system Python.
+IF NOT EXIST "%VENV_PYTHON%" (
+  echo Creating local Python environment in %VENV_PATH%...
+  %PYTHON_BIN% -m venv "%VENV_PATH%"
   IF ERRORLEVEL 1 (
-    echo.
-    echo ERROR: Application dependencies could not be installed.
-    echo Check your Internet connection and Python installation, then try again.
+    echo ERROR: Could not create the local Python environment.
     pause
     exit /b 1
   )
 )
 
+echo Installing build dependencies in %VENV_PATH%...
+"%VENV_PYTHON%" -m pip install -r requirements-build.txt
+IF ERRORLEVEL 1 GOTO dependency_failed
+
+echo.
+echo PyInstaller version:
+"%VENV_PYTHON%" -m PyInstaller --version
+IF ERRORLEVEL 1 (
+  echo.
+  echo ERROR: PyInstaller is unavailable in the local Python environment.
+  pause
+  exit /b 1
+)
+
 REM Confirm all modules can be collected before deleting previous builds.
-%PYTHON_BIN% -c "import PyQt5, requests, lxml, dateutil, vlc" >nul 2>&1
+"%VENV_PYTHON%" -c "import PyQt5, requests, lxml, dateutil, vlc" >nul 2>&1
 IF ERRORLEVEL 1 (
   echo.
   echo ERROR: Required Python modules are still unavailable. Build cancelled.
@@ -76,7 +76,7 @@ IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
 
 REM python-vlc is imported lazily, so PyInstaller cannot discover it automatically.
 REM Run PyInstaller directly with all necessary options and added data files
-%PYTHON_BIN% -m PyInstaller ^
+"%VENV_PYTHON%" -m PyInstaller ^
   --onefile ^
   --noconsole ^
   --noconfirm ^
@@ -122,5 +122,12 @@ exit /b 0
 IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
 echo.
 echo ERROR: The build failed. Review the messages above for details.
+pause
+exit /b 1
+
+:dependency_failed
+echo.
+echo ERROR: Build dependencies could not be installed in %VENV_PATH%.
+echo Check your Internet connection and Python installation, then try again.
 pause
 exit /b 1

@@ -18,6 +18,8 @@ BUILD_PATH="build"
 DIST_PATH="dist"
 APP_NAME="IPTV Player"
 APP_PATH="$DIST_PATH/$APP_NAME.app"
+VENV_PATH=".venv"
+VENV_PYTHON="$VENV_PATH/bin/python"
 
 # Remove generated specification files after both successful and failed builds.
 cleanup_spec_files() {
@@ -25,25 +27,23 @@ cleanup_spec_files() {
 }
 trap cleanup_spec_files EXIT
 
-# PyInstaller and every application dependency must belong to the interpreter
-# used for packaging. PyInstaller can otherwise finish with a broken bundle.
-if ! "$PYTHON_BIN" -m PyInstaller --version >/dev/null 2>&1; then
-  echo "PyInstaller not found. Please install it with '$PYTHON_BIN -m pip install pyinstaller'"
-  exit 1
+# Keep build tools and application dependencies isolated from the system Python.
+if [ ! -x "$VENV_PYTHON" ]; then
+  echo "Creating local Python environment in $VENV_PATH..."
+  "$PYTHON_BIN" -m venv "$VENV_PATH"
 fi
 
-if ! "$PYTHON_BIN" -c "import PyQt5, requests, lxml, dateutil, vlc" >/dev/null 2>&1; then
-  echo "Installing missing application dependencies..."
-  if ! "$PYTHON_BIN" -m pip install -r requirements.txt; then
-    echo "ERROR: Application dependencies could not be installed."
-    exit 1
-  fi
-fi
+PYTHON_BIN="$VENV_PYTHON"
+echo "Installing build dependencies in $VENV_PATH..."
+"$PYTHON_BIN" -m pip install -r requirements-build.txt
 
 if ! "$PYTHON_BIN" -c "import PyQt5, requests, lxml, dateutil, vlc" >/dev/null 2>&1; then
   echo "ERROR: Required Python modules are still unavailable. Build cancelled."
   exit 1
 fi
+
+echo "PyInstaller version:"
+"$PYTHON_BIN" -m PyInstaller --version
 
 # python-vlc is only a binding. The VLC application supplies libVLC at runtime.
 if [ ! -d "/Applications/VLC.app" ]; then
