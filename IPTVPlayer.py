@@ -46,6 +46,9 @@ from iptv_player.bootstrap import (
 from iptv_player.constants import (
     CURRENT_CONFIG_SCHEMA_VERSION,
     CURRENT_VERSION,
+    DEFAULT_INTERNAL_AUTO_ADVANCE_SECONDS,
+    DEFAULT_INTERNAL_AUTO_PLAY_NEXT,
+    DEFAULT_INTERNAL_NETWORK_CACHING_MS,
     DEFAULT_INTERNAL_SEEK_STEP_SECONDS,
     DEFAULT_INTERNAL_SPEED_STEP,
     DEFAULT_INTERNAL_VOLUME_STEP_PERCENT,
@@ -246,6 +249,9 @@ class IPTVPlayerApp(QMainWindow):
         self.internal_audio_language = ""
         self.internal_subtitle_language = ""
         self.internal_resume_behavior = DEFAULT_RESUME_BEHAVIOR
+        self.internal_auto_play_next = DEFAULT_INTERNAL_AUTO_PLAY_NEXT
+        self.internal_auto_advance_seconds = DEFAULT_INTERNAL_AUTO_ADVANCE_SECONDS
+        self.internal_network_caching_ms = DEFAULT_INTERNAL_NETWORK_CACHING_MS
         self.history_size = DEFAULT_HISTORY_SIZE
         self.default_url_formats = dict(DEFAULT_URL_FORMATS)
 
@@ -2439,6 +2445,9 @@ class IPTVPlayerApp(QMainWindow):
         self.internal_audio_language = dialog.audio_language.currentData() or ""
         self.internal_subtitle_language = dialog.subtitle_language.currentData() or ""
         self.internal_resume_behavior = dialog.resume_behavior.currentData() or DEFAULT_RESUME_BEHAVIOR
+        self.internal_auto_play_next = dialog.auto_play_next.isChecked()
+        self.internal_auto_advance_seconds = dialog.auto_advance_seconds.value()
+        self.internal_network_caching_ms = dialog.network_caching_ms.value()
         self.save_internal_player_settings()
 
         if self._embedded_player_command_queue is not None:
@@ -2450,6 +2459,9 @@ class IPTVPlayerApp(QMainWindow):
                 'audio_language': self.internal_audio_language,
                 'subtitle_language': self.internal_subtitle_language,
                 'resume_behavior': self.internal_resume_behavior,
+                'auto_play_next': self.internal_auto_play_next,
+                'auto_advance_seconds': self.internal_auto_advance_seconds,
+                'network_caching_ms': self.internal_network_caching_ms,
             })
 
     def save_internal_player_settings(self):
@@ -2464,6 +2476,9 @@ class IPTVPlayerApp(QMainWindow):
                     audio_language=self.internal_audio_language,
                     subtitle_language=self.internal_subtitle_language,
                     resume_behavior=self.internal_resume_behavior,
+                    auto_play_next=self.internal_auto_play_next,
+                    auto_advance_seconds=self.internal_auto_advance_seconds,
+                    network_caching_ms=self.internal_network_caching_ms,
                 ),
             )
         except OSError as error:
@@ -2478,6 +2493,9 @@ class IPTVPlayerApp(QMainWindow):
         self.internal_audio_language = preferences.audio_language
         self.internal_subtitle_language = preferences.subtitle_language
         self.internal_resume_behavior = preferences.resume_behavior
+        self.internal_auto_play_next = preferences.auto_play_next
+        self.internal_auto_advance_seconds = preferences.auto_advance_seconds
+        self.internal_network_caching_ms = preferences.network_caching_ms
 
     def apply_network_settings(self, user_agent, connection_timeout, read_timeout,
                              live_status_timeout, live_status_retries,
@@ -4567,7 +4585,18 @@ class IPTVPlayerApp(QMainWindow):
         environment['IPTV_PLAYER_AUDIO_LANGUAGE'] = self.internal_audio_language
         environment['IPTV_PLAYER_SUBTITLE_LANGUAGE'] = self.internal_subtitle_language
         environment['IPTV_PLAYER_RESUME_BEHAVIOR'] = self.internal_resume_behavior
+        environment['IPTV_PLAYER_AUTO_PLAY_NEXT'] = (
+            '1' if self.internal_auto_play_next else '0'
+        )
+        environment['IPTV_PLAYER_AUTO_ADVANCE_SECONDS'] = str(
+            self.internal_auto_advance_seconds
+        )
+        environment['IPTV_PLAYER_NETWORK_CACHING_MS'] = str(
+            self.internal_network_caching_ms
+        )
         environment['IPTV_PLAYER_SETTINGS_FILE'] = path.abspath(self.user_data_file)
+        if sys.platform == 'darwin':
+            environment['QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM'] = '1'
 
         if getattr(sys, 'frozen', False):
             # Tell recent PyInstaller bootloaders that this is a new application

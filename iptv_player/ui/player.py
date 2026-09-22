@@ -1,13 +1,16 @@
 """Embedded VLC player window and controls."""
 
 import configparser
+import ctypes
+import ctypes.util
 from os import path
 import sys
 import time
 
-from PyQt5.QtCore import QByteArray, QEvent, QPoint, QSize, Qt, QTimer
+from PyQt5.QtCore import QByteArray, QEvent, QPoint, QSize, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import (
     QColor,
+    QCursor,
     QIcon,
     QPainter,
     QPalette,
@@ -51,6 +54,48 @@ from iptv_player.ui.player_theme import (
     LIGHT_SIDEBAR_STYLE,
 )
 from iptv_player.utils.search import normalize_search_text, title_matches_search
+
+
+def set_macos_activation_policy(visible):
+    """Show or hide the isolated player process in the macOS Dock."""
+    if sys.platform != "darwin":
+        return
+    try:
+        appkit_path = ctypes.util.find_library("AppKit")
+        objc_path = ctypes.util.find_library("objc")
+        if not appkit_path or not objc_path:
+            return
+        ctypes.CDLL(appkit_path)
+        objc = ctypes.CDLL(objc_path)
+        objc.objc_getClass.restype = ctypes.c_void_p
+        objc.objc_getClass.argtypes = [ctypes.c_char_p]
+        objc.sel_registerName.restype = ctypes.c_void_p
+        objc.sel_registerName.argtypes = [ctypes.c_char_p]
+
+        send = objc.objc_msgSend
+        send.restype = ctypes.c_void_p
+        application = send(
+            ctypes.c_void_p(objc.objc_getClass(b"NSApplication")),
+            ctypes.c_void_p(objc.sel_registerName(b"sharedApplication")),
+        )
+        if not application:
+            return
+
+        # NSApplicationActivationPolicyRegular = 0, Accessory = 1.
+        send.restype = None
+        send(
+            ctypes.c_void_p(application),
+            ctypes.c_void_p(objc.sel_registerName(b"setActivationPolicy:")),
+            ctypes.c_long(0 if visible else 1),
+        )
+        if visible:
+            send(
+                ctypes.c_void_p(application),
+                ctypes.c_void_p(objc.sel_registerName(b"activateIgnoringOtherApps:")),
+                ctypes.c_bool(True),
+            )
+    except (AttributeError, OSError, TypeError, ValueError):
+        pass
 
 
 class _ClickableSlider(QSlider):
@@ -108,6 +153,7 @@ class EmbeddedPlayerWindow(QMainWindow):
     - Auto-hide controls 3s after the last mouse/keyboard event while playing
     - Left-edge sidebar with the current playlist + a live filter; click to play
     - Next/Previous walk the visible playlist, disabled at the edges (no wrap)
+    - Completed on-demand items automatically advance to the next playlist item
     - Subtitle button shows up only when libvlc reports >1 SPU track
     - Keyboard: Space=play/pause, F=fullscreen, A/S=cycle audio/subtitles,
       Page Up/Page Down=previous/next,
@@ -118,10 +164,13 @@ class EmbeddedPlayerWindow(QMainWindow):
     (each with at least `name` and `url`) plus a starting index.
     """
 
+    media_ended = pyqtSignal(int)
+
     def __init__(
         self, parent=None, user_agent="", settings_path=None,
         seek_step_seconds=10, volume_step_percent=2, speed_step=0.25,
         audio_language="", subtitle_language="", resume_behavior="ask",
+        auto_play_next=False, auto_advance_seconds=0, network_caching_ms=1000,
         progress_callback=None
     ):
         super().__init__(parent)
@@ -139,6 +188,13 @@ class EmbeddedPlayerWindow(QMainWindow):
 
         self.instance = vlc.Instance(vlc_args)
         self.player = self.instance.media_player_new()
+        self._media_generation = 0
+        self.media_ended.connect(self._advance_after_media_end)
+        self._vlc_event_manager = self.player.event_manager()
+        self._vlc_event_manager.event_attach(
+            vlc.EventType.MediaPlayerEndReached,
+            self._on_media_ended,
+        )
 
         self._playlist = []   # list of {'name': str, 'url': str, ...}
         self._current_idx = 0
@@ -150,6 +206,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._paused_by_minimize = False
         self._seek_osd_total_ms = 0
         self._seek_target_ms = 0
+        self._seek_sequence_origin_ms = 0
         self._seek_osd_active = False
         self._pending_playback_rate_attempts = 0
         # Start from safe values; set_control_steps performs defensive parsing
@@ -171,6 +228,10 @@ class EmbeddedPlayerWindow(QMainWindow):
             resume_behavior if resume_behavior in RESUME_BEHAVIORS
             else DEFAULT_RESUME_BEHAVIOR
         )
+        self._auto_play_next = bool(auto_play_next)
+        self._auto_advance_seconds = max(0, min(int(auto_advance_seconds), 300))
+        self._network_caching_ms = max(0, min(int(network_caching_ms), 60000))
+        self._auto_advance_triggered = False
         self._app_parent = parent
         self._explicit_settings_path = settings_path
         self._volume = self._load_volume_pref()
@@ -376,6 +437,10 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._track_osd_timer = QTimer(self)
         self._track_osd_timer.setSingleShot(True)
         self._track_osd_timer.timeout.connect(self._hide_track_osd)
+        self._wheel_seek_timer = QTimer(self)
+        self._wheel_seek_timer.setSingleShot(True)
+        self._wheel_seek_timer.setInterval(600)
+        self._wheel_seek_timer.timeout.connect(self._commit_wheel_seek)
 
         # ---------- Auto-hide timer ----------
         self._hide_timer = QTimer(self)
@@ -623,6 +688,9 @@ class EmbeddedPlayerWindow(QMainWindow):
         keep_above_main=False
     ):
         was_visible = self.isVisible()
+        self._wheel_seek_timer.stop()
+        self._track_osd_timer.stop()
+        self._hide_track_osd()
         self._report_progress(force=True)
         if playlist is not None:
             self._playlist = list(playlist)
@@ -639,6 +707,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.title_label.setText(title)
 
         media = self.instance.media_new(url)
+        media.add_option(f":network-caching={self._network_caching_ms}")
         # VLC accepts ISO 639 language codes as per-media options. Leaving a
         # preference empty preserves VLC's own default track-selection policy.
         if self._audio_language:
@@ -652,11 +721,13 @@ class EmbeddedPlayerWindow(QMainWindow):
             # visible frame. The polling seek below remains a precision fallback.
             media.add_option(f":start-time={max(0, int(resume_ms)) / 1000:.3f}")
         self.player.set_media(media)
+        self._media_generation += 1
         self._current_history = (
             dict(self._playlist[self._current_idx].get("history") or {})
             if self._playlist else None
         )
         self._pending_playback_rate_attempts = 20
+        self._auto_advance_triggered = False
         self._pending_resume_ms = max(0, int(resume_ms or 0))
         self._pending_resume_attempts = 20 if self._pending_resume_ms else 0
         # Hide a new window until its initial resume seek completes. Playlist
@@ -730,6 +801,7 @@ class EmbeddedPlayerWindow(QMainWindow):
     def _present_player(self, keep_topmost=False):
         """Show a prepared player and request foreground activation from its parent."""
         self._deferred_present = False
+        set_macos_activation_policy(True)
         self._bring_to_front(keep_topmost=keep_topmost)
         # Apply native caption colors after the final HWND becomes visible.
         self.apply_theme()
@@ -784,18 +856,20 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._set_standard_icon(self.btn_play, QStyle.SP_MediaPlay)
 
     def seek_by(self, ms):
+        if self._wheel_seek_timer.isActive():
+            self._commit_wheel_seek()
         cur = self.player.get_time()
         if cur < 0:
             return
         if self._track_osd_timer.isActive() and self._seek_osd_active:
-            self._seek_osd_total_ms += ms
             new = self._seek_target_ms + ms
         else:
-            self._seek_osd_total_ms = ms
+            self._seek_sequence_origin_ms = cur
             new = cur + ms
         length = self.player.get_length()
         new = max(0, min(new, length if length > 0 else new))
         self._seek_target_ms = new
+        self._seek_osd_total_ms = new - self._seek_sequence_origin_ms
         self.player.set_time(int(new))
         seconds = abs(self._seek_osd_total_ms) / 1000
         amount = f"{seconds:g}"
@@ -806,6 +880,39 @@ class EmbeddedPlayerWindow(QMainWindow):
             seek=True,
         )
         self._wake_controls()
+
+    def preview_wheel_seek(self, ms):
+        """Accumulate wheel steps and apply the target after a short idle delay."""
+        if self._wheel_seek_timer.isActive():
+            new = self._seek_target_ms + ms
+        else:
+            current = self.player.get_time()
+            if current < 0:
+                return
+            self._seek_sequence_origin_ms = current
+            new = current + ms
+        length = self.player.get_length()
+        new = max(0, min(new, length if length > 0 else new))
+        self._seek_target_ms = new
+        self._seek_osd_total_ms = new - self._seek_sequence_origin_ms
+        if length > 0:
+            self.seek_slider.setValue(int(new / length * 1000))
+
+        seconds = abs(self._seek_osd_total_ms) / 1000
+        direction = "+" if self._seek_osd_total_ms >= 0 else "−"
+        unit = "second" if seconds == 1 else "seconds"
+        self._show_track_osd(
+            f"{direction}{seconds:g} {unit}\n{self._fmt_ms(new)}",
+            seek=True,
+        )
+        self._wheel_seek_timer.start()
+        self._wake_controls()
+
+    def _commit_wheel_seek(self):
+        """Apply the last wheel preview after wheel input has stopped."""
+        self._wheel_seek_timer.stop()
+        if self._seek_target_ms >= 0:
+            self.player.set_time(int(self._seek_target_ms))
 
     def set_volume(self, value):
         self._volume = int(value)
@@ -871,6 +978,32 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._store_current_playlist_progress()
         self._current_idx -= 1
         self._play_current()
+
+    def _on_media_ended(self, _event):
+        """Move VLC's native end event onto the Qt GUI thread."""
+        self.media_ended.emit(self._media_generation)
+
+    def _advance_after_media_end(self, media_generation):
+        """Start the next item after on-demand playback finishes naturally."""
+        if media_generation != self._media_generation:
+            return
+        if not self._auto_play_next or self._auto_advance_triggered:
+            return
+        if not self.isVisible():
+            return
+        if (self._current_history or {}).get("type") == "LIVE":
+            return
+        self._auto_advance_triggered = True
+        self.next()
+
+    def set_auto_advance(self, enabled, seconds, network_caching_ms=None):
+        """Update sequential playback and buffering preferences."""
+        self._auto_play_next = bool(enabled)
+        self._auto_advance_seconds = max(0, min(int(seconds), 300))
+        if network_caching_ms is not None:
+            self._network_caching_ms = max(
+                0, min(int(network_caching_ms), 60000)
+            )
 
     def _store_current_playlist_progress(self):
         """Refresh the local playlist copy before navigating to another item."""
@@ -1085,6 +1218,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._seek_osd_active = False
         self._seek_osd_total_ms = 0
         self._seek_target_ms = 0
+        self._seek_sequence_origin_ms = 0
 
     # ---------- fullscreen ----------
     def toggle_fullscreen(self):
@@ -1301,8 +1435,10 @@ class EmbeddedPlayerWindow(QMainWindow):
                 self.seek_slider.setValue(0)
                 self.time_label.setText("LIVE")
             elif length > 0:
+                if self._maybe_auto_advance(cur, length):
+                    return
                 self.seek_slider.setEnabled(True)
-                if not self._seeking:
+                if not self._seeking and not self._wheel_seek_timer.isActive():
                     self.seek_slider.setValue(int(max(0, cur) / length * 1000))
                     self.time_label.setText(
                         f"{self._fmt_ms(cur)} / {self._fmt_ms(length)}"
@@ -1318,6 +1454,23 @@ class EmbeddedPlayerWindow(QMainWindow):
             self._report_progress()
         except Exception:
             pass
+
+    def _maybe_auto_advance(self, position_ms, duration_ms):
+        """Advance once playback enters the configured credits-skip window."""
+        if (
+            not self._auto_play_next
+            or self._auto_advance_triggered
+            or self._auto_advance_seconds <= 0
+            or self._current_idx + 1 >= len(self._playlist)
+            or (self._current_history or {}).get("type") == "LIVE"
+        ):
+            return False
+        threshold_ms = self._auto_advance_seconds * 1000
+        if position_ms < 1000 or duration_ms - position_ms > threshold_ms:
+            return False
+        self._auto_advance_triggered = True
+        self.next()
+        return True
 
     def _report_progress(self, force=False):
         """Send playback progress to the main process at ten-second intervals."""
@@ -1560,6 +1713,12 @@ class EmbeddedPlayerWindow(QMainWindow):
             self._wake_controls()
 
         if et == QEvent.Wheel:
+            # Qt can propagate an unhandled wheel event to the player window when
+            # a short list, or a list already at an edge, cannot scroll further.
+            # Use the pointer position so that propagation never turns the same
+            # wheel movement into a volume command.
+            if self._event_is_over_widget(event, self.sidebar):
+                return False
             # This filter is installed both globally and on player widgets. Ignore
             # duplicate delivery of the same event so one wheel notch is one step.
             wheel_event_id = id(event)
@@ -1575,6 +1734,15 @@ class EmbeddedPlayerWindow(QMainWindow):
                 delta = event.angleDelta().y()
             except Exception:
                 delta = 0
+            over_player_controls = self._event_is_over_widget(event, self.overlay)
+            over_volume_slider = self._event_is_over_widget(event, self.vol_slider)
+            if over_player_controls and not over_volume_slider:
+                if self.seek_slider.isEnabled():
+                    if delta > 0:
+                        self.preview_wheel_seek(self._seek_step_ms)
+                    elif delta < 0:
+                        self.preview_wheel_seek(-self._seek_step_ms)
+                return True
             if delta > 0:
                 self._step_volume(self._volume_step)
             elif delta < 0:
@@ -1603,6 +1771,17 @@ class EmbeddedPlayerWindow(QMainWindow):
 
         return False
 
+    @staticmethod
+    def _event_is_over_widget(event, widget):
+        """Return whether a pointer event is physically over a visible widget."""
+        if not widget.isVisible():
+            return False
+        try:
+            global_position = event.globalPos()
+        except (AttributeError, TypeError):
+            global_position = QCursor.pos()
+        return widget.rect().contains(widget.mapFromGlobal(global_position))
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._reposition_overlays()
@@ -1626,6 +1805,9 @@ class EmbeddedPlayerWindow(QMainWindow):
 
     def closeEvent(self, event):
         try:
+            self._wheel_seek_timer.stop()
+            self._track_osd_timer.stop()
+            self._hide_track_osd()
             self._report_progress(force=True)
             self._save_volume_pref()
             self._save_playback_rate_pref()
@@ -1634,3 +1816,4 @@ class EmbeddedPlayerWindow(QMainWindow):
         except Exception:
             pass
         super().closeEvent(event)
+        set_macos_activation_policy(False)

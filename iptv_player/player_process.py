@@ -10,11 +10,14 @@ from PyQt5.QtWidgets import QApplication
 
 from iptv_player.bootstrap import configure_qt_application, install_logging
 from iptv_player.constants import (
+    DEFAULT_INTERNAL_AUTO_ADVANCE_SECONDS,
+    DEFAULT_INTERNAL_AUTO_PLAY_NEXT,
+    DEFAULT_INTERNAL_NETWORK_CACHING_MS,
     DEFAULT_INTERNAL_SEEK_STEP_SECONDS,
     DEFAULT_INTERNAL_SPEED_STEP,
     DEFAULT_INTERNAL_VOLUME_STEP_PERCENT,
 )
-from iptv_player.ui.player import EmbeddedPlayerWindow
+from iptv_player.ui.player import EmbeddedPlayerWindow, set_macos_activation_policy
 from iptv_player.ui.theme import apply_application_theme
 from iptv_player.utils.environment import (
     bounded_float_environment,
@@ -48,11 +51,17 @@ def run_embedded_player_process():
     except (EOFError, OSError, ValueError):
         return 1
 
+    # Prevent Qt from promoting the warm player process into a foreground macOS
+    # application before its first window is requested.
+    if sys.platform == "darwin":
+        os.environ.setdefault("QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM", "1")
+
     # Do not expose the private child-mode argument to Qt's option parser.
     app = QApplication([sys.argv[0]])
     # Keep the initialized VLC engine alive after the window is closed so the next
     # playback starts immediately in the same isolated process.
     app.setQuitOnLastWindowClosed(False)
+    set_macos_activation_policy(False)
     configure_qt_application(app)
     apply_application_theme(app, os.environ.get("IPTV_PLAYER_THEME", "System"))
 
@@ -66,6 +75,22 @@ def run_embedded_player_process():
     speed_step = bounded_float_environment(
         "IPTV_PLAYER_SPEED_STEP", DEFAULT_INTERNAL_SPEED_STEP, 0.05, 1.0
     )
+    auto_play_next = os.environ.get(
+        "IPTV_PLAYER_AUTO_PLAY_NEXT",
+        "1" if DEFAULT_INTERNAL_AUTO_PLAY_NEXT else "0",
+    ) == "1"
+    auto_advance_seconds = bounded_integer_environment(
+        "IPTV_PLAYER_AUTO_ADVANCE_SECONDS",
+        DEFAULT_INTERNAL_AUTO_ADVANCE_SECONDS,
+        0,
+        300,
+    )
+    network_caching_ms = bounded_integer_environment(
+        "IPTV_PLAYER_NETWORK_CACHING_MS",
+        DEFAULT_INTERNAL_NETWORK_CACHING_MS,
+        0,
+        60000,
+    )
 
     player = EmbeddedPlayerWindow(
         None,
@@ -77,6 +102,9 @@ def run_embedded_player_process():
         audio_language=os.environ.get("IPTV_PLAYER_AUDIO_LANGUAGE", ""),
         subtitle_language=os.environ.get("IPTV_PLAYER_SUBTITLE_LANGUAGE", ""),
         resume_behavior=os.environ.get("IPTV_PLAYER_RESUME_BEHAVIOR", "ask"),
+        auto_play_next=auto_play_next,
+        auto_advance_seconds=auto_advance_seconds,
+        network_caching_ms=network_caching_ms,
         progress_callback=lambda event: connection.send(event),
     )
     bridge = _PlayerCommandBridge()
@@ -110,6 +138,15 @@ def run_embedded_player_process():
                 payload.get("subtitle_language", ""),
             )
             player.set_resume_behavior(payload.get("resume_behavior", "ask"))
+            player.set_auto_advance(
+                payload.get("auto_play_next", DEFAULT_INTERNAL_AUTO_PLAY_NEXT),
+                payload.get(
+                    "auto_advance_seconds", DEFAULT_INTERNAL_AUTO_ADVANCE_SECONDS
+                ),
+                payload.get(
+                    "network_caching_ms", DEFAULT_INTERNAL_NETWORK_CACHING_MS
+                ),
+            )
 
     bridge.command_received.connect(handle_command)
     bridge.connection_closed.connect(app.quit)

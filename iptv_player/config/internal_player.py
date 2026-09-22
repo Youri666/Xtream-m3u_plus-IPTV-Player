@@ -5,6 +5,9 @@ from dataclasses import dataclass
 
 from iptv_player.config.ini import read_config_file, write_config_file
 from iptv_player.constants import (
+    DEFAULT_INTERNAL_AUTO_ADVANCE_SECONDS,
+    DEFAULT_INTERNAL_AUTO_PLAY_NEXT,
+    DEFAULT_INTERNAL_NETWORK_CACHING_MS,
     DEFAULT_RESUME_BEHAVIOR,
     DEFAULT_INTERNAL_SEEK_STEP_SECONDS,
     DEFAULT_INTERNAL_SPEED_STEP,
@@ -24,6 +27,9 @@ class InternalPlayerPreferences:
     audio_language: str = ""
     subtitle_language: str = ""
     resume_behavior: str = DEFAULT_RESUME_BEHAVIOR
+    auto_play_next: bool = DEFAULT_INTERNAL_AUTO_PLAY_NEXT
+    auto_advance_seconds: int = DEFAULT_INTERNAL_AUTO_ADVANCE_SECONDS
+    network_caching_ms: int = DEFAULT_INTERNAL_NETWORK_CACHING_MS
 
 
 def load_internal_player_preferences(filename):
@@ -62,6 +68,23 @@ def load_internal_player_preferences(filename):
             DEFAULT_RESUME_BEHAVIOR,
             RESUME_BEHAVIORS,
         ),
+        auto_play_next=_boolean(
+            config, "auto_play_next", DEFAULT_INTERNAL_AUTO_PLAY_NEXT
+        ),
+        auto_advance_seconds=_bounded_int(
+            config,
+            "auto_advance_seconds",
+            DEFAULT_INTERNAL_AUTO_ADVANCE_SECONDS,
+            0,
+            300,
+        ),
+        network_caching_ms=_bounded_int(
+            config,
+            "network_caching_ms",
+            DEFAULT_INTERNAL_NETWORK_CACHING_MS,
+            0,
+            60000,
+        ),
     )
 
 
@@ -77,6 +100,9 @@ def save_internal_player_preferences(filename, preferences):
         "audio_language": preferences.audio_language,
         "subtitle_language": preferences.subtitle_language,
         "resume_behavior": preferences.resume_behavior,
+        "auto_play_next": str(preferences.auto_play_next),
+        "auto_advance_seconds": str(preferences.auto_advance_seconds),
+        "network_caching_ms": str(preferences.network_caching_ms),
         "volume": saved_volume,
         "playback_rate": saved_rate,
     }
@@ -113,3 +139,11 @@ def _choice(config, option, fallback, allowed_values):
     """Read one string option and reject values outside its documented choices."""
     value = config.get("InternalPlayer", option, fallback=fallback)
     return value if value in allowed_values else fallback
+
+
+def _boolean(config, option, fallback):
+    """Read one boolean option while tolerating invalid manual edits."""
+    try:
+        return config.getboolean("InternalPlayer", option, fallback=fallback)
+    except (ValueError, configparser.Error):
+        return fallback

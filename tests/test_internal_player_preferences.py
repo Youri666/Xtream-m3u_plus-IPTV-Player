@@ -24,6 +24,9 @@ class InternalPlayerPreferenceTests(unittest.TestCase):
                 audio_language="eng",
                 subtitle_language="disabled",
                 resume_behavior="resume",
+                auto_play_next=True,
+                auto_advance_seconds=20,
+                network_caching_ms=2500,
             )
 
             save_internal_player_preferences(filename, expected)
@@ -42,7 +45,10 @@ class InternalPlayerPreferenceTests(unittest.TestCase):
                 "speed_step=0.001\n"
                 "audio_language=unsupported\n"
                 "subtitle_language=fra\n"
-                "resume_behavior=invalid\n",
+                "resume_behavior=invalid\n"
+                "auto_play_next=invalid\n"
+                "auto_advance_seconds=999\n"
+                "network_caching_ms=-10\n",
                 encoding="utf-8",
             )
 
@@ -54,6 +60,9 @@ class InternalPlayerPreferenceTests(unittest.TestCase):
             self.assertEqual(preferences.audio_language, "")
             self.assertEqual(preferences.subtitle_language, "fra")
             self.assertEqual(preferences.resume_behavior, "ask")
+            self.assertFalse(preferences.auto_play_next)
+            self.assertEqual(preferences.auto_advance_seconds, 300)
+            self.assertEqual(preferences.network_caching_ms, 0)
 
 
 if __name__ == "__main__":
