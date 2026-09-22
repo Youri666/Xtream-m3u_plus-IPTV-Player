@@ -18,6 +18,11 @@ class UpdateCheckerTests(unittest.TestCase):
         self.assertTrue(is_newer_version("V3.1", "V3.0.9"))
         self.assertFalse(is_newer_version("V2.9.9", "V3.0.0"))
 
+    def test_stable_release_replaces_same_version_beta(self):
+        self.assertTrue(is_newer_version("V3.1.0", "V3.1.0-beta"))
+        self.assertFalse(is_newer_version("V3.1.0-beta", "V3.1.0"))
+        self.assertFalse(is_newer_version("V3.1.0-beta", "V3.1.0-beta"))
+
     def test_fetches_latest_release_with_bounded_timeouts(self):
         response = Mock()
         response.json.return_value = {
