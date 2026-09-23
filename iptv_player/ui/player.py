@@ -1736,7 +1736,8 @@ class EmbeddedPlayerWindow(QMainWindow):
                 delta = 0
             over_player_controls = self._event_is_over_widget(event, self.overlay)
             over_volume_slider = self._event_is_over_widget(event, self.vol_slider)
-            if over_player_controls and not over_volume_slider:
+            over_video = self._event_is_over_widget(event, self.video_frame)
+            if (over_player_controls and not over_volume_slider) or over_video:
                 if self.seek_slider.isEnabled():
                     if delta > 0:
                         self.preview_wheel_seek(self._seek_step_ms)

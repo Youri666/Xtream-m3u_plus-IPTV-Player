@@ -5,6 +5,7 @@ from .favorites import (
     account_favorites_file,
     entries_in_favorite_order,
     migrate_legacy_favorites_file,
+    reorder_favorites,
     set_favorite,
 )
 from .json_file import read_json_mapping, write_json_file
@@ -36,6 +37,7 @@ __all__ = (
     "remove_account_data_files",
     "record_history",
     "remove_history_entry",
+    "reorder_favorites",
     "repair_misclassified_history",
     "resume_position",
     "set_favorite",
