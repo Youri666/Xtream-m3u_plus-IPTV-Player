@@ -139,6 +139,7 @@ from iptv_player.provider.epg import apply_epg_offset
 from iptv_player.player_process import run_embedded_player_process
 from iptv_player.external_player import (
     ExternalPlayerNotExecutableError,
+    external_player_display_name,
     launch_external_player,
 )
 from iptv_player.updater import fetch_latest_release, is_newer_version
@@ -5048,7 +5049,17 @@ class IPTVPlayerApp(QMainWindow):
         file_dialog.setFileMode(QFileDialog.ExistingFile)
 
         if sys.platform.startswith('win'):
-            file_dialog.setNameFilter("Executable files (*.exe *.bat, *.com)")
+            file_dialog.setNameFilter("Executable files (*.exe *.bat *.com)")
+            remembered_command = (
+                getattr(self, "last_external_player_command", "") or ""
+            )
+            initial_directory = (
+                path.dirname(remembered_command)
+                if remembered_command
+                else os.environ.get("ProgramFiles", r"C:\Program Files")
+            )
+            if path.isdir(initial_directory):
+                file_dialog.setDirectory(initial_directory)
         else:
             file_dialog.setNameFilter("Executable files (*)")
 
@@ -5153,7 +5164,9 @@ class IPTVPlayerApp(QMainWindow):
             self.internal_player_radio.setChecked(True)
             self.external_player_radio.setChecked(False)
         elif cmd:
-            self.current_player_label.setText(f"Active player: {cmd}")
+            self.current_player_label.setText(
+                f"Active player: {external_player_display_name(cmd)}"
+            )
             self.internal_player_radio.setChecked(False)
             self.external_player_radio.setChecked(True)
         else:

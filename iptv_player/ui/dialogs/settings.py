@@ -139,7 +139,7 @@ class NetworkSettingsDialog(QDialog):
         self.user_agent_box.setSizeAdjustPolicy(
             QComboBox.AdjustToMinimumContentsLengthWithIcon
         )
-        self.user_agent_box.setMinimumContentsLength(40)
+        self.user_agent_box.setMinimumContentsLength(26)
         self.user_agent_box.setToolTip("User-Agent sent with IPTV provider requests")
 
         self.connection_timeout_spin = self._create_seconds_spinbox(
@@ -290,15 +290,16 @@ class NetworkSettingsDialog(QDialog):
         main_layout.addWidget(general_group)
         main_layout.addWidget(cache_group)
         main_layout.addWidget(live_group)
-        main_layout.addWidget(diagnostics_group)
-        main_layout.addWidget(tmdb_group)
         main_layout.addWidget(history_group)
+        main_layout.addWidget(tmdb_group)
+        main_layout.addWidget(diagnostics_group)
         main_layout.addWidget(self.button_box)
 
         # Compute the initial dimensions only after every control has been added.
         # QDialog remains freely resizable because no fixed size is imposed.
         main_layout.activate()
         self.adjustSize()
+        self.resize(min(self.width(), 640), self.height())
 
     @staticmethod
     def _create_seconds_spinbox(value, tooltip):

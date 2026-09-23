@@ -9,9 +9,6 @@ This IPTV player, built with Python and PyQt5, supports Xtream Codes accounts, i
 
 [**View all releases**](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases)
 
-> [!IMPORTANT]
-> **V3.1.1 Beta is available for testing.** Download it from the [Releases page](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases) and report any problem through [GitHub Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues).
-
 # Features
 
 - **Windows, MacOS, and Linux support**
@@ -30,9 +27,11 @@ This IPTV player, built with Python and PyQt5, supports Xtream Codes accounts, i
 
 ### Recommended media players
 
-For external playback, VLC and SMPlayer are supported:
+For the best experience, install [VLC media player](https://www.videolan.org/vlc/). VLC is required for the **Internal Player** and is the highly recommended option.
 
-- [VLC media player](https://www.videolan.org/vlc/)
+For external playback, the following players are supported:
+
+- [VLC media player](https://www.videolan.org/vlc/) — recommended
 - [SMPlayer](https://www.smplayer.info/)
 
 # Future plans
@@ -219,7 +218,7 @@ Playback controls provide previous/next navigation, play/pause, seeking, playbac
 
 - Drag the progress bar with the left mouse button to move backward or forward.
 - Use the mouse wheel over the progress bar to seek in configurable steps. Multiple wheel movements are briefly accumulated to allow precise seeking.
-- Use the mouse wheel over the video or volume control to adjust the volume.
+- Use the mouse wheel over the video or playback controls to seek; use it over the volume control to adjust the volume.
 - During Live TV playback, **LIVE** is displayed instead of a playback position.
 - Minimizing the player automatically pauses playback; restoring the window resumes it.
 
@@ -229,8 +228,8 @@ Playback controls provide previous/next navigation, play/pause, seeking, playbac
 - **Left / Right Arrow** — seek backward / forward
 - **Space** — play / pause
 - **+ / -** — increase / decrease playback speed
-- **Mouse wheel over playback controls** — seek backward / forward
-- **Mouse wheel over the volume control or video area** — increase / decrease volume
+- **Mouse wheel over the video or playback controls** — seek backward / forward
+- **Mouse wheel over the volume control** — increase / decrease volume
 - **M** — mute / unmute
 - **A** — cycle through available audio tracks
 - **S** — cycle through available subtitles
@@ -241,7 +240,7 @@ Playback controls provide previous/next navigation, play/pause, seeking, playbac
 
 # What's new in V3
 
-Version 3 reorganizes the application into clearer, reusable components and adds automated regression tests, safer configuration migrations, and more consistent behavior across Windows, MacOS, and Linux. The upcoming V3.1 update extends that foundation with more account personalization, playback controls, metadata, and export options.
+Version 3 reorganizes the application into clearer, reusable components and adds automated regression tests, safer configuration migrations, and more consistent behavior across Windows, MacOS, and Linux. The V3.1 releases extend that foundation with more account personalization, playback controls, metadata, and export options.
 
 | | |
 |---|---|
