@@ -10,66 +10,23 @@ This IPTV player, built with Python and PyQt5, supports Xtream Codes accounts, i
 [**View all releases**](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases)
 
 > [!IMPORTANT]
-> **V3.1.1 Beta is available for testing.** This preview adds faster account switching, customizable per-account tabs, EPG time offsets, direct VOD link export, and several Internal Player improvements. Download it from the [Releases page](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases) and report any problem through [GitHub Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues).
-
-## What's new in V3.1.1 Beta
-
-- Quickly switch between IPTV accounts from the selector above the tabs.
-- Reorder tabs independently for each account and choose a default tab or **Last selected tab**.
-- Keep the same functional tab selected when switching between accounts.
-- Adjust EPG times independently for each IPTV account.
-- Automatically continue with the next playlist item, optionally before the final credits end.
-- Seek by dragging the progress bar or using the mouse wheel over the player controls.
-- Configure the Internal Player network buffer.
-- Copy or save direct download URLs for movies, episodes, seasons, and complete series from their context menus.
-- Optionally enrich missing movie and series details with a personal TMDB API Read Access Token.
-- Receive automatic update notifications for newer beta releases while testing a beta version.
-- Close IPTV Player automatically after accepting an available update.
-- Improved account setup guidance, Xtream URL wording, Linux documentation, and general interface consistency.
-
-# What's new in V3
-
-Version 3 is a major refactoring of the application aimed at making the codebase easier to maintain, test, debug, and extend. Most of the existing functionality has been reorganized into clearer and more reusable components, while several user-facing improvements have also been introduced.
-
-| | |
-|---|---|
-| **Major codebase refactoring** | The application has been reorganized into a proper package structure with clearer separation between UI, provider communication, configuration, media playback, caching, application startup, and shared utilities. Obsolete compatibility code and duplicated logic have also been removed. |
-| **Improved maintainability and testing** | Shared components have been extracted and standardized, including themes, navigation widgets, settings dialogs, information panels, sorting, search, account management, provider access, and application bootstrap logic. Regression tests were also introduced to help prevent future changes from breaking existing behavior. |
-| **Safer configuration management** | Configuration handling has been extensively refactored. INI writes are now centralized and atomic, application defaults and preferences are managed consistently, and configuration migrations allow older user settings to be upgraded safely between versions. |
-| **Better multi-account support** | IPTV accounts now use stable internal identifiers. Provider caches, favorites, category state, and category preferences are isolated per account. The active account is shown in a selector above the tabs so accounts can be switched quickly. |
-| **Improved provider and cache handling** | Xtream API communication, credential parsing, stream URL generation, EPG decoding, provider details, catalog preparation, JSON storage, and caching are now handled by dedicated reusable components. Provider catalogs are stored locally in separate caches for each IPTV account, improving data isolation and reducing loading times when cached data can be reused. |
-| **Improved search and sorting** | Title search relevance has been improved and search views now reuse the same sorting logic as the main playlists, providing more consistent results throughout the application. |
-| **Player improvements** | Internal and external player handling has been reorganized and made more robust. The application now handles unavailable internal VLC configurations more cleanly, external VLC receives the media title, and the embedded player's controls have been made more compact and consistent. Internal playback automatically pauses when minimized and resumes when restored. Optional automatic episode advancement can skip the final seconds, while the progress bar supports drag seeking and mouse-wheel seeking. |
-| **User interface improvements** | Category lists now display item counts, account dialogs better accommodate long URLs, passwords can be shown while editing accounts, favorites refresh immediately after changes, and several UI components have been cleaned up and standardized. |
-| **Unified build and debug workflows** | Windows, MacOS, and Linux build workflows now follow the same release/debug approach, use more consistent Python detection, and provide improved diagnostics for troubleshooting packaged builds. |
-| **Improved stability and diagnostics** | Network settings, application resources, update checks, player preferences, general preferences, and advanced settings have been centralized. Additional diagnostics and cleanup logic make runtime and startup problems easier to identify. |
+> **V3.1.1 Beta is available for testing.** Download it from the [Releases page](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases) and report any problem through [GitHub Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues).
 
 # Features
 
 - **Windows, MacOS, and Linux support**
-- **Xtream M3U Plus URL support:** Extract account credentials from an Xtream `get.php` URL and load the catalog through the Xtream API. Generic M3U playlists are not supported.
-- **Xtream Codes API:** Log in with Xtream credentials and dynamically load content.
-- **Categorized playlists:** Content is organized into Live TV, Movies, and Series tabs for easy navigation.
-- **Favorites:** Add items to Favorites and find them in the dedicated Favorites category.
-- **Per-account favorites:** Favorites are stored independently for each IPTV account.
-- **Quick account switching:** Switch between configured IPTV accounts more easily.
-- **Per-account category preferences:** Category state and preferences are stored independently for each IPTV account.
-- **EPG support:** Access and download Electronic Program Guide data for live TV channels.
-- **Movie and series information:** Display additional information such as cover, description, cast, trailer, TMDB information, and more when available.
-- **Series navigation:** Browse series, seasons, and episodes with efficient Go Back navigation.
-- **VOD link export:** Copy or save direct download URLs for movies, episodes, seasons, and complete series.
-- **Improved search:** Search categories and content with more relevant title matching.
-- **Search history:** Use the Up and Down arrow keys to access previously searched text.
-- **Sorting:** Sort lists A-Z, Z-A, or disable sorting. The default sorting behavior can be configured in Settings.
-- **Category item counts:** Category lists display the number of available items.
-- **Internal player:** Built-in libVLC-based player for playing IPTV content directly inside the application.
-- **Playback resume:** When using the internal player, partially watched content can be resumed, restarted from the beginning, or canceled.
-- **External player support:** Play channels, movies, and series using an external media player such as VLC or SMPlayer.
-- **Themes:** Light, Dark, and System theme support.
-- **Info tab:** Display IPTV account status and account information.
-- **Adjustable column widths:** Resize columns in each tab by dragging their edges.
-- **Error handling:** Graceful handling of loading, configuration, and playback errors.
-- **Cross-platform builds:** Dedicated build scripts are provided for Windows, MacOS, and Linux.
+- **Xtream account support:** Sign in manually or extract credentials from an Xtream M3U Plus `get.php` URL. Generic M3U playlists are not supported.
+- **Multi-account profiles:** Keep favorites, category choices, EPG offsets, tab order, default tab, and cached catalogs separate for each account.
+- **Live TV, Movies, and Series:** Browse categorized catalogs with search, remembered sorting, item counts, favorites, and detailed information panels.
+- **EPG:** View program schedules and descriptions with an account-specific time offset.
+- **History and playback resume:** Return to recently played content and resume partially watched media.
+- **Internal VLC player:** Use playlist navigation, configurable seeking and buffering, subtitles, audio tracks, fullscreen, and optional automatic advancement to the next item.
+- **External players:** Open content in applications such as VLC or SMPlayer.
+- **Movie and Series metadata:** View provider information and optionally fill missing details, posters, and trailers with a personal TMDB API Read Access Token.
+- **VOD link export:** Copy direct URLs or save structured link lists for movies, episodes, seasons, and complete series.
+- **Personalized interface:** Reorder tabs, choose the startup tab, resize columns, and use Light, Dark, or System themes.
+- **Update notifications:** Check manually or automatically for stable releases; beta builds can also follow newer beta versions.
+- **Cross-platform build scripts:** Create Windows, MacOS, and Linux packages from isolated local Python environments.
 
 ### Recommended media players
 
@@ -88,6 +45,8 @@ For external playback, VLC and SMPlayer are supported:
 ## Main interface
 
 The main interface is organized into six tabs: **Live**, **Movies**, **Series**, **History**, **Info**, and **Settings**.
+
+Tabs can be reordered by dragging them. Their order is saved independently for each IPTV account. The tab shown at startup can be selected with **Default tab** under **Settings → Content and appearance**, including an option to restore the last selected tab.
 
 The **Live**, **Movies**, and **Series** tabs all use the same three-column layout:
 - **Left column:** categories
@@ -109,7 +68,7 @@ Each section shows the **last viewed date/time** and the corresponding **title**
 
 The maximum number of history entries is configurable in **Advanced Settings**. The default value is **50 items per content type**.
 
-The History feature is still under development, but playback resume support is already available with the internal player.
+History is stored independently for each IPTV account. Activating an entry opens its original tab and category, then selects the corresponding channel, movie, or episode so it can be found quickly. The Internal Player can resume partially watched content from its saved position. If an item is no longer present in the provider catalog, its obsolete entry is automatically removed from History.
 
 ![History tab showing recently viewed Live, Movies and Series content](Screenshots/history-tab.png)
 
@@ -146,7 +105,9 @@ Two account input methods are available:
 
 ![M3U_plus account configuration](Screenshots/add-account-m3u-plus.png)
 
-Stream URL formats are fully editable because IPTV providers do not always use the same URL structure.
+Stream URL formats are fully editable because IPTV providers do not always use the same URL structure. If Live TV does not work with the default format, hover over **Live URL format** to display a tooltip with common alternative formats.
+
+Each account can use its own **EPG time offset** to correct schedule times by up to 12 hours in either direction. Use **Test connection** to validate the credentials and account status before saving, without downloading the full provider catalog.
 
 The **Startup account** selects which account should be loaded when the application starts. The **Active account** can be used to switch immediately between configured IPTV accounts.
 
@@ -212,7 +173,11 @@ The internal player has its own configurable options:
 
 ![Internal player settings](Screenshots/internal-player-settings.png)
 
-These settings control seek steps, volume steps, playback-speed steps, preferred audio and subtitle languages, what should happen when opening media that was previously started, and whether playback should automatically continue with the next item. Automatic advancement can occur at the end or a configurable number of seconds before the end to skip credits. The streaming buffer size can also be adjusted.
+These settings control seek, volume, and playback-speed steps, preferred audio and subtitle languages, and what should happen when opening media that was previously started. They also include:
+
+- **Automatically play the next item** — continue through the current playlist without manual input.
+- **Play next item** — start the next item at the end or up to 300 seconds before the current item finishes, allowing final credits to be skipped.
+- **Network buffer** — adjust VLC network caching for streamed media.
 
 When **Previously started media** is set to **Ask**, the player can offer to **Resume**, **Restart**, or **Cancel** playback.
 
@@ -227,7 +192,7 @@ Advanced settings provide additional control over:
 - LIVE stream availability checks
 - detailed diagnostic logging
 - History size and cleanup
-- optional TMDB metadata enrichment
+- optional TMDB metadata enrichment with a connection test
 
 When **LIVE stream status checks** are enabled, the Live TV information panel displays a small status indicator for the selected stream: **green** when the stream is available and **red** when it is unavailable. This check can be disabled from Advanced Settings.
 
@@ -248,11 +213,15 @@ The application can check for new releases manually with **Check for updates**, 
 
 The built-in **Internal Player** provides direct playback using the installed VLC engine.
 
-The playlist panel can be shown or hidden with the button in the upper-left corner. It displays the current list and includes a filter field for quickly finding an item.
+The button in the upper-left corner shows or hides the playlist panel. Its content follows where playback was started: for example, launching an episode from a Series season makes the other episodes from that season available for quick navigation. The panel also includes a filter field.
 
 Playback controls provide previous/next navigation, play/pause, seeking, playback speed, volume, audio track selection, subtitles when available, and fullscreen mode.
 
-The progress bar supports standard drag seeking: hold the left mouse button, move to the desired position, and release to seek. The mouse wheel can also seek backward or forward while the pointer is over the playback controls. Multiple wheel steps are accumulated briefly before the new position is applied, allowing precise adjustments. Over the volume control or video area, the wheel continues to adjust volume.
+- Drag the progress bar with the left mouse button to move backward or forward.
+- Use the mouse wheel over the progress bar to seek in configurable steps. Multiple wheel movements are briefly accumulated to allow precise seeking.
+- Use the mouse wheel over the video or volume control to adjust the volume.
+- During Live TV playback, **LIVE** is displayed instead of a playback position.
+- Minimizing the player automatically pauses playback; restoring the window resumes it.
 
 ### Keyboard shortcuts
 
@@ -270,42 +239,23 @@ The progress bar supports standard drag seeking: hold the left mouse button, mov
 ![Internal player showing the playlist and playback controls](Screenshots/internal-player.png)
 
 
-<details>
-<summary><h1>Debug</h1></summary>
+# What's new in V3
 
-This section contains technical information intended mainly for development, troubleshooting, and testing.
+Version 3 reorganizes the application into clearer, reusable components and adds automated regression tests, safer configuration migrations, and more consistent behavior across Windows, MacOS, and Linux. The upcoming V3.1 update extends that foundation with more account personalization, playback controls, metadata, and export options.
 
-<details>
-<summary><h2>Configuration migrations</h2></summary>
+| | |
+|---|---|
+| **Refactored and tested codebase** | The interface, provider access, configuration, storage, caching, themes, playback, and startup logic now use dedicated components. Automated tests cover the main workflows and bug fixes. |
+| **Safer configuration and diagnostics** | Settings are written atomically and upgraded through configuration migrations. Network options, privacy-conscious logging, and isolated build environments make the application easier to maintain and troubleshoot. |
+| **Better multi-account support** | Accounts use stable identifiers and keep their catalogs, favorites, category preferences, EPG offsets, tab order, default tab, and last selected tab independently. The account selector provides quick switching without losing the current functional tab. |
+| **Improved catalogs and navigation** | Shared Live, Movies, and Series components provide consistent searching, sorting, category counts, favorite handling, and stale-selection cleanup. Provider caching can reduce startup and account-switching time. |
+| **Richer information panels** | Movie and Series descriptions use the available space more effectively, Live EPG descriptions are easier to read, and optional TMDB enrichment can fill metadata, posters, and trailers missing from the provider. |
+| **VOD link export** | Context menus can copy direct Movie or Episode URLs, or save structured link files for Movies, Episodes, Seasons, and complete Series. Sensitive URLs and credentials are excluded from diagnostic logs. |
+| **Internal Player improvements** | Playback can pause when minimized, resume previously started media, advance automatically to the next item, skip final credits, use configurable network buffering, and seek by dragging or using the mouse wheel. |
+| **Interface and update improvements** | Themes follow Windows, MacOS, and Linux more reliably, dialogs and information panels have been polished, and beta builds can detect newer beta releases as well as the corresponding stable release. |
 
-`userdata.ini` records the version of its persisted-data schema:
 
-```ini
-[Application]
-config_schema_version = 1
-```
-
-`config_schema_version` identifies the structure and meaning of the persisted data.
-
-When a major or minor update changes that structure, the application can compare this number with `CURRENT_CONFIG_SCHEMA_VERSION` and apply every missing migration in order.
-
-For example, schema 1 converts the former combined `VOD` option into independent LIVE, Movies, and Series options while preserving the user's previous choice.
-
-This value is deliberately separate from `CURRENT_VERSION`. The application version is already compiled into the executable and is used by the GitHub update checker; storing it again in `userdata.ini` would be redundant. Most application releases do not change the configuration schema.
-
-When adding a configuration migration:
-
-1. Increment `CURRENT_CONFIG_SCHEMA_VERSION`.
-2. Add an ordered `if stored_schema_version < N` block to `updateUserDataFile()`.
-3. Make the migration safe to run repeatedly and preserve existing user preferences.
-4. Update the stored schema marker only after the migration blocks have completed.
-
-The loader preserves a schema number newer than the current application understands. This prevents an older build from incorrectly marking a future configuration as an older schema.
-
-</details>
-
-<details>
-<summary><h2>How to compile the source code</h2></summary>
+# How to compile the source code
 
 All build scripts create a local `.venv`, install PyInstaller and the application
 dependencies from `requirements-build.txt`, and use that isolated environment.
@@ -411,7 +361,29 @@ The generated files are written to the `dist` directory.
 
 </details>
 
-</details>
+# Configuration migrations
 
-</details>
+`userdata.ini` records the version of its persisted-data schema:
+
+```ini
+[Application]
+config_schema_version = 1
+```
+
+`config_schema_version` identifies the structure and meaning of the persisted data.
+
+When a major or minor update changes that structure, the application can compare this number with `CURRENT_CONFIG_SCHEMA_VERSION` and apply every missing migration in order.
+
+For example, schema 1 converts the former combined `VOD` option into independent LIVE, Movies, and Series options while preserving the user's previous choice.
+
+This value is deliberately separate from `CURRENT_VERSION`. The application version is already compiled into the executable and is used by the GitHub update checker; storing it again in `userdata.ini` would be redundant. Most application releases do not change the configuration schema.
+
+When adding a configuration migration:
+
+1. Increment `CURRENT_CONFIG_SCHEMA_VERSION`.
+2. Add an ordered `if stored_schema_version < N` block to `updateUserDataFile()`.
+3. Make the migration safe to run repeatedly and preserve existing user preferences.
+4. Update the stored schema marker only after the migration blocks have completed.
+
+The loader preserves a schema number newer than the current application understands. This prevents an older build from incorrectly marking a future configuration as an older schema.
 
