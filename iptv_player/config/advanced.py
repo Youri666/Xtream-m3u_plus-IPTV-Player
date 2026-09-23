@@ -33,6 +33,7 @@ class AdvancedPreferences:
     catalog_cache_max_age_hours: int = DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
     detailed_logging_enabled: bool = False
     history_size: int = DEFAULT_HISTORY_SIZE
+    tmdb_read_access_token: str = ""
 
 
 def load_advanced_preferences(filename):
@@ -84,6 +85,9 @@ def load_advanced_preferences(filename):
         history_size=_bounded_int(
             config, "History", "max_items_per_type", DEFAULT_HISTORY_SIZE, 1, 1000
         ),
+        tmdb_read_access_token=config.get(
+            "TMDB", "read_access_token", fallback=""
+        ).strip(),
     )
 
 
@@ -117,6 +121,9 @@ def save_advanced_preferences(filename, preferences):
     }
     config["History"] = {
         "max_items_per_type": str(preferences.history_size)
+    }
+    config["TMDB"] = {
+        "read_access_token": preferences.tmdb_read_access_token
     }
     write_config_file(filename, config)
 

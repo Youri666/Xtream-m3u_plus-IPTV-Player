@@ -36,12 +36,40 @@ def is_newer_version(candidate, current):
     return is_prerelease_version(current) and not is_prerelease_version(candidate)
 
 
-def fetch_latest_release(repository, connection_timeout, request_get=None):
-    """Fetch the latest GitHub release metadata for a repository."""
+def _version_sort_key(version):
+    """Sort releases numerically, preferring stable at an equal version."""
+    return version_components(version), not is_prerelease_version(version)
+
+
+def fetch_latest_release(
+    repository, connection_timeout, current_version="", request_get=None
+):
+    """Fetch the newest release available to the current release channel."""
     request_get = request_get or requests.get
-    api_url = f"https://api.github.com/repos/{repository}/releases/latest"
+    api_url = f"https://api.github.com/repos/{repository}/releases"
     response = request_get(api_url, timeout=(connection_timeout, 5))
-    data = response.json()
+    releases = response.json()
+    if not isinstance(releases, list):
+        raise ValueError("GitHub returned invalid release metadata")
+
+    accepts_prereleases = is_prerelease_version(current_version)
+    eligible = [
+        release for release in releases
+        if isinstance(release, dict)
+        and not release.get("draft", False)
+        and (
+            accepts_prereleases
+            or not (
+                release.get("prerelease", False)
+                or is_prerelease_version(release.get("tag_name", ""))
+            )
+        )
+        and release.get("tag_name")
+        and release.get("html_url")
+    ]
+    if not eligible:
+        raise ValueError("No eligible GitHub release was found")
+    data = max(eligible, key=lambda release: _version_sort_key(release["tag_name"]))
     return ReleaseInfo(
         version=data["tag_name"],
         download_page=data["html_url"],

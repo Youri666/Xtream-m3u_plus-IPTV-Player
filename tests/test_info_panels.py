@@ -4,6 +4,7 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5 import QtWidgets
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon, QPixmap
 
 from iptv_player.ui.info_panels import LiveInfoBox, MovieInfoBox, SeriesInfoBox
@@ -59,6 +60,65 @@ class InfoPanelResetTests(unittest.TestCase):
         self.assertFalse(panel.trailer.isEnabled())
         self.assertFalse(panel.fav_button.isEnabled())
 
+    def test_movie_link_cursor_reflects_availability(self):
+        panel = MovieInfoBox(self.parent)
+
+        panel.set_trailer_available(True)
+        self.assertTrue(panel.trailer.isEnabled())
+        self.assertEqual(panel.trailer.cursor().shape(), Qt.PointingHandCursor)
+
+        panel.set_trailer_available(False)
+        self.assertFalse(panel.trailer.isEnabled())
+        self.assertEqual(panel.trailer.cursor().shape(), Qt.ArrowCursor)
+
+    def test_live_epg_description_spans_all_columns(self):
+        panel = LiveInfoBox(self.parent)
+        program = QtWidgets.QTreeWidgetItem(["Date", "From", "To", "Name"])
+        panel.live_EPG_info.addTopLevelItem(program)
+
+        description = panel.add_epg_description(program, "Long description")
+
+        self.assertTrue(description.isFirstColumnSpanned())
+        self.assertIsNotNone(panel.live_EPG_info.itemWidget(description, 0))
+
+    def test_live_epg_description_trims_outer_whitespace(self):
+        panel = LiveInfoBox(self.parent)
+        program = QtWidgets.QTreeWidgetItem(["Date", "From", "To", "Name"])
+        panel.live_EPG_info.addTopLevelItem(program)
+
+        description = panel.add_epg_description(
+            program, "\n  First line\nSecond line  \n\n"
+        )
+        label = panel.live_EPG_info.itemWidget(description, 0)
+
+        self.assertEqual(label.text(), "First line\nSecond line")
+        self.assertIsNone(panel.add_epg_description(program, " \n\t "))
+
+    def test_live_epg_description_trims_outer_invisible_characters(self):
+        panel = LiveInfoBox(self.parent)
+        program = QtWidgets.QTreeWidgetItem(["Date", "From", "To", "Name"])
+        panel.live_EPG_info.addTopLevelItem(program)
+
+        description = panel.add_epg_description(
+            program, "\u200bDescription\u200b\ufeff"
+        )
+        label = panel.live_EPG_info.itemWidget(description, 0)
+
+        self.assertEqual(label.text(), "Description")
+
+    def test_movie_description_uses_full_width_and_scrolls_as_needed(self):
+        panel = MovieInfoBox(self.parent)
+
+        position = panel.layout.getItemPosition(
+            panel.layout.indexOf(panel.description)
+        )
+
+        self.assertEqual(position, (10, 0, 1, 2))
+        self.assertEqual(panel.description_title.text(), "Description:")
+        self.assertEqual(
+            panel.verticalScrollBarPolicy(), Qt.ScrollBarAsNeeded
+        )
+
     def test_series_reset_clears_stale_selection(self):
         panel = SeriesInfoBox(self.parent)
         panel.name.setText("Old series")
@@ -71,6 +131,29 @@ class InfoPanelResetTests(unittest.TestCase):
         self.assertIsNone(panel.tmdb_code)
         self.assertFalse(panel.tmdb.isEnabled())
         self.assertFalse(panel.fav_button.isEnabled())
+
+    def test_series_link_cursor_reflects_availability(self):
+        panel = SeriesInfoBox(self.parent)
+
+        panel.set_tmdb_available(True)
+        self.assertTrue(panel.tmdb.isEnabled())
+        self.assertEqual(panel.tmdb.cursor().shape(), Qt.PointingHandCursor)
+
+        panel.reset()
+        self.assertEqual(panel.tmdb.cursor().shape(), Qt.ArrowCursor)
+
+    def test_series_description_uses_full_width_and_scrolls_as_needed(self):
+        panel = SeriesInfoBox(self.parent)
+
+        position = panel.layout.getItemPosition(
+            panel.layout.indexOf(panel.description)
+        )
+
+        self.assertEqual(position, (10, 0, 1, 2))
+        self.assertEqual(panel.description_title.text(), "Description:")
+        self.assertEqual(
+            panel.verticalScrollBarPolicy(), Qt.ScrollBarAsNeeded
+        )
 
 
 if __name__ == "__main__":

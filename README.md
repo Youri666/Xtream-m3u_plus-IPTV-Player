@@ -10,9 +10,9 @@ This IPTV player, built with Python and PyQt5, supports Xtream Codes accounts, i
 [**View all releases**](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases)
 
 > [!IMPORTANT]
-> **V3.1.0 Beta is available for testing.** This preview adds faster account switching, customizable per-account tabs, EPG time offsets, and several Internal Player improvements. Download it from the [Releases page](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases) and report any problem through [GitHub Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues).
+> **V3.1.1 Beta is available for testing.** This preview adds faster account switching, customizable per-account tabs, EPG time offsets, direct VOD link export, and several Internal Player improvements. Download it from the [Releases page](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases) and report any problem through [GitHub Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues).
 
-## What's new in V3.1.0 Beta
+## What's new in V3.1.1 Beta
 
 - Quickly switch between IPTV accounts from the selector above the tabs.
 - Reorder tabs independently for each account and choose a default tab or **Last selected tab**.
@@ -21,6 +21,9 @@ This IPTV player, built with Python and PyQt5, supports Xtream Codes accounts, i
 - Automatically continue with the next playlist item, optionally before the final credits end.
 - Seek by dragging the progress bar or using the mouse wheel over the player controls.
 - Configure the Internal Player network buffer.
+- Copy or save direct download URLs for movies, episodes, seasons, and complete series from their context menus.
+- Optionally enrich missing movie and series details with a personal TMDB API Read Access Token.
+- Receive automatic update notifications for newer beta releases while testing a beta version.
 - Close IPTV Player automatically after accepting an available update.
 - Improved account setup guidance, Xtream URL wording, Linux documentation, and general interface consistency.
 
@@ -54,6 +57,7 @@ Version 3 is a major refactoring of the application aimed at making the codebase
 - **EPG support:** Access and download Electronic Program Guide data for live TV channels.
 - **Movie and series information:** Display additional information such as cover, description, cast, trailer, TMDB information, and more when available.
 - **Series navigation:** Browse series, seasons, and episodes with efficient Go Back navigation.
+- **VOD link export:** Copy or save direct download URLs for movies, episodes, seasons, and complete series.
 - **Improved search:** Search categories and content with more relevant title matching.
 - **Search history:** Use the Up and Down arrow keys to access previously searched text.
 - **Sorting:** Sort lists A-Z, Z-A, or disable sorting. The default sorting behavior can be configured in Settings.
@@ -77,7 +81,6 @@ For external playback, VLC and SMPlayer are supported:
 # Future plans
 
 - **M3U file support:** Select a local M3U file or a URL to an M3U file and load its data.
-- **TMDB integration:** Extend movie and series information using the TMDB API.
 
 
 # User Guide
@@ -224,10 +227,15 @@ Advanced settings provide additional control over:
 - LIVE stream availability checks
 - detailed diagnostic logging
 - History size and cleanup
+- optional TMDB metadata enrichment
 
 When **LIVE stream status checks** are enabled, the Live TV information panel displays a small status indicator for the selected stream: **green** when the stream is available and **red** when it is unavailable. This check can be disabled from Advanced Settings.
 
 Provider catalog caching can significantly reduce loading time by reusing locally stored catalog data instead of downloading it again when it is still valid.
+
+To complete missing movie and series information, enter a personal [**TMDB API Read Access Token**](https://developer.themoviedb.org/docs/authentication-application) in Advanced Settings and use **Test connection** before saving. TMDB enrichment is only attempted when the IPTV provider supplies a valid TMDB identifier. Existing provider metadata remains unchanged; TMDB fills missing fields only.
+
+This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 ### Updates
 

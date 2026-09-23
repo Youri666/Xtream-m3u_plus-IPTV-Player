@@ -13,6 +13,7 @@ from PyQt5.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
@@ -27,6 +28,7 @@ from PyQt5.QtWidgets import (
 
 from iptv_player.constants import DEFAULT_HISTORY_SIZE, MEDIA_LANGUAGE_OPTIONS
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
+from iptv_player.provider.workers import TmdbFetcher
 from iptv_player.provider.network import (
     DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL,
     DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS,
@@ -238,6 +240,28 @@ class NetworkSettingsDialog(QDialog):
         )
         diagnostics_layout.addWidget(self.detailed_logging_checkbox)
 
+        tmdb_group = QGroupBox("TMDB metadata")
+        tmdb_form = QFormLayout(tmdb_group)
+        self.tmdb_token_entry = QLineEdit(parent.tmdb_read_access_token)
+        self.tmdb_token_entry.setPlaceholderText("Optional API Read Access Token")
+        self.tmdb_token_entry.setToolTip(
+            "Enrich Movies and Series when the provider supplies a TMDB id"
+        )
+        self.tmdb_test_button = QPushButton("Test connection")
+        self.tmdb_test_button.clicked.connect(self.test_tmdb_connection)
+        self.tmdb_test_status = QLabel("")
+        tmdb_test_layout = QHBoxLayout()
+        tmdb_test_layout.addWidget(self.tmdb_test_button)
+        tmdb_test_layout.addWidget(self.tmdb_test_status)
+        tmdb_test_layout.addStretch(1)
+        tmdb_attribution = QLabel(
+            "This product uses the TMDB API but is not endorsed or certified by TMDB."
+        )
+        tmdb_attribution.setWordWrap(True)
+        tmdb_form.addRow("Read access token:", self.tmdb_token_entry)
+        tmdb_form.addRow(tmdb_test_layout)
+        tmdb_form.addRow(tmdb_attribution)
+
         history_group = QGroupBox("History")
         history_form = QFormLayout(history_group)
         self.history_size_spin = QSpinBox()
@@ -267,6 +291,7 @@ class NetworkSettingsDialog(QDialog):
         main_layout.addWidget(cache_group)
         main_layout.addWidget(live_group)
         main_layout.addWidget(diagnostics_group)
+        main_layout.addWidget(tmdb_group)
         main_layout.addWidget(history_group)
         main_layout.addWidget(self.button_box)
 
@@ -303,6 +328,28 @@ class NetworkSettingsDialog(QDialog):
         )
         self.detailed_logging_checkbox.setChecked(False)
         self.history_size_spin.setValue(DEFAULT_HISTORY_SIZE)
+        self.tmdb_token_entry.clear()
+
+    def test_tmdb_connection(self):
+        """Validate the entered TMDB token without saving the dialog."""
+        token = self.tmdb_token_entry.text().strip()
+        if not token:
+            self.tmdb_test_status.setText("Failed")
+            return
+        self.tmdb_test_button.setEnabled(False)
+        self.tmdb_test_status.setText("Testing…")
+        worker = TmdbFetcher(token)
+        worker.signals.finished.connect(self._tmdb_test_succeeded)
+        worker.signals.error.connect(self._tmdb_test_failed)
+        self.parent_app.threadpool.start(worker)
+
+    def _tmdb_test_succeeded(self, _result):
+        self.tmdb_test_button.setEnabled(True)
+        self.tmdb_test_status.setText("OK")
+
+    def _tmdb_test_failed(self, _error):
+        self.tmdb_test_button.setEnabled(True)
+        self.tmdb_test_status.setText("Failed")
 
     def save_settings(self, force_catalog_refresh=False):
         """Apply the complete dialog state as one coherent configuration update."""
@@ -318,7 +365,8 @@ class NetworkSettingsDialog(QDialog):
             self.catalog_cache_checkbox.isChecked(),
             self.catalog_cache_hours_spin.value(),
             self.detailed_logging_checkbox.isChecked(),
-            self.history_size_spin.value()
+            self.history_size_spin.value(),
+            self.tmdb_token_entry.text().strip(),
         )
         if force_catalog_refresh:
             self.parent_app.refresh_provider_catalog()

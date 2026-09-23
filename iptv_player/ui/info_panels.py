@@ -1,5 +1,7 @@
 """Information panels for live channels, movies, and series."""
 
+import unicodedata
+
 from PyQt5.QtGui import (
     QFont, QPixmap, QDesktopServices
 )
@@ -8,8 +10,24 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtWidgets import (
     QVBoxLayout, QLabel, QPushButton, QWidget, QHBoxLayout, QGridLayout,
-    QTreeWidget, QScrollArea
+    QTreeWidget, QTreeWidgetItem, QScrollArea
 )
+
+
+def _set_link_available(widget, available):
+    """Keep a link icon's enabled state and cursor consistent."""
+    widget.setEnabled(available)
+    widget.setCursor(Qt.PointingHandCursor if available else Qt.ArrowCursor)
+
+
+def _trim_epg_description(description):
+    """Remove outer whitespace and invisible formatting characters."""
+    text = str(description or "")
+    while text and (text[0].isspace() or unicodedata.category(text[0]) == "Cf"):
+        text = text[1:]
+    while text and (text[-1].isspace() or unicodedata.category(text[-1]) == "Cf"):
+        text = text[:-1]
+    return text
 
 class LiveInfoBox(QWidget):
     def __init__(self, parent=None):
@@ -38,7 +56,7 @@ class LiveInfoBox(QWidget):
 
         #Create entry info window
         self.live_EPG_info = QTreeWidget()
-        self.live_EPG_info.setColumnCount(2)
+        self.live_EPG_info.setColumnCount(4)
         self.live_EPG_info.setHeaderLabels(["Date", "From", "To", "Name"])
 
         #Set column widths of EPG info window
@@ -86,6 +104,22 @@ class LiveInfoBox(QWidget):
             #If not favorite, set normal icon
             self.fav_button.setIcon(self.parent.favorites_icon)
 
+    def add_epg_description(self, program_item, description):
+        """Add an expanded EPG description spanning the complete table width."""
+        cleaned_description = _trim_epg_description(description)
+        if not cleaned_description:
+            return None
+        label = QLabel(cleaned_description)
+        label.setWordWrap(True)
+        label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        label.setContentsMargins(4, 0, 4, 4)
+        description_item = QTreeWidgetItem()
+        program_item.addChild(description_item)
+        # Qt retains the spanning flag only after the child is attached.
+        description_item.setFirstColumnSpanned(True)
+        self.live_EPG_info.setItemWidget(description_item, 0, label)
+        return description_item
+
     def reset(self):
         """Clear stale channel details until another channel is selected."""
         self.EPG_box_label.setText("Select channel to view Live TV info")
@@ -106,7 +140,7 @@ class MovieInfoBox(QScrollArea):
         self.yt_code    = None
         self.tmdb_code  = None
 
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setWidgetResizable(True)
         self.setAlignment(Qt.AlignTop)
@@ -115,6 +149,7 @@ class MovieInfoBox(QScrollArea):
 
         self.layout = QGridLayout(self.widget)
         self.layout.setAlignment(Qt.AlignTop)
+        self.layout.setColumnStretch(1, 1)
 
         self.maxCoverWidth = 200
 
@@ -145,17 +180,18 @@ class MovieInfoBox(QScrollArea):
         self.rating         = QLabel("Rating: —")
         self.director       = QLabel("Director: —")
         self.cast           = QLabel("Cast: —")
-        self.description    = QLabel("Description: —")
+        self.description_title = QLabel("Description:")
+        self.description    = QLabel("—")
 
         self.trailer = QLabel()
         self.trailer.setAlignment(Qt.AlignLeft)
         self.trailer.setFixedWidth(50)
-        self.trailer.setEnabled(False)
+        _set_link_available(self.trailer, False)
 
         self.tmdb = QLabel()
         self.tmdb.setAlignment(Qt.AlignLeft)
         self.tmdb.setFixedWidth(50)
-        self.tmdb.setEnabled(False)
+        _set_link_available(self.tmdb, False)
 
         #Set YouTube icon
         self.yt_img = QPixmap(self.parent.path_to_yt_img)
@@ -193,16 +229,17 @@ class MovieInfoBox(QScrollArea):
 
         #Add widgets
         self.layout.addLayout(self.title_layout,    0, 0, 1, 2)
-        self.layout.addWidget(self.cover,           1, 0, 10, 1)
-        self.layout.addWidget(self.release_date,    1, 1)
-        self.layout.addWidget(self.country,         2, 1)
-        self.layout.addWidget(self.genre,           3, 1)
-        self.layout.addWidget(self.duration,        4, 1)
-        self.layout.addWidget(self.rating,          5, 1)
-        self.layout.addWidget(self.director,        6, 1)
-        self.layout.addWidget(self.cast,            7, 1)
-        self.layout.addWidget(self.description,     8, 1)
-        self.layout.addLayout(self.links_layout,    9, 1)
+        self.layout.addWidget(self.cover,           1, 0, 8, 1)
+        self.layout.addLayout(self.links_layout,    1, 1)
+        self.layout.addWidget(self.release_date,    2, 1)
+        self.layout.addWidget(self.country,         3, 1)
+        self.layout.addWidget(self.genre,           4, 1)
+        self.layout.addWidget(self.duration,        5, 1)
+        self.layout.addWidget(self.rating,          6, 1)
+        self.layout.addWidget(self.director,        7, 1)
+        self.layout.addWidget(self.cast,            8, 1)
+        self.layout.addWidget(self.description_title, 9, 0, 1, 2)
+        self.layout.addWidget(self.description,    10, 0, 1, 2)
 
         self.setWidget(self.widget)
 
@@ -231,6 +268,14 @@ class MovieInfoBox(QScrollArea):
             #If not favorite, set normal icon
             self.fav_button.setIcon(self.parent.favorites_icon)
 
+    def set_trailer_available(self, available):
+        """Show whether the YouTube icon currently opens a valid link."""
+        _set_link_available(self.trailer, available)
+
+    def set_tmdb_available(self, available):
+        """Show whether the TMDB icon currently opens a valid link."""
+        _set_link_available(self.tmdb, available)
+
     def reset(self):
         """Clear stale movie details until another movie is selected."""
         self.name.setText("No movie selected...")
@@ -241,12 +286,12 @@ class MovieInfoBox(QScrollArea):
         self.rating.setText("Rating: —")
         self.director.setText("Director: —")
         self.cast.setText("Cast: —")
-        self.description.setText("Description: —")
+        self.description.setText("—")
         self.cover.setPixmap(self.cover_img.scaledToWidth(self.maxCoverWidth))
         self.yt_code = None
         self.tmdb_code = None
-        self.trailer.setEnabled(False)
-        self.tmdb.setEnabled(False)
+        self.set_trailer_available(False)
+        self.set_tmdb_available(False)
         self.set_favorite(False)
         self.fav_button.setEnabled(False)
 
@@ -259,7 +304,7 @@ class SeriesInfoBox(QScrollArea):
         self.yt_code    = None
         self.tmdb_code  = None
 
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setWidgetResizable(True)
         self.setAlignment(Qt.AlignTop)
@@ -268,6 +313,7 @@ class SeriesInfoBox(QScrollArea):
 
         self.layout = QGridLayout(self.widget)
         self.layout.setAlignment(Qt.AlignTop)
+        self.layout.setColumnStretch(1, 1)
 
         self.maxCoverWidth = 200
 
@@ -298,17 +344,18 @@ class SeriesInfoBox(QScrollArea):
         self.rating         = QLabel("Rating: —")
         self.director       = QLabel("Director: —")
         self.cast           = QLabel("Cast: —")
-        self.description    = QLabel("Description: —")
+        self.description_title = QLabel("Description:")
+        self.description    = QLabel("—")
 
         self.trailer = QLabel()
         self.trailer.setAlignment(Qt.AlignLeft)
         self.trailer.setFixedWidth(50)
-        self.trailer.setEnabled(False)
+        _set_link_available(self.trailer, False)
 
         self.tmdb = QLabel()
         self.tmdb.setAlignment(Qt.AlignLeft)
         self.tmdb.setFixedWidth(50)
-        self.tmdb.setEnabled(False)
+        _set_link_available(self.tmdb, False)
 
         #Set YouTube icon
         self.yt_img = QPixmap(self.parent.path_to_yt_img)
@@ -347,16 +394,17 @@ class SeriesInfoBox(QScrollArea):
 
         #Add widgets
         self.layout.addLayout(self.title_layout,    0, 0, 1, 2)
-        self.layout.addWidget(self.cover,           1, 0, 10, 1)
-        self.layout.addWidget(self.release_date,    1, 1)
-        self.layout.addWidget(self.genre,           2, 1)
-        self.layout.addWidget(self.num_seasons,     3, 1)
-        self.layout.addWidget(self.duration,        4, 1)
-        self.layout.addWidget(self.rating,          5, 1)
-        self.layout.addWidget(self.director,        6, 1)
-        self.layout.addWidget(self.cast,            7, 1)
-        self.layout.addWidget(self.description,     8, 1)
-        self.layout.addLayout(self.links_layout,    9, 1)
+        self.layout.addWidget(self.cover,           1, 0, 8, 1)
+        self.layout.addLayout(self.links_layout,    1, 1)
+        self.layout.addWidget(self.release_date,    2, 1)
+        self.layout.addWidget(self.genre,           3, 1)
+        self.layout.addWidget(self.num_seasons,     4, 1)
+        self.layout.addWidget(self.duration,        5, 1)
+        self.layout.addWidget(self.rating,          6, 1)
+        self.layout.addWidget(self.director,        7, 1)
+        self.layout.addWidget(self.cast,            8, 1)
+        self.layout.addWidget(self.description_title, 9, 0, 1, 2)
+        self.layout.addWidget(self.description,    10, 0, 1, 2)
 
         #Add widget with all items to the scrollarea (self)
         self.setWidget(self.widget)
@@ -386,6 +434,14 @@ class SeriesInfoBox(QScrollArea):
             #If not favorite, set normal icon
             self.fav_button.setIcon(self.parent.favorites_icon)
 
+    def set_trailer_available(self, available):
+        """Show whether the YouTube icon currently opens a valid link."""
+        _set_link_available(self.trailer, available)
+
+    def set_tmdb_available(self, available):
+        """Show whether the TMDB icon currently opens a valid link."""
+        _set_link_available(self.tmdb, available)
+
     def reset(self):
         """Clear stale series details until another series is selected."""
         self.name.setText("No series selected...")
@@ -396,11 +452,11 @@ class SeriesInfoBox(QScrollArea):
         self.rating.setText("Rating: —")
         self.director.setText("Director: —")
         self.cast.setText("Cast: —")
-        self.description.setText("Description: —")
+        self.description.setText("—")
         self.cover.setPixmap(self.cover_img.scaledToWidth(self.maxCoverWidth))
         self.yt_code = None
         self.tmdb_code = None
-        self.trailer.setEnabled(False)
-        self.tmdb.setEnabled(False)
+        self.set_trailer_available(False)
+        self.set_tmdb_available(False)
         self.set_favorite(False)
         self.fav_button.setEnabled(False)
