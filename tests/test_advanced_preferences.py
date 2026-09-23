@@ -26,6 +26,7 @@ class AdvancedPreferenceTests(unittest.TestCase):
                 catalog_cache_max_age_hours=48,
                 detailed_logging_enabled=True,
                 history_size=125,
+                tmdb_read_access_token="test-token",
             )
 
             save_advanced_preferences(filename, expected)
@@ -56,6 +57,7 @@ class AdvancedPreferenceTests(unittest.TestCase):
             self.assertTrue(preferences.catalog_cache_enabled)
             self.assertEqual(preferences.catalog_cache_max_age_hours, 1)
             self.assertEqual(preferences.history_size, 1000)
+            self.assertEqual(preferences.tmdb_read_access_token, "")
 
 
 if __name__ == "__main__":

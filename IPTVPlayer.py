@@ -102,6 +102,12 @@ from iptv_player.ui.dialogs.settings import (
 )
 from iptv_player.ui.dialogs.accounts import AccountManager
 from iptv_player.ui.widgets import KeyboardNavigableListWidget
+from iptv_player.download_links import (
+    download_link_text,
+    flatten_series_episodes,
+    safe_download_filename,
+    structured_download_text,
+)
 from iptv_player.utils.privacy import private_url_log_reference
 from iptv_player.utils.search import (
     normalize_search_text,
@@ -149,6 +155,7 @@ from iptv_player.provider.workers import (
     MovieInfoFetcher,
     OnlineWorker,
     SeriesInfoFetcher,
+    TmdbFetcher,
 )
 
 # CURRENT_CONFIG_SCHEMA_VERSION describes the structure and meaning of userdata.ini.
@@ -2083,6 +2090,11 @@ class IPTVPlayerApp(QMainWindow):
                 self.streaming_item_keyboard_activated
             )
             list_widget.keyboardSelected.connect(self.streaming_item_clicked)
+            list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+            list_widget.customContextMenuRequested.connect(
+                lambda position, content_type=spec['stream_type']:
+                self._show_download_context_menu(content_type, position)
+            )
             self.streaming_list_widgets[spec['stream_type']] = list_widget
             setattr(self, f"streaming_list_{spec['attribute']}", list_widget)
 
@@ -2111,6 +2123,190 @@ class IPTVPlayerApp(QMainWindow):
                     color: palette(highlighted-text);
                 }
             """)
+
+    def _show_download_context_menu(self, stream_type, position):
+        """Show VOD export actions matching the row and Series navigation level."""
+        if stream_type == "LIVE":
+            return
+        list_widget = self.streaming_list_widgets[stream_type]
+        item = list_widget.itemAt(position)
+        if item is None or item.text() in (self.go_back_text, "No items in list..."):
+            return
+        data = item.data(Qt.UserRole)
+        if not data:
+            return
+
+        if stream_type == "Movies" and isinstance(data, dict):
+            scope = "movie"
+            title = data.get("name", item.text())
+            export_data = data
+        elif (
+            stream_type == "Series"
+            and self.series_navigation_level == 0
+            and isinstance(data, dict)
+        ):
+            scope = "series"
+            title = data.get("name", item.text())
+            export_data = data
+        elif (
+            stream_type == "Series"
+            and self.series_navigation_level == 1
+            and isinstance(data, list)
+        ):
+            scope = "season"
+            series_title = (self.current_series_entry or {}).get("name", "Series")
+            title = f"{series_title} - {item.text()}"
+            export_data = {
+                "episodes": data,
+                "season": item.text(),
+                "series_title": series_title,
+            }
+        elif (
+            stream_type == "Series"
+            and self.series_navigation_level == 2
+            and isinstance(data, dict)
+        ):
+            scope = "episode"
+            title = data.get("title", item.text())
+            export_data = data
+        else:
+            return
+
+        list_widget.setCurrentItem(item)
+        menu = QMenu(list_widget)
+        plural = "s" if scope in ("season", "series") else ""
+        copy_action = menu.addAction(f"Copy {scope} download URL{plural}")
+        save_action = menu.addAction(f"Save {scope} download URL{plural}…")
+        selected_action = menu.exec_(list_widget.viewport().mapToGlobal(position))
+        if selected_action is copy_action:
+            self._export_download_links(scope, title, export_data, "copy")
+        elif selected_action is save_action:
+            self._export_download_links(scope, title, export_data, "save")
+
+    def _episode_download_url(self, episode):
+        """Build an episode URL using the active account's customized template."""
+        return self._history_entry_url({
+            "type": "Series",
+            "stream_id": episode.get("id"),
+            "container_extension": episode.get("container_extension", ""),
+        })
+
+    @staticmethod
+    def _download_record(entry, url, season=None):
+        """Build the descriptive metadata used only by saved text files."""
+        return {
+            "url": url,
+            "title": entry.get("title") or entry.get("name", ""),
+            "season": season,
+            "episode_number": (
+                entry.get("episode_num")
+                or entry.get("episode_number")
+                or entry.get("episode")
+            ),
+        }
+
+    def _export_download_links(self, scope, title, data, mode):
+        """Resolve the requested VOD links and copy or save them."""
+        if scope == "series":
+            series_id = data.get("series_id")
+            if not series_id:
+                self.animate_progress(
+                    0, 100, "Series download links are unavailable", "error"
+                )
+                return
+            account_id = self.active_account_id
+            self.set_progress_bar(0, "Loading series download links")
+            fetcher = SeriesInfoFetcher(
+                self.server, self.username, self.password, series_id, False,
+                self, hide_error_details=True
+            )
+            fetcher.signals.finished.connect(
+                lambda series_info, _show_request:
+                self._complete_series_download_export(
+                    series_info, title, mode, account_id
+                )
+            )
+            fetcher.signals.error.connect(self._download_export_failed)
+            self.threadpool.start(fetcher)
+            return
+
+        if scope == "movie":
+            urls = [data.get("url", "")]
+            records = [self._download_record(data, urls[0])]
+            document_title = title
+        elif scope == "episode":
+            urls = [data.get("url") or self._episode_download_url(data)]
+            records = [self._download_record(data, urls[0])]
+            document_title = title
+        else:
+            episodes = data.get("episodes", [])
+            season = data.get("season")
+            urls = [self._episode_download_url(episode) for episode in episodes]
+            records = [
+                self._download_record(episode, url, season)
+                for episode, url in zip(episodes, urls)
+            ]
+            document_title = data.get("series_title", title)
+        self._deliver_download_links(
+            urls, title, mode, records, document_title
+        )
+
+    def _complete_series_download_export(self, series_info, title, mode, account_id):
+        """Finish an asynchronous complete-series export for the same account."""
+        if account_id != self.active_account_id:
+            return
+        episodes = flatten_series_episodes(
+            series_info.get("episodes", {}) if isinstance(series_info, dict) else {}
+        )
+        urls = [self._episode_download_url(episode) for episode in episodes]
+        records = [
+            self._download_record(
+                episode, url, episode.get("_export_season")
+            )
+            for episode, url in zip(episodes, urls)
+        ]
+        self._deliver_download_links(urls, title, mode, records, title)
+
+    def _download_export_failed(self, _error_message):
+        """Report a provider failure without logging credential-bearing URLs."""
+        logging.warning("Could not load download links")
+        self.animate_progress(0, 100, "Failed loading download links", "error")
+
+    def _deliver_download_links(
+        self, urls, title, mode, records=None, document_title=None
+    ):
+        """Send resolved download links to the clipboard or a UTF-8 text file."""
+        text = download_link_text(urls)
+        if not text:
+            self.animate_progress(0, 100, "No download URLs are available", "error")
+            return
+        count = len(text.splitlines())
+        noun = "URL" if count == 1 else "URLs"
+        if mode == "copy":
+            QApplication.clipboard().setText(text)
+            self.animate_progress(0, 100, f"{count} download {noun} copied")
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save download URLs",
+            safe_download_filename(title),
+            "Text files (*.txt);;All files (*)",
+        )
+        if not filename:
+            return
+        try:
+            with open(filename, "w", encoding="utf-8", newline="\n") as output_file:
+                output_file.write(
+                    structured_download_text(
+                        document_title or title, records or []
+                    )
+                )
+        except OSError:
+            logging.warning("Could not save download links")
+            self.animate_progress(0, 100, "Failed saving download URLs", "error")
+            return
+        self.animate_progress(0, 100, f"{count} download {noun} saved")
 
     def init_info_boxes(self):
         self.info_boxes = {}
@@ -2769,7 +2965,7 @@ class IPTVPlayerApp(QMainWindow):
                              stream_status_enabled, account_refresh_interval,
                              account_auto_refresh_enabled, catalog_cache_enabled,
                              catalog_cache_max_age_hours, detailed_logging_enabled,
-                             history_size):
+                             history_size, tmdb_read_access_token):
         """Apply and persist all advanced provider settings in one operation."""
         preferences = AdvancedPreferences(
             user_agent=user_agent or DEFAULT_USER_AGENT_HEADER,
@@ -2784,6 +2980,7 @@ class IPTVPlayerApp(QMainWindow):
             catalog_cache_max_age_hours=catalog_cache_max_age_hours,
             detailed_logging_enabled=detailed_logging_enabled,
             history_size=history_size,
+            tmdb_read_access_token=tmdb_read_access_token,
         )
 
         try:
@@ -2820,6 +3017,13 @@ class IPTVPlayerApp(QMainWindow):
         self.catalog_cache_max_age_hours = preferences.catalog_cache_max_age_hours
         self.detailed_logging_enabled = preferences.detailed_logging_enabled
         self.history_size = preferences.history_size
+        previous_tmdb_token = getattr(self, "tmdb_read_access_token", None)
+        self.tmdb_read_access_token = preferences.tmdb_read_access_token
+        if (
+            not hasattr(self, "_tmdb_metadata_cache")
+            or previous_tmdb_token != self.tmdb_read_access_token
+        ):
+            self._tmdb_metadata_cache = {}
         self._apply_stream_status_visibility()
         self._update_account_info_timer()
 
@@ -2827,7 +3031,7 @@ class IPTVPlayerApp(QMainWindow):
         try:
             print("Checking for updates")
             release = fetch_latest_release(
-                GITHUB_REPO, NETWORK_SETTINGS.connection_timeout
+                GITHUB_REPO, NETWORK_SETTINGS.connection_timeout, CURRENT_VERSION
             )
 
             # Only prompt when upstream is strictly newer than what we're running —
@@ -3614,27 +3818,33 @@ class IPTVPlayerApp(QMainWindow):
         self.movies_info_box.rating.setText(f"Rating: {vod_info.get('rating') or '—'}")
         self.movies_info_box.director.setText(f"Director: {vod_info.get('director') or '—'}")
         self.movies_info_box.cast.setText(f"Cast: {vod_info.get('actors') or '—'}")
-        self.movies_info_box.description.setText(f"Description: {vod_info.get('description') or '—'}")
+        self.movies_info_box.description.setText(
+            vod_info.get('description') or '—'
+        )
 
         yt_code = vod_info.get('youtube_trailer', 0)
         if yt_code:
             self.movies_info_box.yt_code = yt_code
 
-            self.movies_info_box.trailer.setEnabled(True)
+            self.movies_info_box.set_trailer_available(True)
         else:
             self.movies_info_box.yt_code = None
 
-            self.movies_info_box.trailer.setEnabled(False)
+            self.movies_info_box.set_trailer_available(False)
 
         tmdb_code = vod_info.get('tmdb_id', 0)
         if tmdb_code:
             self.movies_info_box.tmdb_code = tmdb_code
 
-            self.movies_info_box.tmdb.setEnabled(True)
+            self.movies_info_box.set_tmdb_available(True)
         else:
             self.movies_info_box.tmdb_code = None
 
-            self.movies_info_box.tmdb.setEnabled(False)
+            self.movies_info_box.set_tmdb_available(False)
+
+        self._request_tmdb_enrichment(
+            "movie", tmdb_code, generation, dict(vod_info)
+        )
 
         if not vod_info:
             print(f"VOD info was empty: {vod_info}")
@@ -3764,32 +3974,130 @@ class IPTVPlayerApp(QMainWindow):
             )
             self.series_info_box.director.setText(f"Director: {director}")
             self.series_info_box.cast.setText(f"Cast: {cast}")
-            self.series_info_box.description.setText(f"Description: {plot}")
+            self.series_info_box.description.setText(plot)
 
             yt_code = series_info.get('youtube_trailer', 0)
             if yt_code:
                 self.series_info_box.yt_code = yt_code
 
-                self.series_info_box.trailer.setEnabled(True)
+                self.series_info_box.set_trailer_available(True)
             else:
                 self.series_info_box.yt_code = None
 
-                self.series_info_box.trailer.setEnabled(False)
+                self.series_info_box.set_trailer_available(False)
 
             tmdb_code = series_info.get('tmdb', 0)
             if tmdb_code:
                 self.series_info_box.tmdb_code = tmdb_code
 
-                self.series_info_box.tmdb.setEnabled(True)
+                self.series_info_box.set_tmdb_available(True)
             else:
                 self.series_info_box.tmdb_code = None
 
-                self.series_info_box.tmdb.setEnabled(False)
+                self.series_info_box.set_tmdb_available(False)
+
+            self._request_tmdb_enrichment(
+                "tv", tmdb_code, generation, dict(series_info)
+            )
 
             if not series_info:
                 self.set_progress_bar(100, "Failed loading Series info", "error")
             else:
                 self.set_progress_bar(100, "Loaded Series info")
+
+    def _request_tmdb_enrichment(
+        self, media_type, tmdb_id, generation, provider_info
+    ):
+        """Fetch trusted TMDB metadata when a token and numeric id are available."""
+        token = getattr(self, "tmdb_read_access_token", "")
+        normalized_id = str(tmdb_id or "").strip()
+        if not token or not normalized_id.isdigit():
+            return
+        cache_key = (media_type, normalized_id)
+        cached = self._tmdb_metadata_cache.get(cache_key)
+        if cached is not None:
+            self._apply_tmdb_enrichment(
+                media_type, normalized_id, cached, provider_info, generation
+            )
+            return
+
+        worker = TmdbFetcher(token, media_type, normalized_id)
+        worker.signals.finished.connect(
+            lambda metadata:
+            self._cache_and_apply_tmdb_enrichment(
+                cache_key, metadata, provider_info, generation
+            )
+        )
+        worker.signals.error.connect(
+            lambda _error: logging.warning("TMDB metadata request failed")
+        )
+        self.threadpool.start(worker)
+
+    def _cache_and_apply_tmdb_enrichment(
+        self, cache_key, metadata, provider_info, generation
+    ):
+        """Cache one TMDB response and apply it if the selection is still current."""
+        self._tmdb_metadata_cache[cache_key] = metadata
+        self._apply_tmdb_enrichment(
+            cache_key[0], cache_key[1], metadata, provider_info, generation
+        )
+
+    @staticmethod
+    def _metadata_is_missing(value):
+        """Treat provider placeholders and empty values as eligible for enrichment."""
+        return value in (None, "", 0, "0", "—")
+
+    def _apply_tmdb_enrichment(
+        self, media_type, tmdb_id, metadata, provider_info, generation
+    ):
+        """Fill missing provider fields without overwriting valid IPTV metadata."""
+        stream_type = "Movies" if media_type == "movie" else "Series"
+        if not self._is_current_info_request(stream_type, generation):
+            return
+        info_box = self.info_boxes[stream_type]
+        if str(info_box.tmdb_code or "") != str(tmdb_id):
+            return
+
+        if media_type == "movie":
+            fields = (
+                ("name", "name", "", info_box.name),
+                ("releasedate", "release_date", "Release date: ", info_box.release_date),
+                ("country", "country", "Country: ", info_box.country),
+                ("genre", "genre", "Genre: ", info_box.genre),
+                ("duration", "duration", "Duration: ", info_box.duration),
+                ("rating", "rating", "Rating: ", info_box.rating),
+                ("director", "director", "Director: ", info_box.director),
+                ("actors", "cast", "Cast: ", info_box.cast),
+                ("description", "description", "", info_box.description),
+            )
+            image_missing = self._metadata_is_missing(
+                provider_info.get("movie_image")
+            )
+        else:
+            fields = (
+                ("name", "name", "", info_box.name),
+                ("releaseDate", "release_date", "Release date: ", info_box.release_date),
+                ("genre", "genre", "Genre: ", info_box.genre),
+                ("episode_run_time", "duration", "Episode duration: ", info_box.duration),
+                ("rating", "rating", "Rating: ", info_box.rating),
+                ("director", "director", "Director: ", info_box.director),
+                ("cast", "cast", "Cast: ", info_box.cast),
+                ("plot", "description", "", info_box.description),
+            )
+            image_missing = self._metadata_is_missing(provider_info.get("cover"))
+
+        for provider_key, tmdb_key, prefix, label in fields:
+            value = metadata.get(tmdb_key)
+            if self._metadata_is_missing(provider_info.get(provider_key)) and not self._metadata_is_missing(value):
+                if tmdb_key == "duration" and isinstance(value, (int, float)):
+                    value = f"{value:g} min"
+                label.setText(f"{prefix}{value}")
+
+        if image_missing and metadata.get("poster_url"):
+            self.fetch_image(metadata["poster_url"], stream_type, generation)
+        if self._metadata_is_missing(provider_info.get("youtube_trailer")) and metadata.get("youtube_trailer"):
+            info_box.yt_code = metadata["youtube_trailer"]
+            info_box.set_trailer_available(True)
 
     def fetch_image(self, img_url, stream_type, generation=None):
         image_fetcher = ImageFetcher(img_url, stream_type, self)
@@ -4220,6 +4528,7 @@ class IPTVPlayerApp(QMainWindow):
             current_timestamp = time.mktime(datetime.now().timetuple())
 
             items = []
+            descriptions = []
 
             for epg_entry in apply_epg_offset(
                 epg_data, self.epg_offset_minutes
@@ -4242,16 +4551,13 @@ class IPTVPlayerApp(QMainWindow):
 
                 if time_diff >= 0:
                     item    = QTreeWidgetItem([date, start_time, stop_time, program_name])
-                    label   = QLabel(description)
-                    label.setWordWrap(True)
-                    desc    = QTreeWidgetItem()
-                    item.addChild(desc)
-
-                    self.live_info_box.live_EPG_info.setItemWidget(desc, 3, label)
-
                     items.append(item)
+                    descriptions.append(description)
 
             self.live_info_box.live_EPG_info.addTopLevelItems(items)
+            for item, description in zip(items, descriptions):
+                # Spanning works reliably only after the parent belongs to the tree.
+                self.live_info_box.add_epg_description(item, description)
 
             self.set_progress_bar(100, "Loaded EPG data")
 
@@ -4336,13 +4642,13 @@ class IPTVPlayerApp(QMainWindow):
                 self.movies_info_box.rating.setText(f"Rating: ...")
                 self.movies_info_box.director.setText(f"Director: ...")
                 self.movies_info_box.cast.setText(f"Cast: ...")
-                self.movies_info_box.description.setText(f"Description: ...")
+                self.movies_info_box.description.setText("...")
 
                 self.movies_info_box.yt_code = None
                 self.movies_info_box.tmdb_code = None
 
-                self.movies_info_box.trailer.setEnabled(False)
-                self.movies_info_box.tmdb.setEnabled(False)
+                self.movies_info_box.set_trailer_available(False)
+                self.movies_info_box.set_tmdb_available(False)
 
                 self.fetch_vod_info(clicked_item_data['stream_id'], generation)
 
@@ -4369,13 +4675,13 @@ class IPTVPlayerApp(QMainWindow):
                 self.series_info_box.rating.setText(f"Rating: ...")
                 self.series_info_box.director.setText(f"Director: ...")
                 self.series_info_box.cast.setText(f"Cast: ...")
-                self.series_info_box.description.setText(f"Description: ...")
+                self.series_info_box.description.setText("...")
 
                 self.series_info_box.yt_code = None
                 self.series_info_box.tmdb_code = None
 
-                self.series_info_box.trailer.setEnabled(False)
-                self.series_info_box.tmdb.setEnabled(False)
+                self.series_info_box.set_trailer_available(False)
+                self.series_info_box.set_tmdb_available(False)
 
                 self.fetch_series_info(
                     clicked_item_data['series_id'], False, generation

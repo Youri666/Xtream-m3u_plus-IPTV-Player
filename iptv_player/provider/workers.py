@@ -26,6 +26,7 @@ from iptv_player.provider.network import (
     NETWORK_SETTINGS,
 )
 from iptv_player.provider.streams import generate_stream_url
+from iptv_player.provider.tmdb import TmdbClient
 from iptv_player.storage import read_json_mapping
 
 class AccountInfoWorkerSignals(QObject):
@@ -374,7 +375,10 @@ class SeriesInfoFetcherSignals(QObject):
     error       = pyqtSignal(str)
 
 class SeriesInfoFetcher(QRunnable):
-    def __init__(self, server, username, password, series_id, is_show_request, parent=None):
+    def __init__(
+        self, server, username, password, series_id, is_show_request,
+        parent=None, hide_error_details=False
+    ):
         super().__init__()
         self.server             = server
         self.username           = username
@@ -382,6 +386,7 @@ class SeriesInfoFetcher(QRunnable):
         self.series_id          = series_id
         self.is_show_request    = is_show_request
         self.parent             = parent
+        self.hide_error_details = hide_error_details
         self.signals            = SeriesInfoFetcherSignals()
 
     @pyqtSlot()
@@ -409,8 +414,47 @@ class SeriesInfoFetcher(QRunnable):
             #Return series info data
             self.signals.finished.emit(series_info_data, self.is_show_request)
         except Exception as e:
-            print(f"Failed fetching series info: {e}")
-            self.signals.error.emit(str(e))
+            if self.hide_error_details:
+                print("Download link export request failed")
+                self.signals.error.emit("Provider request failed")
+            else:
+                print(f"Failed fetching series info: {e}")
+                self.signals.error.emit(str(e))
+
+
+class TmdbFetcherSignals(QObject):
+    finished = pyqtSignal(dict)
+    error = pyqtSignal(str)
+
+
+class TmdbFetcher(QRunnable):
+    """Fetch TMDB details or validate a user-provided read access token."""
+
+    def __init__(self, access_token, media_type=None, tmdb_id=None):
+        super().__init__()
+        self.access_token = access_token
+        self.media_type = media_type
+        self.tmdb_id = tmdb_id
+        self.signals = TmdbFetcherSignals()
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            client = TmdbClient(
+                self.access_token,
+                (
+                    NETWORK_SETTINGS.connection_timeout,
+                    NETWORK_SETTINGS.read_timeout,
+                ),
+            )
+            if self.media_type and self.tmdb_id:
+                result = client.details(self.media_type, self.tmdb_id)
+            else:
+                client.test_connection()
+                result = {}
+            self.signals.finished.emit(result)
+        except Exception:
+            self.signals.error.emit("TMDB request failed")
         
 class ImageFetcherSignals(QObject):
     finished    = pyqtSignal(bytes, str)
