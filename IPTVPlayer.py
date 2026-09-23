@@ -2518,6 +2518,7 @@ class IPTVPlayerApp(QMainWindow):
                 sorting_enabled,
                 sort_order,
             )
+            self._update_favorite_reordering(stream_type)
 
     def set_default_sorting_order(self, e, combobox):
         sorting_order = combobox.currentText()
@@ -2591,6 +2592,7 @@ class IPTVPlayerApp(QMainWindow):
                         stream_type, category_name, category_id
                     )
                 )
+                self._update_favorite_reordering(stream_type)
         else:
             self.set_all_sorting_order(sorting_order)
 
@@ -3564,6 +3566,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.streaming_list_widgets,
                 *default_sorting,
             )
+        self._update_favorite_reordering(stream_type)
 
     def refresh_account_info(self):
         """Refresh account metadata without downloading provider content."""
