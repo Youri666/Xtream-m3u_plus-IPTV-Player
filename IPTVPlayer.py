@@ -303,6 +303,9 @@ class IPTVPlayerApp(QMainWindow):
         self.category_item_counts = {
             stream_type: {} for stream_type in CONTENT_TYPES
         }
+        self._info_request_generation = {
+            stream_type: 0 for stream_type in CONTENT_TYPES
+        }
         self.currently_loaded_streams = {
             **{stream_type: [] for stream_type in CONTENT_TYPES},
             'Seasons': [],
@@ -658,6 +661,8 @@ class IPTVPlayerApp(QMainWindow):
             *self.streaming_list_widgets.values(),
         ):
             list_widget.clear()
+        for stream_type in CONTENT_TYPES:
+            self._reset_info_panel(stream_type)
 
     def _init_resource_paths(self):
         """Resolve all packaged image assets from one declarative mapping."""
@@ -1232,6 +1237,9 @@ class IPTVPlayerApp(QMainWindow):
 
     def _remove_unavailable_history_entry(self, entry):
         """Delete one stale history row and explain why it disappeared."""
+        stream_type = entry.get("type")
+        if stream_type in CONTENT_TYPES:
+            self._reset_info_panel(stream_type)
         remove_history_entry(self.history_file, entry.get("key"))
         self.refresh_history_tab()
         dialog = QMessageBox(self)
@@ -2110,6 +2118,32 @@ class IPTVPlayerApp(QMainWindow):
             info_box = spec['info_box_class'](self)
             self.info_boxes[spec['stream_type']] = info_box
             setattr(self, f"{spec['attribute']}_info_box", info_box)
+
+    def _next_info_request_generation(self, stream_type):
+        """Invalidate older asynchronous details and return the new request token."""
+        self._info_request_generation[stream_type] += 1
+        return self._info_request_generation[stream_type]
+
+    def _is_current_info_request(self, stream_type, generation):
+        """Return whether an asynchronous result still belongs to the selection."""
+        return (
+            generation is None
+            or self._info_request_generation.get(stream_type) == generation
+        )
+
+    def _reset_info_panel(self, stream_type):
+        """Clear a stale details panel and invalidate its pending worker results."""
+        self._next_info_request_generation(stream_type)
+        list_widget = self.streaming_list_widgets.get(stream_type)
+        if list_widget is not None:
+            list_widget.clearSelection()
+            list_widget.setCurrentItem(None)
+        info_box = self.info_boxes.get(stream_type)
+        if info_box is not None:
+            info_box.reset()
+        if stream_type == "Series":
+            self.current_series_entry = None
+            self.current_series_season = None
 
     def load_default_sorting_order(self):
         sorting_order = load_sorting_preference(self.user_data_file)
@@ -3543,16 +3577,21 @@ class IPTVPlayerApp(QMainWindow):
     def show_info_msg(self, title, msg):
         QMessageBox.information(self, title, msg)
 
-    def fetch_vod_info(self, vod_id):
+    def fetch_vod_info(self, vod_id, generation=None):
         movie_info_fetcher = MovieInfoFetcher(self.server, self.username, self.password, vod_id, self)
-        movie_info_fetcher.signals.finished.connect(self.process_vod_info)
+        movie_info_fetcher.signals.finished.connect(
+            lambda vod_info, vod_data, token=generation:
+            self.process_vod_info(vod_info, vod_data, token)
+        )
         movie_info_fetcher.signals.error.connect(self.on_fetch_data_error)
         self.threadpool.start(movie_info_fetcher)
 
-    def process_vod_info(self, vod_info, vod_data):
+    def process_vod_info(self, vod_info, vod_data, generation=None):
+        if not self._is_current_info_request("Movies", generation):
+            return
         movie_img_url = vod_info.get('movie_image', 0)
 
-        self.fetch_image(movie_img_url, 'Movies')
+        self.fetch_image(movie_img_url, 'Movies', generation)
 
         # If vod data is valid
         if vod_data:
@@ -3603,18 +3642,25 @@ class IPTVPlayerApp(QMainWindow):
         else:
             self.set_progress_bar(100, "Loaded Movie info")
 
-    def fetch_series_info(self, series_id, is_show_request):
+    def fetch_series_info(self, series_id, is_show_request, generation=None):
         series_info_fetcher = SeriesInfoFetcher(self.server, self.username, self.password, series_id, is_show_request, self)
-        series_info_fetcher.signals.finished.connect(self.process_series_info)
+        series_info_fetcher.signals.finished.connect(
+            lambda series_info, show_request, token=generation:
+            self.process_series_info(series_info, show_request, token)
+        )
         series_info_fetcher.signals.error.connect(self.on_fetch_data_error)
         self.threadpool.start(series_info_fetcher)
 
-    def process_series_info(self, series_info_data, is_show_request):
+    def process_series_info(
+        self, series_info_data, is_show_request, generation=None
+    ):
         """Populate seasons for an open request, or update the series info panel.
 
         The episodes mapping is retained by season for later navigation without
         another provider request.
         """
+        if not self._is_current_info_request("Series", generation):
+            return
         if not series_info_data:
             self.animate_progress(0, 100, "Failed fetching series info", "error")
             return
@@ -3686,7 +3732,7 @@ class IPTVPlayerApp(QMainWindow):
 
             series_img_url = series_info.get('cover', 0)
 
-            self.fetch_image(series_img_url, 'Series')
+            self.fetch_image(series_img_url, 'Series', generation)
 
             series_name = series_info.get('name', 'No name Available...')
             if not series_name:
@@ -3745,13 +3791,18 @@ class IPTVPlayerApp(QMainWindow):
             else:
                 self.set_progress_bar(100, "Loaded Series info")
 
-    def fetch_image(self, img_url, stream_type):
+    def fetch_image(self, img_url, stream_type, generation=None):
         image_fetcher = ImageFetcher(img_url, stream_type, self)
-        image_fetcher.signals.finished.connect(self.process_image_data)
+        image_fetcher.signals.finished.connect(
+            lambda image_data, result_stream_type, token=generation:
+            self.process_image_data(image_data, result_stream_type, token)
+        )
         image_fetcher.signals.error.connect(self.on_fetch_data_error)
         self.threadpool.start(image_fetcher)
 
-    def process_image_data(self, image_data, stream_type):
+    def process_image_data(self, image_data, stream_type, generation=None):
+        if not self._is_current_info_request(stream_type, generation):
+            return
         try:
             # Construct QPixmap on the GUI thread after the worker returns bytes.
             image = QPixmap()
@@ -3763,7 +3814,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.series_info_box.cover.setPixmap(image.scaledToWidth(self.series_info_box.maxCoverWidth))
             elif stream_type == 'Movies':
                 self.movies_info_box.cover.setPixmap(image.scaledToWidth(self.movies_info_box.maxCoverWidth))
-            elif stream_type == 'Live':
+            elif stream_type == 'LIVE':
                 self.live_info_box.cover.setPixmap(image.scaledToWidth(self.live_info_box.maxCoverHeight))
         except Exception as e:
             print(f"Failed processing image: {e}")
@@ -3864,8 +3915,16 @@ class IPTVPlayerApp(QMainWindow):
                             'series_id' if stream_type == 'Series' else 'stream_id'
                         ) != stream_id
                     ]
-                    self.prev_clicked_streaming_item = 0
-                    if list_widget.count() == 0:
+                    self.prev_clicked_streaming_item = None
+                    if list_widget.count() > 0:
+                        # Qt selects the row that replaces the removed one without
+                        # emitting itemClicked. Refresh its details explicitly so
+                        # the list selection and information panel stay in sync.
+                        next_row = min(removed_row, list_widget.count() - 1)
+                        list_widget.setCurrentRow(next_row)
+                        self.streaming_item_clicked(list_widget.item(next_row))
+                    else:
+                        self._reset_info_panel(stream_type)
                         list_widget.addItem("No items in list...")
 
                     # The attached rows now represent the newly computed Favorites
@@ -3882,6 +3941,17 @@ class IPTVPlayerApp(QMainWindow):
             self.animate_progress(0, 100, "Failed adding to favorites", "error")
 
             print(f"Failed adding to favorites: {e}")
+
+    def _current_favorite_state(self, stream_type, entry):
+        """Return the catalog's current favorite state for a possibly cached row."""
+        if not isinstance(entry, dict):
+            return False
+        id_key = 'series_id' if stream_type == 'Series' else 'stream_id'
+        stream_id = entry.get(id_key)
+        for catalog_entry in self.entries_per_stream_type.get(stream_type, []):
+            if catalog_entry.get(id_key) == stream_id:
+                return bool(catalog_entry.get('favorite', False))
+        return bool(entry.get('favorite', False))
 
     def _favorites_in_user_order(self, stream_type):
         # Returns the entries in `entries_per_stream_type[stream_type]` whose ids appear
@@ -3964,6 +4034,8 @@ class IPTVPlayerApp(QMainWindow):
                 return
 
             self.prev_clicked_category_item[stream_type] = selected_item
+            self.prev_clicked_streaming_item = None
+            self._reset_info_panel(stream_type)
 
             selected_item_data = selected_item.data(Qt.UserRole) or {}
             selected_item_text = selected_item_data.get(
@@ -4062,62 +4134,78 @@ class IPTVPlayerApp(QMainWindow):
         except Exception as e:
             print(f"Failed: {e}")
 
-    def start_online_worker(self, stream_id, url):
+    def start_online_worker(self, stream_id, url, generation=None):
         # Bail out early if the user disabled the traffic-light check.
         if not getattr(self, 'stream_status_enabled', True):
             return
 
         # Run the stream-status probe on the dedicated pool — see issue #74.
         online_worker = OnlineWorker(stream_id, url, self)
-        online_worker.signals.finished.connect(self.process_stream_status)
-        online_worker.signals.error.connect(self.on_stream_status_error)
+        online_worker.signals.finished.connect(
+            lambda result_stream_id, status: self.process_stream_status(
+                result_stream_id, status, generation
+            )
+        )
+        online_worker.signals.error.connect(
+            lambda error: self.on_stream_status_error(error, generation)
+        )
         self.status_threadpool.start(online_worker)
 
-    def on_stream_status_error(self, error_msg):
+    def on_stream_status_error(self, error_msg, generation=None):
+        if not self._is_current_info_request("LIVE", generation):
+            return
         print(f"Failed processing streaming status: {error_msg}")
 
         self.live_info_box.stream_status.setPixmap(
             self.status_pixmap(self.path_to_unknown_status_icon, 24)
         )
 
-    def process_stream_status(self, stream_id, stream_status):
-        try:
-            # Ensure user hasn't changed live channel before request came through
-            last_clicked_item = self.prev_clicked_streaming_item.data(Qt.UserRole)
-            if (stream_id != last_clicked_item['stream_id']):
-                return
+    def process_stream_status(self, stream_id, stream_status, generation=None):
+        if not self._is_current_info_request("LIVE", generation):
+            return
 
-            if (stream_status == "True"):
-                self.live_info_box.stream_status.setPixmap(
-                    self.status_pixmap(self.path_to_online_status_icon, 24)
-                )
-            elif (stream_status == "Maybe"):
-                self.live_info_box.stream_status.setPixmap(
-                    self.status_pixmap(self.path_to_maybe_status_icon, 24)
-                )
-            else:
-                self.live_info_box.stream_status.setPixmap(
-                    self.status_pixmap(self.path_to_offline_status_icon, 24)
-                )
-        except Exception as e:
-            print(f"Failed processing streaming status: {e}")
+        # Ensure the user has not selected another live channel meanwhile.
+        item = self.prev_clicked_streaming_item
+        item_data = item.data(Qt.UserRole) if item is not None else None
+        if not isinstance(item_data, dict) or stream_id != item_data.get('stream_id'):
+            return
 
-    def start_epg_worker(self, stream_id):
+        if stream_status == "True":
+            status_icon = self.path_to_online_status_icon
+        elif stream_status == "Maybe":
+            status_icon = self.path_to_maybe_status_icon
+        else:
+            status_icon = self.path_to_offline_status_icon
+        self.live_info_box.stream_status.setPixmap(
+            self.status_pixmap(status_icon, 24)
+        )
+
+    def start_epg_worker(self, stream_id, generation=None):
         epg_worker = EPGWorker(self.server, self.username, self.password, stream_id, self)
 
-        epg_worker.signals.finished.connect(self.process_epg_data)
-        epg_worker.signals.error.connect(self.on_epg_fetch_error)
+        epg_worker.signals.finished.connect(
+            lambda epg_data, token=generation:
+            self.process_epg_data(epg_data, token)
+        )
+        epg_worker.signals.error.connect(
+            lambda error_msg, token=generation:
+            self.on_epg_fetch_error(error_msg, token)
+        )
 
         self.threadpool.start(epg_worker)
 
-    def on_epg_fetch_error(self, error_msg):
+    def on_epg_fetch_error(self, error_msg, generation=None):
+        if not self._is_current_info_request("LIVE", generation):
+            return
         print(f"Failed fetching EPG data: {error_msg}")
         self.set_progress_bar(100, "Failed loading EPG data", "error")
 
         item = QTreeWidgetItem(["--/--/----", "--:--", "--:--", "Failed loading EPG data..."])
         self.live_info_box.live_EPG_info.addTopLevelItem(item)
 
-    def process_epg_data(self, epg_data):
+    def process_epg_data(self, epg_data, generation=None):
+        if not self._is_current_info_request("LIVE", generation):
+            return
         try:
             self.live_info_box.live_EPG_info.clear()
 
@@ -4190,8 +4278,6 @@ class IPTVPlayerApp(QMainWindow):
             if not isinstance(clicked_item_data, dict):
                 return
 
-            is_fav = clicked_item_data.get('favorite', False)
-
             stream_type = clicked_item_data.get('stream_type', '')
 
             # Skip when back button or already loaded series info
@@ -4199,8 +4285,13 @@ class IPTVPlayerApp(QMainWindow):
                 return
 
             if 'live' in stream_type:
+                is_fav = self._current_favorite_state("LIVE", clicked_item_data)
+                clicked_item_data['favorite'] = is_fav
+                clicked_item.setData(Qt.UserRole, clicked_item_data)
+                generation = self._next_info_request_generation("LIVE")
                 self.set_progress_bar(0, "Loading EPG data")
 
+                self.live_info_box.fav_button.setEnabled(True)
                 self.live_info_box.set_favorite(is_fav)
 
                 self.live_info_box.EPG_box_label.setText(f"{clicked_item_data['name']}")
@@ -4213,15 +4304,26 @@ class IPTVPlayerApp(QMainWindow):
                 item = QTreeWidgetItem(["...", "...", "...", "Loading EPG Data..."])
                 self.live_info_box.live_EPG_info.addTopLevelItem(item)
 
-                self.fetch_image(clicked_item_data['stream_icon'], 'Live')
+                self.fetch_image(
+                    clicked_item_data['stream_icon'], 'LIVE', generation
+                )
 
-                self.start_online_worker(clicked_item_data['stream_id'], clicked_item_data['url'])
+                self.start_online_worker(
+                    clicked_item_data['stream_id'], clicked_item_data['url'], generation
+                )
 
-                self.start_epg_worker(clicked_item_data['stream_id'])
+                self.start_epg_worker(
+                    clicked_item_data['stream_id'], generation
+                )
 
             elif 'movie' in stream_type:
+                is_fav = self._current_favorite_state("Movies", clicked_item_data)
+                clicked_item_data['favorite'] = is_fav
+                clicked_item.setData(Qt.UserRole, clicked_item_data)
+                generation = self._next_info_request_generation("Movies")
                 self.set_progress_bar(0, "Loading Movie info")
 
+                self.movies_info_box.fav_button.setEnabled(True)
                 self.movies_info_box.set_favorite(is_fav)
 
                 self.movies_info_box.cover.setPixmap(QPixmap(self.path_to_loading_img).scaledToWidth(self.series_info_box.maxCoverWidth))
@@ -4242,14 +4344,19 @@ class IPTVPlayerApp(QMainWindow):
                 self.movies_info_box.trailer.setEnabled(False)
                 self.movies_info_box.tmdb.setEnabled(False)
 
-                self.fetch_vod_info(clicked_item_data['stream_id'])
+                self.fetch_vod_info(clicked_item_data['stream_id'], generation)
 
             elif 'series' in stream_type:
                 if (self.series_navigation_level != 0):
                     return
 
+                is_fav = self._current_favorite_state("Series", clicked_item_data)
+                clicked_item_data['favorite'] = is_fav
+                clicked_item.setData(Qt.UserRole, clicked_item_data)
+                generation = self._next_info_request_generation("Series")
                 self.set_progress_bar(0, "Loading Series info")
 
+                self.series_info_box.fav_button.setEnabled(True)
                 self.series_info_box.set_favorite(is_fav)
 
                 self.series_info_box.cover.setPixmap(QPixmap(self.path_to_loading_img).scaledToWidth(self.series_info_box.maxCoverWidth))
@@ -4270,7 +4377,9 @@ class IPTVPlayerApp(QMainWindow):
                 self.series_info_box.trailer.setEnabled(False)
                 self.series_info_box.tmdb.setEnabled(False)
 
-                self.fetch_series_info(clicked_item_data['series_id'], False)
+                self.fetch_series_info(
+                    clicked_item_data['series_id'], False, generation
+                )
 
         except Exception as e:
             print(f"Failed item single click: {e}")
@@ -4399,7 +4508,11 @@ class IPTVPlayerApp(QMainWindow):
     def show_seasons(self, seasons_data):
         self.set_progress_bar(0, "Loading items")
 
-        self.fetch_series_info(seasons_data['series_id'], True)
+        self.fetch_series_info(
+            seasons_data['series_id'],
+            True,
+            self._info_request_generation["Series"],
+        )
 
     def show_episodes(self, episodes_data):
         self.set_progress_bar(0, "Loading items")

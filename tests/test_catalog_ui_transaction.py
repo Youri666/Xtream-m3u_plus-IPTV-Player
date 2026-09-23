@@ -20,7 +20,9 @@ def catalog_methods():
                      if isinstance(node, ast.ClassDef)
                      and node.name == 'IPTVPlayerApp')
     names = {'_replace_streaming_list_items', 'set_progress_bar',
-             'set_progress_state', 'set_progress_text', 'favorite_button_pressed'}
+             'set_progress_state', 'set_progress_text', 'favorite_button_pressed',
+             '_next_info_request_generation', '_is_current_info_request',
+             '_reset_info_panel', '_current_favorite_state'}
     module = ast.Module(body=[node for node in app_class.body
                              if isinstance(node, ast.FunctionDef)
                              and node.name in names], type_ignores=[])
@@ -58,6 +60,34 @@ class CatalogTransactionTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(observed_counts, [len(entries)])
         self.assertEqual(streams.count(), 0)
+
+    def test_reset_invalidates_pending_information_results(self):
+        harness = type('CatalogHarness', (), catalog_methods())()
+        streams = QtWidgets.QListWidget()
+        streams.addItem("Old movie")
+        streams.setCurrentRow(0)
+        panel = Mock()
+        harness._info_request_generation = {
+            'LIVE': 0, 'Movies': 4, 'Series': 0,
+        }
+        harness.streaming_list_widgets = {'Movies': streams}
+        harness.info_boxes = {'Movies': panel}
+
+        harness._reset_info_panel('Movies')
+
+        self.assertFalse(harness._is_current_info_request('Movies', 4))
+        self.assertTrue(harness._is_current_info_request('Movies', 5))
+        self.assertIsNone(streams.currentItem())
+        panel.reset.assert_called_once_with()
+
+    def test_cached_row_uses_current_catalog_favorite_state(self):
+        harness = type('CatalogHarness', (), catalog_methods())()
+        harness.entries_per_stream_type = {
+            'LIVE': [{'stream_id': 42, 'favorite': False}],
+        }
+        cached_row = {'stream_id': 42, 'favorite': True}
+
+        self.assertFalse(harness._current_favorite_state('LIVE', cached_row))
 
     def test_nested_series_removal_returns_to_favorites_root(self):
         for level in (1, 2):
@@ -98,6 +128,8 @@ class CatalogTransactionTests(unittest.TestCase):
                 harness.favorites_file = 'unused.json'
                 harness._refresh_category_count_labels = Mock()
                 harness.animate_progress = Mock()
+                harness.streaming_item_clicked = Mock()
+                harness._reset_info_panel = Mock()
                 info_box = Mock()
                 harness.favorite_button_pressed('Series', info_box)
                 self.assertTrue(series['favorite'])
@@ -137,8 +169,42 @@ class CatalogTransactionTests(unittest.TestCase):
         harness.favorites_file = 'unused.json'
         harness._refresh_category_count_labels = Mock()
         harness.animate_progress = Mock()
+        harness.streaming_item_clicked = Mock()
+        harness._reset_info_panel = Mock()
         harness.favorite_button_pressed('Series', Mock())
         self.assertEqual(streams.count(), 1)
         self.assertEqual(streams.item(0).data(Qt.UserRole)['series_id'], 43)
         self.assertEqual(harness.currently_loaded_streams['Series'], [other])
+        self.assertIs(streams.currentItem(), streams.item(0))
+        harness.streaming_item_clicked.assert_called_once_with(streams.item(0))
+        harness._reset_info_panel.assert_not_called()
         harness.animate_progress.assert_not_called()
+
+    def test_removing_last_favorite_clears_information_panel(self):
+        harness = type('CatalogHarness', (), catalog_methods())()
+        movie = {'stream_id': 42, 'name': 'Movie', 'favorite': True}
+        streams = QtWidgets.QListWidget()
+        streams.addItem(movie['name'])
+        streams.item(0).setData(Qt.UserRole, movie)
+        streams.setCurrentRow(0)
+        harness.streaming_list_widgets = {'Movies': streams}
+        harness.entries_per_stream_type = {'Movies': [movie]}
+        harness.currently_loaded_streams = {'Movies': [movie]}
+        harness.category_view_cache = {'Movies': {}}
+        harness.category_item_cache = {'Movies': {}}
+        harness.active_category_view_key = {'Movies': None}
+        harness.fav_categories_text = 'Favorites'
+        harness._selected_category = Mock(return_value=('Favorites', None))
+        harness._category_view_key = Mock(return_value=('favorites', False, 0))
+        harness.favorites_file = 'unused.json'
+        harness._refresh_category_count_labels = Mock()
+        harness.animate_progress = Mock()
+        harness.streaming_item_clicked = Mock()
+        harness._reset_info_panel = Mock()
+
+        harness.favorite_button_pressed('Movies', Mock())
+
+        self.assertEqual(streams.count(), 1)
+        self.assertEqual(streams.item(0).text(), 'No items in list...')
+        harness._reset_info_panel.assert_called_once_with('Movies')
+        harness.streaming_item_clicked.assert_not_called()

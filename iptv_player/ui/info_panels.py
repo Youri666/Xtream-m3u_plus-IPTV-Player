@@ -63,6 +63,7 @@ class LiveInfoBox(QWidget):
         self.fav_button.setFlat(True)
         self.fav_button.setToolTip("Toggle favorite")
         self.fav_button.setIcon(self.parent.favorites_icon)
+        self.fav_button.setEnabled(False)
         self.fav_button.clicked.connect(lambda: self.parent.favorite_button_pressed("LIVE", self))
 
         #Create title layout with favorites button
@@ -84,6 +85,17 @@ class LiveInfoBox(QWidget):
         else:
             #If not favorite, set normal icon
             self.fav_button.setIcon(self.parent.favorites_icon)
+
+    def reset(self):
+        """Clear stale channel details until another channel is selected."""
+        self.EPG_box_label.setText("Select channel to view Live TV info")
+        self.cover.setPixmap(self.cover_img.scaledToHeight(self.maxCoverHeight))
+        self.live_EPG_info.clear()
+        self.stream_status.setPixmap(
+            self.parent.status_pixmap(self.parent.path_to_unknown_status_icon, 24)
+        )
+        self.set_favorite(False)
+        self.fav_button.setEnabled(False)
 
 class MovieInfoBox(QScrollArea):
     def __init__(self, parent=None):
@@ -121,6 +133,7 @@ class MovieInfoBox(QScrollArea):
         self.fav_button.setFlat(True)
         self.fav_button.setToolTip("Toggle favorite")
         self.fav_button.setIcon(self.parent.favorites_icon)
+        self.fav_button.setEnabled(False)
         self.fav_button.clicked.connect(lambda: self.parent.favorite_button_pressed("Movies", self))
 
         #Create information labels
@@ -218,6 +231,25 @@ class MovieInfoBox(QScrollArea):
             #If not favorite, set normal icon
             self.fav_button.setIcon(self.parent.favorites_icon)
 
+    def reset(self):
+        """Clear stale movie details until another movie is selected."""
+        self.name.setText("No movie selected...")
+        self.release_date.setText("Release date: —")
+        self.country.setText("Country: —")
+        self.genre.setText("Genre: —")
+        self.duration.setText("Duration: —")
+        self.rating.setText("Rating: —")
+        self.director.setText("Director: —")
+        self.cast.setText("Cast: —")
+        self.description.setText("Description: —")
+        self.cover.setPixmap(self.cover_img.scaledToWidth(self.maxCoverWidth))
+        self.yt_code = None
+        self.tmdb_code = None
+        self.trailer.setEnabled(False)
+        self.tmdb.setEnabled(False)
+        self.set_favorite(False)
+        self.fav_button.setEnabled(False)
+
 class SeriesInfoBox(QScrollArea):
     def __init__(self, parent=None):
         super().__init__()
@@ -254,6 +286,7 @@ class SeriesInfoBox(QScrollArea):
         self.fav_button.setFlat(True)
         self.fav_button.setToolTip("Toggle favorite")
         self.fav_button.setIcon(self.parent.favorites_icon)
+        self.fav_button.setEnabled(False)
         self.fav_button.clicked.connect(lambda: self.parent.favorite_button_pressed("Series", self))
 
         #Create information labels
@@ -352,3 +385,22 @@ class SeriesInfoBox(QScrollArea):
         else:
             #If not favorite, set normal icon
             self.fav_button.setIcon(self.parent.favorites_icon)
+
+    def reset(self):
+        """Clear stale series details until another series is selected."""
+        self.name.setText("No series selected...")
+        self.release_date.setText("Release date: —")
+        self.genre.setText("Genre: —")
+        self.num_seasons.setText("Seasons: —")
+        self.duration.setText("Episode duration: —")
+        self.rating.setText("Rating: —")
+        self.director.setText("Director: —")
+        self.cast.setText("Cast: —")
+        self.description.setText("Description: —")
+        self.cover.setPixmap(self.cover_img.scaledToWidth(self.maxCoverWidth))
+        self.yt_code = None
+        self.tmdb_code = None
+        self.trailer.setEnabled(False)
+        self.tmdb.setEnabled(False)
+        self.set_favorite(False)
+        self.fav_button.setEnabled(False)
