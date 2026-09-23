@@ -152,7 +152,7 @@ The theme can be set to:
 The default sorting mode can be configured globally.
 
 Available modes include:
-- **Sorting disabled** — keep the order provided by the IPTV provider
+- **Default order** — keep the order provided by the IPTV provider; in Favorites, items can be dragged into a custom order saved separately for each account
 - **A → Z**
 - **Z → A**
 - **Remember per list** — each list/category can use its own sorting mode, selected with the sorting button and remembered for future use

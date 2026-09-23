@@ -11,6 +11,8 @@ INTERNAL_VLC_COMMAND = "<embedded-vlc>"
 CONTENT_TYPES = ("LIVE", "Movies", "Series")
 THEME_MODES = ("System", "Light", "Dark")
 LEGACY_REMEMBER_SORTING = "Remember per category"
+LEGACY_DISABLED_SORTING = "Sorting disabled"
+DEFAULT_ORDER_SORTING = "Default order"
 
 
 @dataclass(frozen=True)
@@ -127,7 +129,9 @@ def load_sorting_preference(filename):
     value = config.get("Sorting order", "Order", fallback="")
     if value == LEGACY_REMEMBER_SORTING:
         return REMEMBER_LIST_SORTING
-    return value or "Sorting disabled"
+    if value == LEGACY_DISABLED_SORTING:
+        return DEFAULT_ORDER_SORTING
+    return value or DEFAULT_ORDER_SORTING
 
 
 def save_sorting_preference(filename, sorting_order):

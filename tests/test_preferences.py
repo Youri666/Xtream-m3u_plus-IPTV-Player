@@ -101,10 +101,10 @@ class ApplicationPreferenceTests(unittest.TestCase):
                 {"LIVE": True, "Movies": False, "Series": False},
             )
 
-    def test_sorting_defaults_to_disabled_and_removes_legacy_section(self):
+    def test_sorting_defaults_to_default_order_and_removes_legacy_section(self):
         with tempfile.TemporaryDirectory() as directory:
             filename = Path(directory) / "userdata.ini"
-            self.assertEqual(load_sorting_preference(filename), "Sorting disabled")
+            self.assertEqual(load_sorting_preference(filename), "Default order")
             filename.write_text(
                 "[Category sorting]\nfallback=z_a\n", encoding="utf-8"
             )
@@ -125,6 +125,16 @@ class ApplicationPreferenceTests(unittest.TestCase):
             )
 
             self.assertEqual(load_sorting_preference(filename), "Remember per list")
+
+    def test_legacy_disabled_sorting_label_is_upgraded_when_loaded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            filename = Path(directory) / "userdata.ini"
+            filename.write_text(
+                "[Sorting order]\nOrder=Sorting disabled\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(load_sorting_preference(filename), "Default order")
 
 if __name__ == "__main__":
     unittest.main()

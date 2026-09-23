@@ -41,6 +41,31 @@ def set_favorite(file_path, stream_type, stream_id, enabled):
     write_json_file(file_path, data)
 
 
+def reorder_favorites(file_path, stream_type, ordered_ids):
+    """Persist a user-defined order without disturbing other content types."""
+    data = read_json_mapping(file_path)
+    key = _favorite_key(stream_type)
+    requested = list(dict.fromkeys(ordered_ids or []))
+
+    if stream_type == "Series":
+        data[key] = requested
+    else:
+        # LIVE and Movies historically share stream_ids. Replace only the IDs
+        # visible in the reordered list so the other content type keeps its slots.
+        requested_set = set(requested)
+        replacements = iter(requested)
+        merged = []
+        for item_id in data.get(key, []) or []:
+            if item_id in requested_set:
+                merged.append(next(replacements, item_id))
+            else:
+                merged.append(item_id)
+        merged.extend(replacements)
+        data[key] = merged
+
+    write_json_file(file_path, data)
+
+
 def entries_in_favorite_order(file_path, stream_type, entries):
     """Return favorite entries in saved order, with a catalog-order fallback."""
     entries = list(entries or [])

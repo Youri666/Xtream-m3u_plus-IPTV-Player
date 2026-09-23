@@ -6,6 +6,7 @@ from iptv_player.storage.favorites import (
     account_favorites_file,
     entries_in_favorite_order,
     migrate_legacy_favorites_file,
+    reorder_favorites,
     set_favorite,
 )
 
@@ -82,6 +83,41 @@ class FavoriteStorageTests(unittest.TestCase):
                 entries_in_favorite_order(str(file_path), "Live", entries),
                 [entries[1]],
             )
+
+    def test_reorders_favorites_without_position_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "favorites.json"
+            set_favorite(str(file_path), "Movies", 10, True)
+            set_favorite(str(file_path), "Movies", 20, True)
+            set_favorite(str(file_path), "Movies", 30, True)
+
+            reorder_favorites(str(file_path), "Movies", [30, 10, 20])
+
+            entries = [
+                {"stream_id": 10, "favorite": True},
+                {"stream_id": 20, "favorite": True},
+                {"stream_id": 30, "favorite": True},
+            ]
+            ordered = entries_in_favorite_order(str(file_path), "Movies", entries)
+            self.assertEqual(
+                [entry["stream_id"] for entry in ordered], [30, 10, 20]
+            )
+
+    def test_reordering_movies_preserves_unrelated_shared_stream_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "favorites.json"
+            file_path.write_text(
+                '{"stream_ids": [10, 999, 20]}', encoding="utf-8"
+            )
+
+            reorder_favorites(str(file_path), "Movies", [20, 10])
+
+            entries = [
+                {"stream_id": 10, "favorite": True},
+                {"stream_id": 20, "favorite": True},
+            ]
+            ordered = entries_in_favorite_order(str(file_path), "Movies", entries)
+            self.assertEqual([entry["stream_id"] for entry in ordered], [20, 10])
 
 
 if __name__ == "__main__":

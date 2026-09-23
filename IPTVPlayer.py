@@ -128,6 +128,7 @@ from iptv_player.storage import (
     record_history,
     remove_history_entry,
     repair_misclassified_history,
+    reorder_favorites,
     resume_position,
     save_provider_preferences,
     set_favorite,
@@ -1447,7 +1448,7 @@ class IPTVPlayerApp(QMainWindow):
     def configure_search_bar(self, search_bar, list_content_type, stream_type, list_widgets, search_history_list, search_history_list_idx):
         sort_a_z        = QAction("A-Z", self)
         sort_z_a        = QAction("Z-A", self)
-        sort_disabled   = QAction("Sorting disabled", self)
+        sort_disabled   = QAction("Default order", self)
         for sorting_action in (sort_a_z, sort_z_a, sort_disabled):
             sorting_action.setCheckable(True)
 
@@ -1814,6 +1815,8 @@ class IPTVPlayerApp(QMainWindow):
             search_bar, list_content_type, stream_type, list_widgets,
             sorting_enabled, sort_order
         )
+        if list_content_type == 'streaming':
+            self._update_favorite_reordering(stream_type)
 
         if self.remember_category_sorting and list_content_type == 'streaming':
             category_name, category_id = self._selected_category(stream_type)
@@ -2091,6 +2094,10 @@ class IPTVPlayerApp(QMainWindow):
                 self.streaming_item_keyboard_activated
             )
             list_widget.keyboardSelected.connect(self.streaming_item_clicked)
+            list_widget.itemsReordered.connect(
+                lambda content_type=spec['stream_type']:
+                self._favorite_items_reordered(content_type)
+            )
             list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
             list_widget.customContextMenuRequested.connect(
                 lambda position, content_type=spec['stream_type']:
@@ -2395,7 +2402,7 @@ class IPTVPlayerApp(QMainWindow):
         if not isinstance(saved, dict):
             return
         # An account without a saved override must inherit the global setting.
-        # This preserves "Sorting disabled" on a fresh installation.
+        # This preserves "Default order" on a fresh installation.
         saved_fallback = saved.get('fallback', self.category_sort_fallback)
         if saved_fallback in ('a_z', 'z_a', 'disabled'):
             self.category_sort_fallback = saved_fallback
@@ -2492,7 +2499,7 @@ class IPTVPlayerApp(QMainWindow):
         sort_order = 1 if sorting_order == "Z-A" else 0
         print(
             f"sorting {sorting_order}"
-            if sorting_enabled else "sorting disabled"
+            if sorting_enabled else "default order"
         )
         for stream_type in CONTENT_TYPES:
             self.sort_list(
@@ -2758,9 +2765,9 @@ class IPTVPlayerApp(QMainWindow):
 
         self.default_sorting_order_box = QComboBox()
         self.default_sorting_order_box.addItems([
-            "A-Z", "Z-A", "Sorting disabled", REMEMBER_LIST_SORTING
+            "A-Z", "Z-A", "Default order", REMEMBER_LIST_SORTING
         ])
-        self.default_sorting_order_box.setCurrentText("Sorting disabled")
+        self.default_sorting_order_box.setCurrentText("Default order")
         self.default_sorting_order_box.currentTextChanged.connect(lambda e: self.set_default_sorting_order(e, self.default_sorting_order_box))
 
         self.update_checker = QPushButton("Check for updates")
@@ -4270,6 +4277,57 @@ class IPTVPlayerApp(QMainWindow):
         entries = self.entries_per_stream_type.get(stream_type, []) or []
         return entries_in_favorite_order(self.favorites_file, stream_type, entries)
 
+    def _favorite_reordering_enabled(self, stream_type):
+        """Return whether the visible list can safely define favorite order."""
+        category_name, _category_id = self._selected_category(stream_type)
+        sorting_enabled, _sort_order = getattr(
+            self.streaming_search_bars[stream_type],
+            'current_sorting',
+            (self.sorting_enabled, self.sorting_order),
+        )
+        return (
+            category_name == self.fav_categories_text
+            and not sorting_enabled
+            and not self.streaming_search_bars[stream_type].text().strip()
+            and (stream_type != 'Series' or self.series_navigation_level == 0)
+        )
+
+    def _update_favorite_reordering(self, stream_type):
+        """Enable internal row moves only for an unfiltered default-order view."""
+        list_widget = self.streaming_list_widgets.get(stream_type)
+        if list_widget is None:
+            return
+        enabled = self._favorite_reordering_enabled(stream_type)
+        mode = (
+            QtWidgets.QAbstractItemView.InternalMove
+            if enabled else QtWidgets.QAbstractItemView.NoDragDrop
+        )
+        list_widget.setDragDropMode(mode)
+        list_widget.setDefaultDropAction(Qt.MoveAction)
+        list_widget.setDragDropOverwriteMode(False)
+
+    def _favorite_items_reordered(self, stream_type):
+        """Save a completed favorite drag-and-drop operation for this account."""
+        if not self._favorite_reordering_enabled(stream_type):
+            return
+        list_widget = self.streaming_list_widgets[stream_type]
+        entries = []
+        for row in range(list_widget.count()):
+            entry = list_widget.item(row).data(Qt.UserRole)
+            if isinstance(entry, dict):
+                entries.append(entry)
+        id_key = 'series_id' if stream_type == 'Series' else 'stream_id'
+        ordered_ids = [entry.get(id_key) for entry in entries]
+        ordered_ids = [item_id for item_id in ordered_ids if item_id is not None]
+        reorder_favorites(self.favorites_file, stream_type, ordered_ids)
+        self.currently_loaded_streams[stream_type] = list(entries)
+
+        cache_key = self._category_view_key(
+            stream_type, self.fav_categories_text
+        )
+        self.category_view_cache[stream_type][cache_key] = list(entries)
+        self.active_category_view_key[stream_type] = cache_key
+
     def _category_view_key(self, stream_type, category_name, category_id=None):
         """Build the cache key shared by prepared entries and Qt list items."""
         sorting_enabled, sort_order = self._sorting_for_category(
@@ -4437,6 +4495,7 @@ class IPTVPlayerApp(QMainWindow):
                 list_widget.viewport().update()
 
             list_widget.scrollToTop()
+            self._update_favorite_reordering(stream_type)
 
             self.set_progress_bar(100, "Loading finished")
 
@@ -4811,8 +4870,10 @@ class IPTVPlayerApp(QMainWindow):
                 self.streaming_list_widgets['Series'].addItem(item)
 
         self.animate_progress(0, 100, "Loading finished")
+        self._update_favorite_reordering('Series')
 
     def show_seasons(self, seasons_data):
+        self._update_favorite_reordering('Series')
         self.set_progress_bar(0, "Loading items")
 
         self.fetch_series_info(
@@ -4822,6 +4883,7 @@ class IPTVPlayerApp(QMainWindow):
         )
 
     def show_episodes(self, episodes_data):
+        self._update_favorite_reordering('Series')
         self.set_progress_bar(0, "Loading items")
 
         self.streaming_list_widgets['Series'].clear()
@@ -5755,6 +5817,8 @@ class IPTVPlayerApp(QMainWindow):
                     list_widget.setUpdatesEnabled(True)
                     list_widget.viewport().update()
 
+            if list_content_type == 'streaming':
+                self._update_favorite_reordering(stream_type)
             self.set_progress_bar(100, f"Loaded search results")
         except Exception as e:
             print(f"search in list failed: {e}")
