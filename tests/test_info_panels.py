@@ -47,6 +47,11 @@ class InfoPanelResetTests(unittest.TestCase):
         self.assertEqual(panel.live_EPG_info.topLevelItemCount(), 0)
         self.assertFalse(panel.fav_button.isEnabled())
 
+    def test_live_panel_paints_the_application_window_background(self):
+        panel = LiveInfoBox(self.parent)
+
+        self.assertTrue(panel.autoFillBackground())
+
     def test_movie_reset_clears_stale_selection(self):
         panel = MovieInfoBox(self.parent)
         panel.name.setText("Old movie")
@@ -116,8 +121,12 @@ class InfoPanelResetTests(unittest.TestCase):
         self.assertEqual(position, (10, 0, 1, 2))
         self.assertEqual(panel.description_title.text(), "Description:")
         self.assertEqual(
-            panel.verticalScrollBarPolicy(), Qt.ScrollBarAsNeeded
+            panel.verticalScrollBarPolicy(), Qt.ScrollBarAlwaysOff
         )
+        self.assertEqual(
+            panel.description.verticalScrollBarPolicy(), Qt.ScrollBarAsNeeded
+        )
+        self.assertEqual(panel.layout.rowStretch(10), 1)
 
     def test_series_reset_clears_stale_selection(self):
         panel = SeriesInfoBox(self.parent)
@@ -152,8 +161,12 @@ class InfoPanelResetTests(unittest.TestCase):
         self.assertEqual(position, (10, 0, 1, 2))
         self.assertEqual(panel.description_title.text(), "Description:")
         self.assertEqual(
-            panel.verticalScrollBarPolicy(), Qt.ScrollBarAsNeeded
+            panel.verticalScrollBarPolicy(), Qt.ScrollBarAlwaysOff
         )
+        self.assertEqual(
+            panel.description.verticalScrollBarPolicy(), Qt.ScrollBarAsNeeded
+        )
+        self.assertEqual(panel.layout.rowStretch(10), 1)
 
 
 if __name__ == "__main__":

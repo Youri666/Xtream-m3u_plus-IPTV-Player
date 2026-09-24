@@ -300,6 +300,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.vol_slider.setFixedWidth(120)
         self.btn_audio  = QPushButton("Audio")
         self.btn_audio.setEnabled(False)
+        self.audio_controls = QWidget()
+        self.audio_controls.setObjectName("audioControls")
         self.btn_subs   = QPushButton("CC")
         self.btn_subs.setEnabled(False)
         self.btn_fs     = QPushButton()
@@ -363,10 +365,15 @@ class EmbeddedPlayerWindow(QMainWindow):
         btn_row.addStretch(1)
         btn_row.addWidget(self.pl_pos)
         btn_row.addStretch(1)
-        btn_row.addWidget(self.btn_mute)
-        btn_row.addWidget(self.vol_slider)
-        btn_row.addSpacing(8)
-        btn_row.addWidget(self.btn_audio)
+
+        audio_layout = QHBoxLayout(self.audio_controls)
+        audio_layout.setContentsMargins(0, 0, 0, 0)
+        audio_layout.setSpacing(4)
+        audio_layout.addWidget(self.btn_mute)
+        audio_layout.addWidget(self.vol_slider)
+        audio_layout.addSpacing(4)
+        audio_layout.addWidget(self.btn_audio)
+        btn_row.addWidget(self.audio_controls)
         btn_row.addWidget(self.btn_subs)
         btn_row.addWidget(self.btn_fs)
 
@@ -1735,9 +1742,9 @@ class EmbeddedPlayerWindow(QMainWindow):
             except Exception:
                 delta = 0
             over_player_controls = self._event_is_over_widget(event, self.overlay)
-            over_volume_slider = self._event_is_over_widget(event, self.vol_slider)
+            over_audio_controls = self._event_is_over_widget(event, self.audio_controls)
             over_video = self._event_is_over_widget(event, self.video_frame)
-            if (over_player_controls and not over_volume_slider) or over_video:
+            if (over_player_controls and not over_audio_controls) or over_video:
                 if self.seek_slider.isEnabled():
                     if delta > 0:
                         self.preview_wheel_seek(self._seek_step_ms)

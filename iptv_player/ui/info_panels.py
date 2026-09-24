@@ -10,7 +10,7 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtWidgets import (
     QVBoxLayout, QLabel, QPushButton, QWidget, QHBoxLayout, QGridLayout,
-    QTreeWidget, QTreeWidgetItem, QScrollArea
+    QTreeWidget, QTreeWidgetItem, QScrollArea, QTextBrowser, QFrame
 )
 
 
@@ -29,11 +29,35 @@ def _trim_epg_description(description):
         text = text[:-1]
     return text
 
+
+class _DescriptionView(QTextBrowser):
+    """Show plain-text metadata in a resizable, independently scrolling area."""
+
+    def __init__(self, text="—"):
+        super().__init__()
+        self.setFrameShape(QFrame.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setFocusPolicy(Qt.NoFocus)
+        self.document().setDocumentMargin(0)
+        self.setText(text)
+
+    def setText(self, text):
+        """Preserve QLabel-like callers while treating provider text as plain text."""
+        self.setPlainText(str(text or ""))
+
+    def text(self):
+        """Return plain text for compatibility with the former QLabel."""
+        return self.toPlainText()
+
 class LiveInfoBox(QWidget):
     def __init__(self, parent=None):
         super().__init__()
 
         self.parent = parent
+        # Paint the panel with the application Window colour, matching the
+        # Movie and Series information containers in every theme.
+        self.setAutoFillBackground(True)
 
         #Create LIVE TV info box layout
         self.live_EPG_info_box_layout = QVBoxLayout(self)
@@ -140,7 +164,7 @@ class MovieInfoBox(QScrollArea):
         self.yt_code    = None
         self.tmdb_code  = None
 
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setWidgetResizable(True)
         self.setAlignment(Qt.AlignTop)
@@ -148,8 +172,8 @@ class MovieInfoBox(QScrollArea):
         self.widget = QWidget()
 
         self.layout = QGridLayout(self.widget)
-        self.layout.setAlignment(Qt.AlignTop)
         self.layout.setColumnStretch(1, 1)
+        self.layout.setRowStretch(10, 1)
 
         self.maxCoverWidth = 200
 
@@ -181,7 +205,7 @@ class MovieInfoBox(QScrollArea):
         self.director       = QLabel("Director: —")
         self.cast           = QLabel("Cast: —")
         self.description_title = QLabel("Description:")
-        self.description    = QLabel("—")
+        self.description    = _DescriptionView("—")
 
         self.trailer = QLabel()
         self.trailer.setAlignment(Qt.AlignLeft)
@@ -214,7 +238,6 @@ class MovieInfoBox(QScrollArea):
         self.rating.setWordWrap(True)
         self.director.setWordWrap(True)
         self.cast.setWordWrap(True)
-        self.description.setWordWrap(True)
 
         #Create layout with title and favorite button
         self.title_layout = QHBoxLayout()
@@ -304,7 +327,7 @@ class SeriesInfoBox(QScrollArea):
         self.yt_code    = None
         self.tmdb_code  = None
 
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setWidgetResizable(True)
         self.setAlignment(Qt.AlignTop)
@@ -312,8 +335,8 @@ class SeriesInfoBox(QScrollArea):
         self.widget = QWidget()
 
         self.layout = QGridLayout(self.widget)
-        self.layout.setAlignment(Qt.AlignTop)
         self.layout.setColumnStretch(1, 1)
+        self.layout.setRowStretch(10, 1)
 
         self.maxCoverWidth = 200
 
@@ -345,7 +368,7 @@ class SeriesInfoBox(QScrollArea):
         self.director       = QLabel("Director: —")
         self.cast           = QLabel("Cast: —")
         self.description_title = QLabel("Description:")
-        self.description    = QLabel("—")
+        self.description    = _DescriptionView("—")
 
         self.trailer = QLabel()
         self.trailer.setAlignment(Qt.AlignLeft)
@@ -379,7 +402,6 @@ class SeriesInfoBox(QScrollArea):
         self.rating.setWordWrap(True)
         self.director.setWordWrap(True)
         self.cast.setWordWrap(True)
-        self.description.setWordWrap(True)
 
         #Create layout with title and favorite button
         self.title_layout = QHBoxLayout()
