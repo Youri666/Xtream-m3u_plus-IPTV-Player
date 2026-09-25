@@ -26,6 +26,8 @@ class AdvancedPreferenceTests(unittest.TestCase):
                 catalog_cache_max_age_hours=48,
                 detailed_logging_enabled=True,
                 history_size=125,
+                allow_all_category_exports=True,
+                max_series_per_export=42,
                 tmdb_read_access_token="test-token",
             )
 
@@ -45,7 +47,10 @@ class AdvancedPreferenceTests(unittest.TestCase):
                 "enabled=invalid\n"
                 "max_age_hours=0\n"
                 "[History]\n"
-                "max_items_per_type=5000\n",
+                "max_items_per_type=5000\n"
+                "[Export]\n"
+                "allow_all_category_exports=invalid\n"
+                "max_series_per_export=200000\n",
                 encoding="utf-8",
             )
 
@@ -57,6 +62,8 @@ class AdvancedPreferenceTests(unittest.TestCase):
             self.assertTrue(preferences.catalog_cache_enabled)
             self.assertEqual(preferences.catalog_cache_max_age_hours, 1)
             self.assertEqual(preferences.history_size, 1000)
+            self.assertFalse(preferences.allow_all_category_exports)
+            self.assertEqual(preferences.max_series_per_export, 100000)
             self.assertEqual(preferences.tmdb_read_access_token, "")
 
 

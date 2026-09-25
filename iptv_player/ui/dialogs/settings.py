@@ -26,7 +26,12 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from iptv_player.constants import DEFAULT_HISTORY_SIZE, MEDIA_LANGUAGE_OPTIONS
+from iptv_player.constants import (
+    DEFAULT_ALLOW_ALL_CATEGORY_EXPORTS,
+    DEFAULT_HISTORY_SIZE,
+    DEFAULT_MAX_SERIES_PER_EXPORT,
+    MEDIA_LANGUAGE_OPTIONS,
+)
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 from iptv_player.provider.workers import TmdbFetcher
 from iptv_player.provider.network import (
@@ -139,7 +144,7 @@ class NetworkSettingsDialog(QDialog):
         self.user_agent_box.setSizeAdjustPolicy(
             QComboBox.AdjustToMinimumContentsLengthWithIcon
         )
-        self.user_agent_box.setMinimumContentsLength(26)
+        self.user_agent_box.setMinimumContentsLength(12)
         self.user_agent_box.setToolTip("User-Agent sent with IPTV provider requests")
 
         self.connection_timeout_spin = self._create_seconds_spinbox(
@@ -155,6 +160,8 @@ class NetworkSettingsDialog(QDialog):
         general_form.addRow("Connection timeout:", self.connection_timeout_spin)
         general_form.addRow("Read timeout:", self.read_timeout_spin)
 
+        provider_group = QGroupBox("Provider")
+        provider_form = QFormLayout(provider_group)
         self.account_refresh_checkbox = QCheckBox("Enable automatic Info refresh")
         self.account_refresh_checkbox.setChecked(parent.account_info_auto_refresh_enabled)
         self.account_refresh_checkbox.setToolTip(
@@ -171,8 +178,8 @@ class NetworkSettingsDialog(QDialog):
         self.account_refresh_spin.setEnabled(
             self.account_refresh_checkbox.isChecked()
         )
-        general_form.addRow(self.account_refresh_checkbox)
-        general_form.addRow("Info auto-refresh interval:", self.account_refresh_spin)
+        provider_form.addRow(self.account_refresh_checkbox)
+        provider_form.addRow("Info auto-refresh interval:", self.account_refresh_spin)
 
         cache_group = QGroupBox("Provider catalog cache")
         cache_form = QFormLayout(cache_group)
@@ -276,6 +283,28 @@ class NetworkSettingsDialog(QDialog):
         history_form.addRow("Items per type:", self.history_size_spin)
         history_form.addRow(self.clear_history_button)
 
+        export_group = QGroupBox("M3U export")
+        export_form = QFormLayout(export_group)
+        self.allow_all_exports_checkbox = QCheckBox(
+            'Allow "All" category exports'
+        )
+        self.allow_all_exports_checkbox.setChecked(
+            parent.allow_all_category_exports
+        )
+        self.allow_all_exports_checkbox.setToolTip(
+            "Allow complete catalog exports, which may create very large files"
+        )
+        self.max_series_export_spin = QSpinBox()
+        self.max_series_export_spin.setRange(1, 100000)
+        self.max_series_export_spin.setValue(parent.max_series_per_export)
+        self.max_series_export_spin.setToolTip(
+            "Maximum complete series allowed in one export; each series requires a provider request"
+        )
+        export_form.addRow(self.allow_all_exports_checkbox)
+        export_form.addRow(
+            "Maximum series per export:", self.max_series_export_spin
+        )
+
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.Save
             | QDialogButtonBox.Cancel
@@ -287,19 +316,29 @@ class NetworkSettingsDialog(QDialog):
             self.restore_defaults
         )
 
-        main_layout.addWidget(general_group)
-        main_layout.addWidget(cache_group)
-        main_layout.addWidget(live_group)
-        main_layout.addWidget(history_group)
-        main_layout.addWidget(tmdb_group)
-        main_layout.addWidget(diagnostics_group)
+        columns_layout = QHBoxLayout()
+        left_column = QVBoxLayout()
+        right_column = QVBoxLayout()
+        left_column.addWidget(general_group)
+        left_column.addWidget(provider_group)
+        left_column.addWidget(cache_group)
+        left_column.addWidget(diagnostics_group)
+        left_column.addStretch(1)
+        right_column.addWidget(live_group)
+        right_column.addWidget(history_group)
+        right_column.addWidget(export_group)
+        right_column.addWidget(tmdb_group)
+        right_column.addStretch(1)
+        columns_layout.addLayout(left_column, 1)
+        columns_layout.addLayout(right_column, 1)
+        main_layout.addLayout(columns_layout)
         main_layout.addWidget(self.button_box)
 
         # Compute the initial dimensions only after every control has been added.
         # QDialog remains freely resizable because no fixed size is imposed.
         main_layout.activate()
         self.adjustSize()
-        self.resize(min(self.width(), 640), self.height())
+        self.resize(1000, min(self.height(), 700))
 
     @staticmethod
     def _create_seconds_spinbox(value, tooltip):
@@ -329,6 +368,10 @@ class NetworkSettingsDialog(QDialog):
         )
         self.detailed_logging_checkbox.setChecked(False)
         self.history_size_spin.setValue(DEFAULT_HISTORY_SIZE)
+        self.allow_all_exports_checkbox.setChecked(
+            DEFAULT_ALLOW_ALL_CATEGORY_EXPORTS
+        )
+        self.max_series_export_spin.setValue(DEFAULT_MAX_SERIES_PER_EXPORT)
         self.tmdb_token_entry.clear()
 
     def test_tmdb_connection(self):
@@ -367,6 +410,8 @@ class NetworkSettingsDialog(QDialog):
             self.catalog_cache_hours_spin.value(),
             self.detailed_logging_checkbox.isChecked(),
             self.history_size_spin.value(),
+            self.allow_all_exports_checkbox.isChecked(),
+            self.max_series_export_spin.value(),
             self.tmdb_token_entry.text().strip(),
         )
         if force_catalog_refresh:

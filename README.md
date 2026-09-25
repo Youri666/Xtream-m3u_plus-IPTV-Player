@@ -20,7 +20,7 @@ This IPTV player, built with Python and PyQt5, supports Xtream Codes accounts, i
 - **Internal VLC player:** Use playlist navigation, configurable seeking and buffering, subtitles, audio tracks, fullscreen, and optional automatic advancement to the next item.
 - **External players:** Open content in applications such as VLC or SMPlayer.
 - **Movie and Series metadata:** View provider information and optionally fill missing details, posters, and trailers with a personal TMDB API Read Access Token.
-- **VOD link export:** Copy direct URLs or save structured link lists for movies, episodes, seasons, and complete series.
+- **Link and M3U export:** Copy direct URLs, save readable text files, or create M3U playlists for Live channels, Movies, Series, individual items, multiple selections, or complete categories.
 - **Personalized interface:** Reorder tabs, choose the startup tab, resize columns, and use Light, Dark, or System themes.
 - **Update notifications:** Check manually or automatically for stable releases; beta builds can also follow newer beta versions.
 - **Cross-platform build scripts:** Create Windows, MacOS, and Linux packages from isolated local Python environments.
@@ -53,6 +53,8 @@ The **Live**, **Movies**, and **Series** tabs all use the same three-column layo
 - **Right column:** information about the currently selected item
 
 You can navigate through the first two columns with the **Up/Down arrow keys** and use **Enter** to open or select an item.
+
+Use **Ctrl** or **Shift** to select multiple categories or items. Right-click a selection to copy its direct URLs, save a readable text file, or create an M3U playlist that can be opened in a compatible media player. Selecting **All** takes priority over any other selected category. Complete `All` exports are disabled by default, and complete-Series exports are limited to 10 series because every series requires a separate provider request. Both safeguards can be adjusted under **Settings → Advanced settings → M3U export**.
 
 Both the category and content lists include a **search bar**, a **clear search** button, and a **filter** button.  
 The first column also includes a **Categories** button that lets you choose which categories are visible.
@@ -189,6 +191,7 @@ Advanced settings provide additional control over:
 - automatic Info-tab refresh
 - provider catalog caching and refresh interval
 - LIVE stream availability checks
+- M3U export safeguards for complete catalogs and multi-Series requests
 - detailed diagnostic logging
 - History size and cleanup
 - optional TMDB metadata enrichment with a connection test

@@ -46,6 +46,7 @@ from iptv_player.bootstrap import (
 from iptv_player.constants import (
     CURRENT_CONFIG_SCHEMA_VERSION,
     CURRENT_VERSION,
+    DEFAULT_ALLOW_ALL_CATEGORY_EXPORTS,
     DEFAULT_INTERNAL_AUTO_ADVANCE_SECONDS,
     DEFAULT_INTERNAL_AUTO_PLAY_NEXT,
     DEFAULT_INTERNAL_NETWORK_CACHING_MS,
@@ -53,6 +54,7 @@ from iptv_player.constants import (
     DEFAULT_INTERNAL_SPEED_STEP,
     DEFAULT_INTERNAL_VOLUME_STEP_PERCENT,
     DEFAULT_HISTORY_SIZE,
+    DEFAULT_MAX_SERIES_PER_EXPORT,
     DEFAULT_RESUME_BEHAVIOR,
     DEFAULT_URL_FORMATS,
     GITHUB_REPO,
@@ -101,10 +103,15 @@ from iptv_player.ui.dialogs.settings import (
     NetworkSettingsDialog,
 )
 from iptv_player.ui.dialogs.accounts import AccountManager
-from iptv_player.ui.widgets import KeyboardNavigableListWidget
+from iptv_player.ui.widgets import (
+    KeyboardNavigableListWidget,
+    context_selected_items,
+)
 from iptv_player.download_links import (
     download_link_text,
+    export_restriction,
     flatten_series_episodes,
+    m3u_playlist_text,
     safe_download_filename,
     structured_download_text,
 )
@@ -266,6 +273,8 @@ class IPTVPlayerApp(QMainWindow):
         self.internal_auto_advance_seconds = DEFAULT_INTERNAL_AUTO_ADVANCE_SECONDS
         self.internal_network_caching_ms = DEFAULT_INTERNAL_NETWORK_CACHING_MS
         self.history_size = DEFAULT_HISTORY_SIZE
+        self.allow_all_category_exports = DEFAULT_ALLOW_ALL_CATEGORY_EXPORTS
+        self.max_series_per_export = DEFAULT_MAX_SERIES_PER_EXPORT
         self.default_url_formats = dict(DEFAULT_URL_FORMATS)
 
         self.update_user_data_file()
@@ -286,6 +295,7 @@ class IPTVPlayerApp(QMainWindow):
         self.current_series_entry = None
         self.current_series_season = None
         self._pending_history_series = None
+        self._download_export_batch = None
 
         self.streaming_search_history_list      = []
         self.streaming_search_history_list_idx  = [0]
@@ -2058,6 +2068,14 @@ class IPTVPlayerApp(QMainWindow):
             list_widget.itemClicked.connect(self.category_item_clicked)
             list_widget.keyboardActivated.connect(self.category_item_clicked)
             list_widget.keyboardSelected.connect(self.category_item_clicked)
+            list_widget.setSelectionMode(
+                QtWidgets.QAbstractItemView.ExtendedSelection
+            )
+            list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+            list_widget.customContextMenuRequested.connect(
+                lambda position, content_type=spec['stream_type']:
+                self._show_category_download_context_menu(content_type, position)
+            )
             self.category_list_widgets[spec['stream_type']] = list_widget
             setattr(self, f"category_list_{spec['attribute']}", list_widget)
 
@@ -2084,6 +2102,9 @@ class IPTVPlayerApp(QMainWindow):
         self.streaming_list_widgets = {}
         for spec in CONTENT_TAB_SPECS:
             list_widget = KeyboardNavigableListWidget()
+            list_widget.setSelectionMode(
+                QtWidgets.QAbstractItemView.ExtendedSelection
+            )
             list_widget.setLayoutMode(QListView.Batched)
             list_widget.setBatchSize(2000)
             list_widget.itemDoubleClicked.connect(
@@ -2132,64 +2153,181 @@ class IPTVPlayerApp(QMainWindow):
                 }
             """)
 
-    def _show_download_context_menu(self, stream_type, position):
-        """Show VOD export actions matching the row and Series navigation level."""
-        if stream_type == "LIVE":
+    def _show_category_download_context_menu(self, stream_type, position):
+        """Export the combined contents of one or more selected categories."""
+        list_widget = self.category_list_widgets[stream_type]
+        clicked_item = list_widget.itemAt(position)
+        if clicked_item is None:
             return
-        list_widget = self.streaming_list_widgets[stream_type]
-        item = list_widget.itemAt(position)
-        if item is None or item.text() in (self.go_back_text, "No items in list..."):
-            return
-        data = item.data(Qt.UserRole)
-        if not data:
-            return
-
-        if stream_type == "Movies" and isinstance(data, dict):
-            scope = "movie"
-            title = data.get("name", item.text())
-            export_data = data
-        elif (
-            stream_type == "Series"
-            and self.series_navigation_level == 0
-            and isinstance(data, dict)
-        ):
-            scope = "series"
-            title = data.get("name", item.text())
-            export_data = data
-        elif (
-            stream_type == "Series"
-            and self.series_navigation_level == 1
-            and isinstance(data, list)
-        ):
-            scope = "season"
-            series_title = (self.current_series_entry or {}).get("name", "Series")
-            title = f"{series_title} - {item.text()}"
-            export_data = {
-                "episodes": data,
-                "season": item.text(),
-                "series_title": series_title,
-            }
-        elif (
-            stream_type == "Series"
-            and self.series_navigation_level == 2
-            and isinstance(data, dict)
-        ):
-            scope = "episode"
-            title = data.get("title", item.text())
-            export_data = data
-        else:
+        selected_items = context_selected_items(list_widget, clicked_item)
+        categories = [item.data(Qt.UserRole) or {} for item in selected_items]
+        if not categories:
             return
 
-        list_widget.setCurrentItem(item)
+        all_category = next(
+            (
+                category for category in categories
+                if category.get("category_name") == self.all_categories_text
+            ),
+            None,
+        )
+        if all_category is not None:
+            categories = [all_category]
+
+        entries = []
+        seen = set()
+        id_key = "series_id" if stream_type == "Series" else "stream_id"
+        for category in categories:
+            category_name = category.get("category_name", "")
+            category_id = category.get("category_id")
+            for entry in self._raw_entries_for_category(
+                stream_type, category_name, category_id
+            ):
+                identity = entry.get(id_key)
+                identity = (id_key, str(identity)) if identity is not None else (
+                    "fallback", entry.get("url"), entry.get("name")
+                )
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                entries.append(entry)
+
+        if not entries:
+            self.animate_progress(0, 100, "No items are available to export", "error")
+            return
+
+        requests = [
+            self._root_download_request(stream_type, entry) for entry in entries
+        ]
+        requests = [request for request in requests if request is not None]
+        category_names = [
+            category.get("category_name", "Category") for category in categories
+        ]
+        title = (
+            category_names[0]
+            if len(category_names) == 1
+            else f"{len(category_names)} selected categories"
+        )
         menu = QMenu(list_widget)
-        plural = "s" if scope in ("season", "series") else ""
-        copy_action = menu.addAction(f"Copy {scope} download URL{plural}")
-        save_action = menu.addAction(f"Save {scope} download URL{plural}…")
+        count = len(categories)
+        label = "category" if count == 1 else f"{count} categories"
+        copy_action = menu.addAction(f"Copy {label} download URLs")
+        save_action = menu.addAction(f"Save {label} as text file…")
+        m3u_action = menu.addAction(f"Save {label} as M3U playlist…")
         selected_action = menu.exec_(list_widget.viewport().mapToGlobal(position))
         if selected_action is copy_action:
-            self._export_download_links(scope, title, export_data, "copy")
+            self._export_download_requests(
+                requests, title, "copy", includes_all=all_category is not None
+            )
         elif selected_action is save_action:
-            self._export_download_links(scope, title, export_data, "save")
+            self._export_download_requests(
+                requests, title, "save", includes_all=all_category is not None
+            )
+        elif selected_action is m3u_action:
+            self._export_download_requests(
+                requests, title, "m3u", includes_all=all_category is not None
+            )
+
+    def _root_download_request(self, stream_type, entry):
+        """Describe one top-level catalog entry for the shared export pipeline."""
+        if not isinstance(entry, dict):
+            return None
+        scope = {
+            "LIVE": "live",
+            "Movies": "movie",
+            "Series": "series",
+        }.get(stream_type)
+        if scope is None:
+            return None
+        return {
+            "scope": scope,
+            "title": entry.get("name", scope.title()),
+            "data": entry,
+        }
+
+    def _show_download_context_menu(self, stream_type, position):
+        """Show export actions for the selected rows at the current navigation level."""
+        list_widget = self.streaming_list_widgets[stream_type]
+        clicked_item = list_widget.itemAt(position)
+        if clicked_item is None:
+            return
+        selected_items = [
+            item for item in context_selected_items(list_widget, clicked_item)
+            if item.text() not in (self.go_back_text, "No items in list...")
+            and item.data(Qt.UserRole)
+        ]
+        if not selected_items:
+            return
+
+        requests = []
+        series_title = (self.current_series_entry or {}).get("name", "Series")
+        for item in selected_items:
+            data = item.data(Qt.UserRole)
+            if stream_type in ("LIVE", "Movies") and isinstance(data, dict):
+                request = self._root_download_request(stream_type, data)
+            elif (
+                stream_type == "Series"
+                and self.series_navigation_level == 0
+                and isinstance(data, dict)
+            ):
+                request = self._root_download_request(stream_type, data)
+            elif (
+                stream_type == "Series"
+                and self.series_navigation_level == 1
+                and isinstance(data, list)
+            ):
+                request = {
+                    "scope": "season",
+                    "title": f"{series_title} - {item.text()}",
+                    "data": {
+                        "episodes": data,
+                        "season": item.text(),
+                        "series_title": series_title,
+                    },
+                }
+            elif (
+                stream_type == "Series"
+                and self.series_navigation_level == 2
+                and isinstance(data, dict)
+            ):
+                request = {
+                    "scope": "episode",
+                    "title": data.get("title", item.text()),
+                    "data": data,
+                }
+            else:
+                request = None
+            if request is not None:
+                requests.append(request)
+
+        if not requests:
+            return
+        title = (
+            requests[0]["title"]
+            if len(requests) == 1
+            else f"{len(requests)} selected items"
+        )
+        menu = QMenu(list_widget)
+        if len(requests) == 1:
+            scope = requests[0]["scope"]
+            plural = "s" if scope in ("season", "series") else ""
+            copy_label = f"Copy {scope} download URL{plural}"
+            save_label = f"Save {scope} as text file…"
+            m3u_label = f"Save {scope} as M3U playlist…"
+        else:
+            copy_label = f"Copy {len(requests)} selected download URLs"
+            save_label = f"Save {len(requests)} selected items as text file…"
+            m3u_label = f"Save {len(requests)} selected items as M3U playlist…"
+        copy_action = menu.addAction(copy_label)
+        save_action = menu.addAction(save_label)
+        m3u_action = menu.addAction(m3u_label)
+        selected_action = menu.exec_(list_widget.viewport().mapToGlobal(position))
+        if selected_action is copy_action:
+            self._export_download_requests(requests, title, "copy")
+        elif selected_action is save_action:
+            self._export_download_requests(requests, title, "save")
+        elif selected_action is m3u_action:
+            self._export_download_requests(requests, title, "m3u")
 
     def _episode_download_url(self, episode):
         """Build an episode URL using the active account's customized template."""
@@ -2200,12 +2338,13 @@ class IPTVPlayerApp(QMainWindow):
         })
 
     @staticmethod
-    def _download_record(entry, url, season=None):
+    def _download_record(entry, url, season=None, group_title=None):
         """Build the descriptive metadata used only by saved text files."""
         return {
             "url": url,
             "title": entry.get("title") or entry.get("name", ""),
             "season": season,
+            "group_title": group_title,
             "episode_number": (
                 entry.get("episode_num")
                 or entry.get("episode_number")
@@ -2214,71 +2353,234 @@ class IPTVPlayerApp(QMainWindow):
         }
 
     def _export_download_links(self, scope, title, data, mode):
-        """Resolve the requested VOD links and copy or save them."""
-        if scope == "series":
-            series_id = data.get("series_id")
-            if not series_id:
-                self.animate_progress(
-                    0, 100, "Series download links are unavailable", "error"
-                )
-                return
-            account_id = self.active_account_id
-            self.set_progress_bar(0, "Loading series download links")
-            fetcher = SeriesInfoFetcher(
-                self.server, self.username, self.password, series_id, False,
-                self, hide_error_details=True
-            )
-            fetcher.signals.finished.connect(
-                lambda series_info, _show_request:
-                self._complete_series_download_export(
-                    series_info, title, mode, account_id
-                )
-            )
-            fetcher.signals.error.connect(self._download_export_failed)
-            self.threadpool.start(fetcher)
-            return
-
-        if scope == "movie":
-            urls = [data.get("url", "")]
-            records = [self._download_record(data, urls[0])]
-            document_title = title
-        elif scope == "episode":
-            urls = [data.get("url") or self._episode_download_url(data)]
-            records = [self._download_record(data, urls[0])]
-            document_title = title
-        else:
-            episodes = data.get("episodes", [])
-            season = data.get("season")
-            urls = [self._episode_download_url(episode) for episode in episodes]
-            records = [
-                self._download_record(episode, url, season)
-                for episode, url in zip(episodes, urls)
-            ]
-            document_title = data.get("series_title", title)
-        self._deliver_download_links(
-            urls, title, mode, records, document_title
+        """Keep the single-item entry point backed by the batch export pipeline."""
+        self._export_download_requests(
+            [{"scope": scope, "title": title, "data": data}], title, mode
         )
 
-    def _complete_series_download_export(self, series_info, title, mode, account_id):
-        """Finish an asynchronous complete-series export for the same account."""
-        if account_id != self.active_account_id:
+    def _export_download_requests(
+        self, requests, title, mode, includes_all=False
+    ):
+        """Resolve a mixed selection and deliver all URLs as one export."""
+        restriction, series_count = export_restriction(
+            requests,
+            includes_all,
+            self.allow_all_category_exports,
+            self.max_series_per_export,
+        )
+        if restriction is not None:
+            self._show_download_export_restriction(restriction, series_count)
+            return
+        if self._download_export_batch is not None:
+            self._update_download_export_progress(
+                self._download_export_batch, already_running=True
+            )
+            return
+
+        batch = {
+            "account_id": self.active_account_id,
+            "mode": mode,
+            "title": title,
+            "urls": [],
+            "records": [],
+            "seen_urls": set(),
+            "series_jobs": [],
+            "series_total": 0,
+            "series_completed": 0,
+            "failed_series": 0,
+            "group_series": len(requests) > 1,
+            "worker": None,
+        }
+        self._download_export_batch = batch
+
+        for request in requests:
+            scope = request.get("scope")
+            item_title = request.get("title", "Download links")
+            data = request.get("data") or {}
+            if scope == "series":
+                series_id = data.get("series_id")
+                if series_id:
+                    batch["series_jobs"].append({
+                        "series_id": series_id,
+                        "title": item_title,
+                    })
+                else:
+                    batch["failed_series"] += 1
+                continue
+
+            if scope in ("live", "movie"):
+                content_type = "LIVE" if scope == "live" else "Movies"
+                url = data.get("url") or self._history_entry_url({
+                    "type": content_type,
+                    "stream_id": data.get("stream_id"),
+                    "container_extension": data.get("container_extension", ""),
+                })
+                self._append_download_export_record(
+                    batch, url, self._download_record(data, url)
+                )
+                continue
+
+            if scope == "episode":
+                url = data.get("url") or self._episode_download_url(data)
+                self._append_download_export_record(
+                    batch, url, self._download_record(data, url)
+                )
+                continue
+
+            if scope == "season":
+                season = data.get("season")
+                group_title = (
+                    data.get("series_title") if batch["group_series"] else None
+                )
+                for episode in data.get("episodes", []):
+                    url = episode.get("url") or self._episode_download_url(episode)
+                    self._append_download_export_record(
+                        batch,
+                        url,
+                        self._download_record(
+                            episode, url, season, group_title
+                        ),
+                    )
+
+        if batch["series_jobs"]:
+            batch["series_total"] = len(batch["series_jobs"])
+            self._start_next_series_download_export(batch)
+        else:
+            self._finish_download_export(batch)
+
+    def _show_download_export_restriction(self, restriction, series_count):
+        """Explain why a potentially excessive provider export was blocked."""
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Warning)
+        if restriction == "all_disabled":
+            dialog.setWindowTitle("All category export disabled")
+            dialog.setText(
+                "Exporting the complete All category can create a very large "
+                "file and, for Series, may send thousands of requests to your "
+                "provider. This could trigger rate limiting or an account ban.\n\n"
+                "To allow it, open Settings → Advanced settings → M3U export and "
+                'enable Allow "All" category exports.'
+            )
+        else:
+            dialog.setWindowTitle("Series export limit reached")
+            dialog.setText(
+                f"This selection contains {series_count:,} complete series. Each "
+                "series requires a separate request to your provider, so exports "
+                f"are limited to {self.max_series_per_export:,} series by default. "
+                "A very large export could trigger rate limiting or an account "
+                "ban.\n\nTo change the limit, open Settings → Advanced settings "
+                "→ M3U export and adjust Maximum series per export."
+            )
+        dialog.setStandardButtons(QMessageBox.Ok)
+        self._prepare_dialog_theme(dialog)
+        dialog.exec_()
+
+    @staticmethod
+    def _append_download_export_record(batch, url, record):
+        """Append a valid URL once while keeping its descriptive file record aligned."""
+        normalized_url = str(url or "").strip()
+        if not normalized_url or normalized_url in batch["seen_urls"]:
+            return
+        batch["seen_urls"].add(normalized_url)
+        batch["urls"].append(normalized_url)
+        batch["records"].append(record)
+
+    def _start_next_series_download_export(self, batch):
+        """Fetch selected series sequentially to avoid flooding the provider."""
+        if self._download_export_batch is not batch:
+            return
+        if batch["account_id"] != self.active_account_id:
+            self._download_export_batch = None
+            self.animate_progress(0, 100, "Download export cancelled", "error")
+            return
+        if not batch["series_jobs"]:
+            self._finish_download_export(batch)
+            return
+
+        self._update_download_export_progress(batch)
+        job = batch["series_jobs"].pop(0)
+        fetcher = SeriesInfoFetcher(
+            self.server,
+            self.username,
+            self.password,
+            job["series_id"],
+            False,
+            self,
+            hide_error_details=True,
+        )
+        batch["worker"] = fetcher
+        fetcher.signals.finished.connect(
+            lambda series_info, _show_request, current=batch, current_job=job:
+            self._series_download_export_finished(
+                current, current_job, series_info
+            )
+        )
+        fetcher.signals.error.connect(
+            lambda _error, current=batch: self._series_download_export_failed(current)
+        )
+        self.threadpool.start(fetcher)
+
+    def _update_download_export_progress(self, batch, already_running=False):
+        """Keep long series exports visible, including after a repeated request."""
+        total = batch.get("series_total", 0)
+        completed = batch.get("series_completed", 0)
+        if total <= 0:
+            self.set_progress_bar(1, "Preparing download export")
+            return
+        current = min(completed + 1, total)
+        percentage = max(1, int(completed * 100 / total))
+        prefix = "Download export already running" if already_running else "Loading series download links"
+        self.set_progress_bar(
+            percentage,
+            f"{prefix}: {current:,} of {total:,}",
+        )
+
+    def _series_download_export_finished(self, batch, job, series_info):
+        """Append one fetched series and continue the sequential export queue."""
+        if self._download_export_batch is not batch:
             return
         episodes = flatten_series_episodes(
             series_info.get("episodes", {}) if isinstance(series_info, dict) else {}
         )
-        urls = [self._episode_download_url(episode) for episode in episodes]
-        records = [
-            self._download_record(
-                episode, url, episode.get("_export_season")
+        group_title = job["title"] if batch["group_series"] else None
+        for episode in episodes:
+            url = episode.get("url") or self._episode_download_url(episode)
+            self._append_download_export_record(
+                batch,
+                url,
+                self._download_record(
+                    episode,
+                    url,
+                    episode.get("_export_season"),
+                    group_title,
+                ),
             )
-            for episode, url in zip(episodes, urls)
-        ]
-        self._deliver_download_links(urls, title, mode, records, title)
+        batch["series_completed"] += 1
+        batch["worker"] = None
+        self._start_next_series_download_export(batch)
 
-    def _download_export_failed(self, _error_message):
-        """Report a provider failure without logging credential-bearing URLs."""
-        logging.warning("Could not load download links")
-        self.animate_progress(0, 100, "Failed loading download links", "error")
+    def _series_download_export_failed(self, batch):
+        """Continue a batch after one provider request fails without logging URLs."""
+        if self._download_export_batch is not batch:
+            return
+        logging.warning("Could not load selected series download links")
+        batch["failed_series"] += 1
+        batch["series_completed"] += 1
+        batch["worker"] = None
+        self._start_next_series_download_export(batch)
+
+    def _finish_download_export(self, batch):
+        """Release the active batch and send its collected URLs to the chosen target."""
+        if self._download_export_batch is not batch:
+            return
+        self._download_export_batch = None
+        self._deliver_download_links(
+            batch["urls"],
+            batch["title"],
+            batch["mode"],
+            batch["records"],
+            batch["title"],
+        )
 
     def _deliver_download_links(
         self, urls, title, mode, records=None, document_title=None
@@ -2295,18 +2597,27 @@ class IPTVPlayerApp(QMainWindow):
             self.animate_progress(0, 100, f"{count} download {noun} copied")
             return
 
+        is_m3u = mode == "m3u"
         filename, _ = QFileDialog.getSaveFileName(
             self,
-            "Save download URLs",
-            safe_download_filename(title),
-            "Text files (*.txt);;All files (*)",
+            "Save M3U playlist" if is_m3u else "Save download URLs",
+            safe_download_filename(
+                title, extension=".m3u" if is_m3u else ".txt"
+            ),
+            (
+                "M3U playlists (*.m3u);;All files (*)"
+                if is_m3u
+                else "Text files (*.txt);;All files (*)"
+            ),
         )
         if not filename:
             return
         try:
             with open(filename, "w", encoding="utf-8", newline="\n") as output_file:
                 output_file.write(
-                    structured_download_text(
+                    m3u_playlist_text(records or [])
+                    if is_m3u
+                    else structured_download_text(
                         document_title or title, records or []
                     )
                 )
@@ -2975,7 +3286,8 @@ class IPTVPlayerApp(QMainWindow):
                              stream_status_enabled, account_refresh_interval,
                              account_auto_refresh_enabled, catalog_cache_enabled,
                              catalog_cache_max_age_hours, detailed_logging_enabled,
-                             history_size, tmdb_read_access_token):
+                             history_size, allow_all_category_exports,
+                             max_series_per_export, tmdb_read_access_token):
         """Apply and persist all advanced provider settings in one operation."""
         preferences = AdvancedPreferences(
             user_agent=user_agent or DEFAULT_USER_AGENT_HEADER,
@@ -2990,6 +3302,8 @@ class IPTVPlayerApp(QMainWindow):
             catalog_cache_max_age_hours=catalog_cache_max_age_hours,
             detailed_logging_enabled=detailed_logging_enabled,
             history_size=history_size,
+            allow_all_category_exports=allow_all_category_exports,
+            max_series_per_export=max_series_per_export,
             tmdb_read_access_token=tmdb_read_access_token,
         )
 
@@ -3027,6 +3341,8 @@ class IPTVPlayerApp(QMainWindow):
         self.catalog_cache_max_age_hours = preferences.catalog_cache_max_age_hours
         self.detailed_logging_enabled = preferences.detailed_logging_enabled
         self.history_size = preferences.history_size
+        self.allow_all_category_exports = preferences.allow_all_category_exports
+        self.max_series_per_export = preferences.max_series_per_export
         previous_tmdb_token = getattr(self, "tmdb_read_access_token", None)
         self.tmdb_read_access_token = preferences.tmdb_read_access_token
         if (
