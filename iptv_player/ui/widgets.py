@@ -14,17 +14,15 @@ class KeyboardNavigableListWidget(QListWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._tab_target = None
+        # QAbstractItemModel provides the authoritative notification for an
+        # internal row move. Comparing temporary PyQt wrapper identities in
+        # dropEvent is unreliable because their memory addresses are reused.
+        self.model().rowsMoved.connect(
+            lambda *_args: self.itemsReordered.emit()
+        )
 
     def set_tab_target(self, target):
         self._tab_target = target
-
-    def dropEvent(self, event):
-        """Report a completed internal row move to the owning catalog view."""
-        previous_order = [id(self.item(row)) for row in range(self.count())]
-        super().dropEvent(event)
-        current_order = [id(self.item(row)) for row in range(self.count())]
-        if current_order != previous_order:
-            self.itemsReordered.emit()
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
