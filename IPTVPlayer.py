@@ -2669,28 +2669,24 @@ class IPTVPlayerApp(QMainWindow):
 
         self._load_category_sort_preferences(None)
 
-        match self.default_sorting_order_box.currentText():
-            case "A-Z":
-                self.sorting_enabled    = True
-                self.sorting_order      = 0
-                self.remember_category_sorting = False
-
-            case "Z-A":
-                self.sorting_enabled    = True
-                self.sorting_order      = 1
-
-                self.remember_category_sorting = False
-
-            case "Remember per list":
-                # Unsaved categories inherit the last persisted global preference.
-                self.sorting_enabled    = True
-                self.sorting_order      = 0
-                self.remember_category_sorting = True
-
-            case _:
-                self.sorting_enabled    = False
-                self.sorting_order      = 0
-                self.remember_category_sorting = False
+        current_sorting = self.default_sorting_order_box.currentText()
+        if current_sorting == "A-Z":
+            self.sorting_enabled = True
+            self.sorting_order = 0
+            self.remember_category_sorting = False
+        elif current_sorting == "Z-A":
+            self.sorting_enabled = True
+            self.sorting_order = 1
+            self.remember_category_sorting = False
+        elif current_sorting == "Remember per list":
+            # Unsaved categories inherit the last persisted global preference.
+            self.sorting_enabled = True
+            self.sorting_order = 0
+            self.remember_category_sorting = True
+        else:
+            self.sorting_enabled = False
+            self.sorting_order = 0
+            self.remember_category_sorting = False
 
     def _load_category_sort_preferences(self, config):
         """Reset category sorting before an account-specific load."""
@@ -2836,30 +2832,25 @@ class IPTVPlayerApp(QMainWindow):
 
         print(f"setting default sorting order: {sorting_order}")
 
-        match sorting_order:
-            case "A-Z":
-                self.sorting_enabled    = True
-                self.sorting_order      = 0
-                self.remember_category_sorting = False
-                self.category_sort_fallback = 'a_z'
-
-            case "Z-A":
-                self.sorting_enabled    = True
-                self.sorting_order      = 1
-
-                self.remember_category_sorting = False
-                self.category_sort_fallback = 'z_a'
-
-            case "Remember per list":
-                self.sorting_enabled    = True
-                self.sorting_order      = 0
-                self.remember_category_sorting = True
-
-            case _:
-                self.sorting_enabled    = False
-                self.sorting_order      = 0
-                self.remember_category_sorting = False
-                self.category_sort_fallback = 'disabled'
+        if sorting_order == "A-Z":
+            self.sorting_enabled = True
+            self.sorting_order = 0
+            self.remember_category_sorting = False
+            self.category_sort_fallback = 'a_z'
+        elif sorting_order == "Z-A":
+            self.sorting_enabled = True
+            self.sorting_order = 1
+            self.remember_category_sorting = False
+            self.category_sort_fallback = 'z_a'
+        elif sorting_order == "Remember per list":
+            self.sorting_enabled = True
+            self.sorting_order = 0
+            self.remember_category_sorting = True
+        else:
+            self.sorting_enabled = False
+            self.sorting_order = 0
+            self.remember_category_sorting = False
+            self.category_sort_fallback = 'disabled'
 
         # Cached category views include the selected ordering, so discard them when
         # the global sorting preference changes.
@@ -5110,42 +5101,38 @@ class IPTVPlayerApp(QMainWindow):
                 return
 
             # Series actions depend on the current show/season/episode level.
-            match self.series_navigation_level:
-                case 0:  # Highest level, either LIVE, VOD or series
-                    if clicked_item_text == self.go_back_text:
-                        return
+            if self.series_navigation_level == 0:
+                # Highest level, either LIVE, VOD or Series.
+                if clicked_item_text == self.go_back_text:
+                    return
 
-                    if 'series' in stream_type:
-                        self.current_series_entry = clicked_item_data
-                        self.series_navigation_level = 1
-                        self.show_seasons(clicked_item_data)
-
-                case 1:  # Series seasons
-                    if clicked_item_text == self.go_back_text:
-                        self.series_navigation_level = 0
-                        self.go_back_to_level(self.series_navigation_level)
-                        
-                    else:
-                        self.current_series_season = clicked_item_text.removeprefix(
-                            "Season "
-                        )
-                        self.series_navigation_level = 2
-                        self.show_episodes(clicked_item_data)
-
-                case 2:  # Series episodes
-                    if clicked_item_text == self.go_back_text:
-                        self.series_navigation_level = 1
-                        self.go_back_to_level(self.series_navigation_level)
-                        
-                    else:
-                        # Play episode
-                        self.play_item(
-                            clicked_item_data['url'],
-                            clicked_item_data.get('title', clicked_item_text),
-                            self._history_metadata(
-                                "Series", clicked_item_data, clicked_item_text
-                            ),
-                        )
+                if 'series' in stream_type:
+                    self.current_series_entry = clicked_item_data
+                    self.series_navigation_level = 1
+                    self.show_seasons(clicked_item_data)
+            elif self.series_navigation_level == 1:
+                if clicked_item_text == self.go_back_text:
+                    self.series_navigation_level = 0
+                    self.go_back_to_level(self.series_navigation_level)
+                else:
+                    self.current_series_season = clicked_item_text.removeprefix(
+                        "Season "
+                    )
+                    self.series_navigation_level = 2
+                    self.show_episodes(clicked_item_data)
+            elif self.series_navigation_level == 2:
+                if clicked_item_text == self.go_back_text:
+                    self.series_navigation_level = 1
+                    self.go_back_to_level(self.series_navigation_level)
+                else:
+                    # Play episode.
+                    self.play_item(
+                        clicked_item_data['url'],
+                        clicked_item_data.get('title', clicked_item_text),
+                        self._history_metadata(
+                            "Series", clicked_item_data, clicked_item_text
+                        ),
+                    )
 
         except Exception as e:
             print(f"failed item double click: {e}")
@@ -5917,64 +5904,54 @@ class IPTVPlayerApp(QMainWindow):
         search_history_size = len(history_list)
         text = search_bar.text()
 
-        match e.key():
-            case Qt.Key_Return:
-                
-                history_list_idx[0] = 0
+        key = e.key()
+        if key == Qt.Key_Return:
+            history_list_idx[0] = 0
 
-                if text:
-                    history_list.insert(0, text)
+            if text:
+                history_list.insert(0, text)
 
-                    if search_history_size >= self.max_search_history_size:
-                        history_list.pop(-1)
+                if search_history_size >= self.max_search_history_size:
+                    history_list.pop(-1)
 
-                self.search_in_list(list_content_type, stream_type, text)
+            self.search_in_list(list_content_type, stream_type, text)
+        elif key == Qt.Key_Up:
+            if not history_list:
+                return
 
-            case Qt.Key_Up:
-                if not history_list:
-                    return
+            history_list_idx[0] += 1
+            if history_list_idx[0] >= search_history_size:
+                history_list_idx[0] = search_history_size - 1
 
-                history_list_idx[0] += 1
-                if history_list_idx[0] >= search_history_size:
-                    history_list_idx[0] = search_history_size - 1
+            search_bar.setText(history_list[history_list_idx[0]])
+        elif key == Qt.Key_Down:
+            if not history_list:
+                return
 
+            history_list_idx[0] -= 1
+            if history_list_idx[0] < 0:
+                history_list_idx[0] = -1
+                search_bar.clear()
+            else:
                 search_bar.setText(history_list[history_list_idx[0]])
-
-            case Qt.Key_Down:
-                if not history_list:
-                    return
-
-                history_list_idx[0] -= 1
-                if history_list_idx[0] < 0:
-                    history_list_idx[0] = -1
-                    search_bar.clear()
-                else:
-                    search_bar.setText(history_list[history_list_idx[0]])
-
-            case Qt.Key_Left:
-                search_bar.cursorBackward(False, 1)
-
-            case Qt.Key_Right:
+        elif key == Qt.Key_Left:
+            search_bar.cursorBackward(False, 1)
+        elif key == Qt.Key_Right:
+            search_bar.cursorForward(False, 1)
+        elif key == Qt.Key_Backspace:
+            search_bar.backspace()
+        elif key == Qt.Key_Delete:
+            if search_bar.cursorPosition() < len(text):
                 search_bar.cursorForward(False, 1)
-
-            case Qt.Key_Backspace:
                 search_bar.backspace()
-
-            case Qt.Key_Delete:
-                if search_bar.cursorPosition() < len(text):
-                    search_bar.cursorForward(False, 1)
-                    search_bar.backspace()
-
-            case Qt.Key_Home:
-                if search_bar.cursorPosition() != 0:
-                    search_bar.setCursorPosition(0)
-
-            case Qt.Key_End:
-                if search_bar.cursorPosition() != len(text):
-                    search_bar.setCursorPosition(len(text))
-
-            case _:
-                search_bar.insert(e.text())
+        elif key == Qt.Key_Home:
+            if search_bar.cursorPosition() != 0:
+                search_bar.setCursorPosition(0)
+        elif key == Qt.Key_End:
+            if search_bar.cursorPosition() != len(text):
+                search_bar.setCursorPosition(len(text))
+        else:
+            search_bar.insert(e.text())
 
     def search_in_list(self, list_content_type, stream_type, text):
         """Filter source entries for the current column and Series navigation level.
@@ -6063,74 +6040,76 @@ class IPTVPlayerApp(QMainWindow):
                         self.series_navigation_level if stream_type == 'Series' else 0
                     )
 
-                    match navigation_level:
-                        case 0:  # LIVE/VOD/Series
-                            matching_entries = [
-                                entry for entry in self.currently_loaded_streams[stream_type]
-                                if title_matches_search(
-                                    entry.get('name', ''), search_terms
-                                )
-                            ]
-                            matching_entries = ordered_catalog_entries(
-                                matching_entries,
-                                active_sorting_enabled,
-                                descending=(active_sort_order == 1),
+                    if navigation_level == 0:  # LIVE/VOD/Series
+                        matching_entries = [
+                            entry for entry in self.currently_loaded_streams[stream_type]
+                            if title_matches_search(
+                                entry.get('name', ''), search_terms
                             )
-                            matching_entries.sort(
-                                key=lambda entry: search_relevance_key(
-                                    entry.get('name', ''), search_terms
-                                )
+                        ]
+                        matching_entries = ordered_catalog_entries(
+                            matching_entries,
+                            active_sorting_enabled,
+                            descending=(active_sort_order == 1),
+                        )
+                        matching_entries.sort(
+                            key=lambda entry: search_relevance_key(
+                                entry.get('name', ''), search_terms
                             )
-                            for entry in matching_entries:
-                                item = QListWidgetItem(entry['name'])
-                                item.setData(Qt.UserRole, entry)
-                                list_widget.addItem(item)
-                        case 1:  # Seasons
-                            list_widget.addItem(self.go_back_text)
+                        )
+                        for entry in matching_entries:
+                            item = QListWidgetItem(entry['name'])
+                            item.setData(Qt.UserRole, entry)
+                            list_widget.addItem(item)
+                    elif navigation_level == 1:  # Seasons
+                        list_widget.addItem(self.go_back_text)
 
-                            seasons = [
-                                season for season in self.currently_loaded_streams['Seasons']
-                                if title_matches_search(
-                                    f"season {season}", search_terms
-                                )
-                            ]
-                            if active_sorting_enabled:
-                                seasons = ordered_season_keys(
-                                    seasons,
-                                    descending=(active_sort_order == 1),
-                                )
-                            seasons.sort(
-                                key=lambda season: search_relevance_key(
-                                    f"season {season}", search_terms
-                                )
+                        seasons = [
+                            season for season in self.currently_loaded_streams['Seasons']
+                            if title_matches_search(
+                                f"season {season}", search_terms
                             )
-                            for season in seasons:
-                                item = QListWidgetItem(f"Season {season}")
-                                item.setData(Qt.UserRole, self.currently_loaded_streams['Seasons'][season])
-                                list_widget.addItem(item)
-                        case 2:  # Episodes
-                            list_widget.addItem(self.go_back_text)
-                            matching_episodes = [
-                                episode for episode in self.currently_loaded_streams['Episodes']
-                                if title_matches_search(
-                                    episode.get('title', ''), search_terms
-                                )
-                            ]
-                            matching_episodes = ordered_catalog_entries(
-                                matching_episodes,
-                                active_sorting_enabled,
+                        ]
+                        if active_sorting_enabled:
+                            seasons = ordered_season_keys(
+                                seasons,
                                 descending=(active_sort_order == 1),
-                                title_key='title',
                             )
-                            matching_episodes.sort(
-                                key=lambda episode: search_relevance_key(
-                                    episode.get('title', ''), search_terms
-                                )
+                        seasons.sort(
+                            key=lambda season: search_relevance_key(
+                                f"season {season}", search_terms
                             )
-                            for episode in matching_episodes:
-                                item = QListWidgetItem(episode['title'])
-                                item.setData(Qt.UserRole, episode)
-                                list_widget.addItem(item)
+                        )
+                        for season in seasons:
+                            item = QListWidgetItem(f"Season {season}")
+                            item.setData(
+                                Qt.UserRole,
+                                self.currently_loaded_streams['Seasons'][season],
+                            )
+                            list_widget.addItem(item)
+                    elif navigation_level == 2:  # Episodes
+                        list_widget.addItem(self.go_back_text)
+                        matching_episodes = [
+                            episode for episode in self.currently_loaded_streams['Episodes']
+                            if title_matches_search(
+                                episode.get('title', ''), search_terms
+                            )
+                        ]
+                        matching_episodes = ordered_catalog_entries(
+                            matching_episodes,
+                            active_sorting_enabled,
+                            descending=(active_sort_order == 1),
+                            title_key='title',
+                        )
+                        matching_episodes.sort(
+                            key=lambda episode: search_relevance_key(
+                                episode.get('title', ''), search_terms
+                            )
+                        )
+                        for episode in matching_episodes:
+                            item = QListWidgetItem(episode['title'])
+                            item.setData(Qt.UserRole, episode)
+                            list_widget.addItem(item)
 
                     num_of_items = list_widget.count()
                     if not (num_of_items - (navigation_level > 0)):
