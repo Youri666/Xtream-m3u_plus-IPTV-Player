@@ -1,11 +1,12 @@
 from PyQt5 import QtWidgets
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QSize, Qt
 from PyQt5.QtWidgets import (
     QFormLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QSpinBox,
+    QToolButton,
     QVBoxLayout,
 )
 
@@ -18,6 +19,20 @@ from iptv_player.config import (
 )
 from iptv_player.provider.credentials import parse_xtream_m3u_url
 from iptv_player.provider.workers import AccountInfoWorker
+
+
+LIVE_URL_FORMAT_PRESETS = (
+    "{server}/{username}/{password}/{stream_id}",
+    "{server}/{username}/{password}/{stream_id}.ts",
+    "{server}/{username}/{password}/{stream_id}.m3u8",
+    "{server}/{username}/{password}/live/{stream_id}",
+    "{server}/{username}/{password}/live/{stream_id}.ts",
+    "{server}/{username}/{password}/live/{stream_id}.m3u8",
+    "{server}/live/{username}/{password}/{stream_id}",
+    "{server}/live/{username}/{password}/{stream_id}.ts",
+    "{server}/live/{username}/{password}/{stream_id}.m3u8",
+)
+
 
 class AccountManager(QtWidgets.QDialog):
     def __init__(self, parent=None):
@@ -181,25 +196,19 @@ class AccountDialog(QtWidgets.QDialog):
         self.series_url_format_entry = QLineEdit(self.default_url_formats['series'])
 
         live_format_tooltip = (
-            "<b>Live TV not working while Movies and Series do?</b><br>"
-            "Some providers require a different Live URL format. Try one of these:<br><br>"
-            "{server}/{username}/{password}/{stream_id}<br>"
-            "{server}/{username}/{password}/{stream_id}.ts<br>"
-            "{server}/{username}/{password}/{stream_id}.m3u8<br>"
-            "{server}/{username}/{password}/live/{stream_id}<br>"
-            "{server}/{username}/{password}/live/{stream_id}.ts<br>"
-            "{server}/{username}/{password}/live/{stream_id}.m3u8<br>"
-            "{server}/live/{username}/{password}/{stream_id}<br>"
-            "{server}/live/{username}/{password}/{stream_id}.ts<br>"
-            "{server}/live/{username}/{password}/{stream_id}.m3u8"
+            "Use the settings button to select a common Live URL format, "
+            "or enter a custom format required by your provider."
         )
         self.live_url_format_entry.setToolTip(live_format_tooltip)
+        manual_live_format_label = self._live_format_label(
+            self.live_url_format_entry, live_format_tooltip
+        )
 
         manual_layout.addRow("Name", self.name_entry_manual)
         manual_layout.addRow("Server URL", self.server_entry)
         manual_layout.addRow("Username", self.username_entry)
         manual_layout.addRow("Password", self.password_entry)
-        manual_layout.addRow("Live URL format", self.live_url_format_entry)
+        manual_layout.addRow(manual_live_format_label, self.live_url_format_entry)
         manual_layout.addRow("Movie URL format", self.movie_url_format_entry)
         manual_layout.addRow("Series URL format", self.series_url_format_entry)
 
@@ -221,10 +230,13 @@ class AccountDialog(QtWidgets.QDialog):
         self.m3u_movie_url_format_entry = QLineEdit(self.default_url_formats['movie'])
         self.m3u_series_url_format_entry = QLineEdit(self.default_url_formats['series'])
         self.m3u_live_url_format_entry.setToolTip(live_format_tooltip)
+        m3u_live_format_label = self._live_format_label(
+            self.m3u_live_url_format_entry, live_format_tooltip
+        )
 
         m3u_layout.addRow("Name", self.name_entry_m3u)
         m3u_layout.addRow("Xtream get.php URL", self.m3u_url_entry)
-        m3u_layout.addRow("Live URL format", self.m3u_live_url_format_entry)
+        m3u_layout.addRow(m3u_live_format_label, self.m3u_live_url_format_entry)
         m3u_layout.addRow("Movie URL format", self.m3u_movie_url_format_entry)
         m3u_layout.addRow("Series URL format", self.m3u_series_url_format_entry)
 
@@ -254,8 +266,9 @@ class AccountDialog(QtWidgets.QDialog):
         epg_layout.setContentsMargins(9, 0, 9, 0)
         epg_layout.setSpacing(6)
         epg_label = QLabel("EPG time offset")
-        label_column_width = self.fontMetrics().horizontalAdvance(
-            "Series URL format"
+        label_column_width = max(
+            manual_live_format_label.sizeHint().width(),
+            m3u_live_format_label.sizeHint().width(),
         )
         epg_label.setFixedWidth(label_column_width)
         epg_layout.addWidget(epg_label)
@@ -310,6 +323,37 @@ class AccountDialog(QtWidgets.QDialog):
         self._method_changed(self.method_selector.currentIndex())
 
         self._resize_for_url_fields()
+
+    def _live_format_label(self, target, tooltip):
+        """Build an aligned label with a menu of common Live URL formats."""
+        container = QtWidgets.QWidget()
+        label_layout = QtWidgets.QHBoxLayout(container)
+        label_layout.setContentsMargins(0, 0, 0, 0)
+        label_layout.setSpacing(4)
+        label_layout.addWidget(QLabel("Live URL format"))
+
+        button = QToolButton(container)
+        main_window = getattr(getattr(self, "parent", None), "parent", None)
+        settings_icon = getattr(main_window, "settings_icon", None)
+        if settings_icon is None or settings_icon.isNull():
+            settings_icon = self.style().standardIcon(
+                QtWidgets.QStyle.SP_FileDialogDetailedView
+            )
+        button.setIcon(settings_icon)
+        button.setIconSize(QSize(16, 16))
+        button.setFixedSize(30, 24)
+        button.setToolTip(tooltip)
+        button.setAccessibleName("Choose a common Live URL format")
+        button.setPopupMode(QToolButton.InstantPopup)
+        menu = QtWidgets.QMenu(button)
+        for url_format in LIVE_URL_FORMAT_PRESETS:
+            action = menu.addAction(url_format)
+            action.triggered.connect(
+                lambda _checked=False, value=url_format: target.setText(value)
+            )
+        button.setMenu(menu)
+        label_layout.addWidget(button)
+        return container
 
     def _method_changed(self, index):
         """Switch credential forms and explain the Xtream-only URL mode."""

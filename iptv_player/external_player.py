@@ -21,6 +21,8 @@ def external_player_display_name(player):
         return "VLC Player"
     if filename_lower in ("smplayer", "smplayer.exe"):
         return "SMPlayer"
+    if filename_lower == "totem":
+        return "Totem (GNOME Videos)"
 
     if filename_lower.endswith(".app"):
         filename = filename[:-4]
