@@ -45,6 +45,7 @@ from iptv_player.ui.theme import (
     application_palette_is_dark,
     apply_windows_title_bar_theme,
 )
+from iptv_player.vlc_diagnostics import describe_vlc_load_failure
 from iptv_player.ui.player_theme import (
     DARK_BUTTON_STYLE,
     DARK_OVERLAY_STYLE,
@@ -682,13 +683,22 @@ class EmbeddedPlayerWindow(QMainWindow):
             pass
 
     @staticmethod
-    def is_available():
+    def availability():
+        """Return whether libVLC loads and a meaningful failure explanation."""
         try:
-            import vlc  # noqa: F401
-            vlc.Instance()
-            return True
-        except Exception:
-            return False
+            import vlc
+            instance = vlc.Instance()
+            if instance is None:
+                raise RuntimeError("libVLC did not create an instance")
+            instance.release()
+            return True, ""
+        except (Exception, SystemExit) as error:
+            return False, describe_vlc_load_failure(error)
+
+    @staticmethod
+    def is_available():
+        available, _reason = EmbeddedPlayerWindow.availability()
+        return available
 
     def play_url(
         self, url, title="", playlist=None, index=0, resume_ms=0,
