@@ -2663,7 +2663,7 @@ class IPTVPlayerApp(QMainWindow):
     def load_default_sorting_order(self):
         sorting_order = load_sorting_preference(self.user_data_file)
 
-        print(f"loading default sorting order: {sorting_order}")
+        logging.debug("Loading default sorting order: %s", sorting_order)
 
         self.default_sorting_order_box.setCurrentText(sorting_order)
 
@@ -3355,7 +3355,7 @@ class IPTVPlayerApp(QMainWindow):
 
     def check_for_updates(self, enable_update_msg):
         try:
-            print("Checking for updates")
+            logging.debug("Checking for updates")
             release = fetch_latest_release(
                 GITHUB_REPO, NETWORK_SETTINGS.connection_timeout, CURRENT_VERSION
             )
@@ -5406,7 +5406,7 @@ class IPTVPlayerApp(QMainWindow):
                         f"Could not launch the external player.\n\n"
                         f"Player: {self.external_player_command}\n"
                         f"Error: {e}\n\n"
-                        f"See {path.join(writable_data_directory(), 'log.txt')} "
+                        f"See {path.join(writable_data_directory(), 'iptvplayer.log')} "
                         f"for the full traceback."
                     )
                     error_dialog.setStandardButtons(QMessageBox.Ok)

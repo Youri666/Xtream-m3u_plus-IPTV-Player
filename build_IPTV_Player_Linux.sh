@@ -42,7 +42,7 @@ DIST_PATH="dist"
 
 # Remove generated specification files after both successful and failed builds.
 cleanup_spec_files() {
-  rm -f "IPTV Player.spec"
+  rm -f "IPTV_Player.spec"
 }
 trap cleanup_spec_files EXIT
 
@@ -58,7 +58,7 @@ if [ -d "$DIST_PATH" ]; then
 fi
 
 # PyInstaller writes specification files beside the script; remove stale variants.
-rm -f "IPTV Player.spec"
+rm -f "IPTV_Player.spec"
 
 # Package one desktop application; detailed diagnostics are enabled in the app.
 PYINSTALLER_ARGS=(
@@ -98,8 +98,8 @@ PYINSTALLER_ARGS=(
 "$PYTHON_BIN" -m PyInstaller \
   "${PYINSTALLER_ARGS[@]}" \
   --noconsole \
-  --name "IPTV Player" \
+  --name "IPTV_Player" \
   "$MAIN_SCRIPT"
 
 echo
-echo "Build completed. Output is available in $DIST_PATH."
+echo "Build completed. Output is available at $DIST_PATH/IPTV_Player."

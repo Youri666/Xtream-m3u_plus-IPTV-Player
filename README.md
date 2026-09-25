@@ -39,6 +39,7 @@ For external playback, the following players are supported:
 # User Guide
 
 - [Main interface](#main-interface)
+  - [Switching accounts](#switching-accounts)
   - [Exporting links and M3U playlists](#exporting-links-and-m3u-playlists)
 - [History tab](#history-tab)
 - [Info tab](#info-tab)
@@ -57,11 +58,7 @@ For external playback, the following players are supported:
 
 The main interface is organized into six tabs: **Live**, **Movies**, **Series**, **History**, **Info**, and **Settings**.
 
-The account selector above the tabs switches immediately between configured IPTV accounts. Under **Settings**, use **IPTV accounts** to add, edit, or remove accounts, **Startup account** to choose which one is loaded when the application starts, and **Active account** to switch the account currently in use.
-
-![Account selection and startup account settings](screenshots/account-selection.png)
-
-Tabs can be reordered by dragging them. Their order is saved independently for each IPTV account. The tab shown at startup can be selected with **Default tab** under **Settings → Content and appearance**, including an option to restore the last selected tab.
+Tabs can be reordered by dragging them. Their order is saved independently for each IPTV account. The tab shown at startup can be selected with **Default tab** under **Settings → Content**, including an option to restore the last selected tab.
 
 The **Live**, **Movies**, and **Series** tabs all use the same three-column layout:
 - **Left column:** categories
@@ -74,6 +71,14 @@ Both the category and content lists include a **search bar**, a **clear search**
 The first column also includes a **Categories** button that lets you choose which categories are visible.
 
 ![Main interface showing the common three-column layout used by Live, Movies and Series](screenshots/main-interface.png)
+
+### Switching accounts
+
+When two or more IPTV accounts are configured, an account selector appears above the tabs for quick switching. It remains hidden when only one account exists.
+
+Under **Settings**, use **IPTV accounts** to add, edit, or remove accounts, **Startup account** to choose which one is loaded when the application starts, and **Active account** to switch the account currently in use.
+
+![Account selection and startup account settings](screenshots/account-selection.png)
 
 ### Exporting links and M3U playlists
 
@@ -333,12 +338,6 @@ The generated files are written to the `dist` directory.
 
 #### 2. Build the application
 
-Make the MacOS build script executable:
-
-```bash
-chmod +x build_IPTV_Player_macOS.sh
-```
-
 Run:
 
 ```bash
@@ -388,11 +387,10 @@ Install VLC/libVLC separately if you want to use the Internal Player.
 #### 2. Build
 
 ```bash
-chmod +x build_IPTV_Player_Linux.sh
 ./build_IPTV_Player_Linux.sh
 ```
 
-The generated files are written to the `dist` directory.
+The generated executable is written to `dist/IPTV_Player`.
 
 </details>
 
