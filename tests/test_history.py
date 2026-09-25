@@ -5,6 +5,7 @@ import unittest
 from iptv_player.storage.history import (
     load_history,
     record_history,
+    remove_history_entries,
     remove_history_entry,
     repair_misclassified_history,
     resume_position,
@@ -46,6 +47,22 @@ class PlaybackHistoryTests(unittest.TestCase):
 
             self.assertTrue(remove_history_entry(filename, "movie-1"))
             self.assertFalse(remove_history_entry(filename, "missing"))
+            self.assertEqual(
+                [entry["key"] for entry in load_history(filename)],
+                ["movie-2"],
+            )
+
+    def test_removes_multiple_history_entries_in_one_update(self):
+        with tempfile.TemporaryDirectory() as directory:
+            filename = Path(directory) / "history.json"
+            record_history(filename, self._entry("movie-1", "Movies", "First"), 10)
+            record_history(filename, self._entry("movie-2", "Movies", "Second"), 10)
+            record_history(filename, self._entry("movie-3", "Movies", "Third"), 10)
+
+            self.assertTrue(
+                remove_history_entries(filename, {"movie-1", "movie-3"})
+            )
+            self.assertFalse(remove_history_entries(filename, {"missing"}))
             self.assertEqual(
                 [entry["key"] for entry in load_history(filename)],
                 ["movie-2"],

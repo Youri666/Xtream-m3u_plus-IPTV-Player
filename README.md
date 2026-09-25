@@ -106,6 +106,10 @@ History is stored independently for each IPTV account. Activating an entry opens
 
 ![History tab showing recently viewed Live, Movies and Series content](screenshots/history-tab.png)
 
+History entries can be removed individually or in groups. Use **Ctrl** on Windows and Linux or **Command (⌘)** on macOS to select individual entries, and **Shift** to select a range. Right-click the selection and choose **Remove from History**. A confirmation is required before the selected entries are deleted.
+
+![Removing selected entries from History](screenshots/history-context-menu.png)
+
 ## Info tab
 
 The **Info** tab displays information about the currently selected IPTV account.
