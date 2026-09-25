@@ -1,7 +1,18 @@
 """Reusable Qt widgets shared by the application screens."""
 
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, QItemSelectionModel, pyqtSignal
 from PyQt5.QtWidgets import QListWidget, QListWidgetItem
+
+
+def context_selected_items(list_widget, clicked_item):
+    """Preserve a multi-selection when its context menu is opened."""
+    if not clicked_item.isSelected():
+        list_widget.clearSelection()
+        clicked_item.setSelected(True)
+    list_widget.setCurrentRow(
+        list_widget.row(clicked_item), QItemSelectionModel.NoUpdate
+    )
+    return sorted(list_widget.selectedItems(), key=list_widget.row)
 
 
 class KeyboardNavigableListWidget(QListWidget):

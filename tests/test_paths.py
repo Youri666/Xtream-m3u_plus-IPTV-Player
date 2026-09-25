@@ -14,10 +14,10 @@ from iptv_player.config.paths import (
 class ApplicationResourcePathTests(unittest.TestCase):
     def test_resolves_resource_from_explicit_application_root(self):
         with tempfile.TemporaryDirectory() as directory:
-            expected = Path(directory) / "Images" / "icon.ico"
+            expected = Path(directory) / "images" / "icon.ico"
 
             result = application_resource_path(
-                Path("Images") / "icon.ico", application_root=directory
+                Path("images") / "icon.ico", application_root=directory
             )
 
             self.assertEqual(result, str(expected.resolve()))

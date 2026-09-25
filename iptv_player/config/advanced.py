@@ -4,7 +4,11 @@ import configparser
 from dataclasses import dataclass
 
 from iptv_player.config.ini import read_config_file, write_config_file
-from iptv_player.constants import DEFAULT_HISTORY_SIZE
+from iptv_player.constants import (
+    DEFAULT_ALLOW_ALL_CATEGORY_EXPORTS,
+    DEFAULT_HISTORY_SIZE,
+    DEFAULT_MAX_SERIES_PER_EXPORT,
+)
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 from iptv_player.provider.network import (
     DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL,
@@ -33,6 +37,8 @@ class AdvancedPreferences:
     catalog_cache_max_age_hours: int = DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS
     detailed_logging_enabled: bool = False
     history_size: int = DEFAULT_HISTORY_SIZE
+    allow_all_category_exports: bool = DEFAULT_ALLOW_ALL_CATEGORY_EXPORTS
+    max_series_per_export: int = DEFAULT_MAX_SERIES_PER_EXPORT
     tmdb_read_access_token: str = ""
 
 
@@ -85,6 +91,20 @@ def load_advanced_preferences(filename):
         history_size=_bounded_int(
             config, "History", "max_items_per_type", DEFAULT_HISTORY_SIZE, 1, 1000
         ),
+        allow_all_category_exports=_boolean(
+            config,
+            "Export",
+            "allow_all_category_exports",
+            DEFAULT_ALLOW_ALL_CATEGORY_EXPORTS,
+        ),
+        max_series_per_export=_bounded_int(
+            config,
+            "Export",
+            "max_series_per_export",
+            DEFAULT_MAX_SERIES_PER_EXPORT,
+            1,
+            100000,
+        ),
         tmdb_read_access_token=config.get(
             "TMDB", "read_access_token", fallback=""
         ).strip(),
@@ -121,6 +141,12 @@ def save_advanced_preferences(filename, preferences):
     }
     config["History"] = {
         "max_items_per_type": str(preferences.history_size)
+    }
+    config["Export"] = {
+        "allow_all_category_exports": str(
+            preferences.allow_all_category_exports
+        ),
+        "max_series_per_export": str(preferences.max_series_per_export),
     }
     config["TMDB"] = {
         "read_access_token": preferences.tmdb_read_access_token

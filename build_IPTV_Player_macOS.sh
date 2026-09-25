@@ -68,20 +68,20 @@ rm -f "IPTV Player.spec"
 # Generate all standard and Retina representations through Apple's native tool.
 # Small Finder icons then use their own bitmap instead of shrinking one large icon.
 ICON_ARGS=()
-if [ -f "Images/TV_icon.png" ]; then
+if [ -f "images/TV_icon.png" ]; then
   ICONSET_PATH="$BUILD_PATH/TV_icon.iconset"
   ICNS_PATH="$BUILD_PATH/TV_icon.icns"
   mkdir -p "$ICONSET_PATH"
-  sips -z 16 16 "Images/TV_icon.png" --out "$ICONSET_PATH/icon_16x16.png" >/dev/null
-  sips -z 32 32 "Images/TV_icon.png" --out "$ICONSET_PATH/icon_16x16@2x.png" >/dev/null
-  sips -z 32 32 "Images/TV_icon.png" --out "$ICONSET_PATH/icon_32x32.png" >/dev/null
-  sips -z 64 64 "Images/TV_icon.png" --out "$ICONSET_PATH/icon_32x32@2x.png" >/dev/null
-  sips -z 128 128 "Images/TV_icon.png" --out "$ICONSET_PATH/icon_128x128.png" >/dev/null
-  sips -z 256 256 "Images/TV_icon.png" --out "$ICONSET_PATH/icon_128x128@2x.png" >/dev/null
-  sips -z 256 256 "Images/TV_icon.png" --out "$ICONSET_PATH/icon_256x256.png" >/dev/null
-  sips -z 512 512 "Images/TV_icon.png" --out "$ICONSET_PATH/icon_256x256@2x.png" >/dev/null
-  sips -z 512 512 "Images/TV_icon.png" --out "$ICONSET_PATH/icon_512x512.png" >/dev/null
-  sips -z 1024 1024 "Images/TV_icon.png" --out "$ICONSET_PATH/icon_512x512@2x.png" >/dev/null
+  sips -z 16 16 "images/TV_icon.png" --out "$ICONSET_PATH/icon_16x16.png" >/dev/null
+  sips -z 32 32 "images/TV_icon.png" --out "$ICONSET_PATH/icon_16x16@2x.png" >/dev/null
+  sips -z 32 32 "images/TV_icon.png" --out "$ICONSET_PATH/icon_32x32.png" >/dev/null
+  sips -z 64 64 "images/TV_icon.png" --out "$ICONSET_PATH/icon_32x32@2x.png" >/dev/null
+  sips -z 128 128 "images/TV_icon.png" --out "$ICONSET_PATH/icon_128x128.png" >/dev/null
+  sips -z 256 256 "images/TV_icon.png" --out "$ICONSET_PATH/icon_128x128@2x.png" >/dev/null
+  sips -z 256 256 "images/TV_icon.png" --out "$ICONSET_PATH/icon_256x256.png" >/dev/null
+  sips -z 512 512 "images/TV_icon.png" --out "$ICONSET_PATH/icon_256x256@2x.png" >/dev/null
+  sips -z 512 512 "images/TV_icon.png" --out "$ICONSET_PATH/icon_512x512.png" >/dev/null
+  sips -z 1024 1024 "images/TV_icon.png" --out "$ICONSET_PATH/icon_512x512@2x.png" >/dev/null
   iconutil -c icns "$ICONSET_PATH" -o "$ICNS_PATH"
   ICON_ARGS=(--icon "$ICNS_PATH")
 fi
@@ -95,30 +95,30 @@ PYINSTALLER_ARGS=(
   "${ICON_ARGS[@]}"
   --distpath "$DIST_PATH"
   --workpath "$BUILD_PATH"
-  --add-data "Images/TV_icon.ico:Images"
-  --add-data "Images/404_not_found.png:Images"
-  --add-data "Images/no_image.jpg:Images"
-  --add-data "Images/loading-icon.png:Images"
-  --add-data "Images/tv_tab_icon.ico:Images"
-  --add-data "Images/movies_tab_icon.ico:Images"
-  --add-data "Images/series_tab_icon.ico:Images"
-  --add-data "Images/home_tab_icon.ico:Images"
-  --add-data "Images/favorite_tab_icon.ico:Images"
-  --add-data "Images/favorite_tab_icon_colour.ico:Images"
-  --add-data "Images/info_tab_icon.ico:Images"
-  --add-data "Images/settings_tab_icon.ico:Images"
-  --add-data "Images/search_bar_icon.ico:Images"
-  --add-data "Images/sorting_icon.ico:Images"
-  --add-data "Images/clear_button_icon.ico:Images"
-  --add-data "Images/go_back_icon.ico:Images"
-  --add-data "Images/account_manager_icon.ico:Images"
-  --add-data "Images/film_camera_icon.ico:Images"
-  --add-data "Images/primary_full-TMDB.svg:Images"
-  --add-data "Images/yt_icon_rgb.png:Images"
-  --add-data "Images/unknown_status.png:Images"
-  --add-data "Images/online_status.png:Images"
-  --add-data "Images/maybe_status.png:Images"
-  --add-data "Images/offline_status.png:Images"
+  --add-data "images/TV_icon.ico:images"
+  --add-data "images/404_not_found.png:images"
+  --add-data "images/no_image.jpg:images"
+  --add-data "images/loading-icon.png:images"
+  --add-data "images/tv_tab_icon.ico:images"
+  --add-data "images/movies_tab_icon.ico:images"
+  --add-data "images/series_tab_icon.ico:images"
+  --add-data "images/home_tab_icon.ico:images"
+  --add-data "images/favorite_tab_icon.ico:images"
+  --add-data "images/favorite_tab_icon_colour.ico:images"
+  --add-data "images/info_tab_icon.ico:images"
+  --add-data "images/settings_tab_icon.ico:images"
+  --add-data "images/search_bar_icon.ico:images"
+  --add-data "images/sorting_icon.ico:images"
+  --add-data "images/clear_button_icon.ico:images"
+  --add-data "images/go_back_icon.ico:images"
+  --add-data "images/account_manager_icon.ico:images"
+  --add-data "images/film_camera_icon.ico:images"
+  --add-data "images/primary_full-TMDB.svg:images"
+  --add-data "images/yt_icon_rgb.png:images"
+  --add-data "images/unknown_status.png:images"
+  --add-data "images/online_status.png:images"
+  --add-data "images/maybe_status.png:images"
+  --add-data "images/offline_status.png:images"
 )
 
 "$PYTHON_BIN" -m PyInstaller \
