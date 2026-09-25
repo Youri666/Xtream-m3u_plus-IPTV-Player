@@ -243,7 +243,7 @@ class NetworkSettingsDialog(QDialog):
         self.detailed_logging_checkbox = QCheckBox("Enable detailed logging")
         self.detailed_logging_checkbox.setChecked(parent.detailed_logging_enabled)
         self.detailed_logging_checkbox.setToolTip(
-            "Write additional diagnostic information to log.txt"
+            "Write additional diagnostic information to iptvplayer.log"
         )
         diagnostics_layout.addWidget(self.detailed_logging_checkbox)
 

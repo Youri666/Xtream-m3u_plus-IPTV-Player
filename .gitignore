@@ -17,5 +17,6 @@ provider_preferences.*.json
 dist/
 dist2/
 vlc_log.txt
+iptvplayer.log
 /.idea/
 /.venv/

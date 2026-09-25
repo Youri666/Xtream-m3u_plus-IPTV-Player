@@ -17,7 +17,7 @@ from iptv_player.utils.privacy import redact_log_credentials
 
 
 class _CredentialRedactionFilter(logging.Filter):
-    """Remove provider credentials from every record before it reaches log.txt."""
+    """Remove provider credentials before records reach iptvplayer.log."""
 
     def filter(self, record):
         record.msg = redact_log_credentials(record.getMessage())
@@ -26,7 +26,7 @@ class _CredentialRedactionFilter(logging.Filter):
 
 
 class _StreamToLogger:
-    """Mirror a text stream to the application log one complete line at a time."""
+    """Route a text stream to the application log one complete line at a time."""
 
     def __init__(self, original, level):
         self.original = original
@@ -34,12 +34,6 @@ class _StreamToLogger:
         self._buffer = ""
 
     def write(self, data):
-        try:
-            if self.original is not None:
-                self.original.write(data)
-        except Exception:
-            pass
-
         self._buffer += data
         while "\n" in self._buffer:
             line, self._buffer = self._buffer.split("\n", 1)
@@ -61,7 +55,7 @@ _FAULT_LOG_STREAMS = []
 
 
 def install_logging(append=False, process_name="Main application"):
-    """Capture Python diagnostics in ``log.txt`` for one application process."""
+    """Capture Python diagnostics in ``iptvplayer.log`` for one process."""
     if sys.platform.startswith("darwin"):
         application_dir = writable_data_directory()
     elif getattr(sys, "frozen", False):
@@ -70,7 +64,7 @@ def install_logging(append=False, process_name="Main application"):
         application_dir = path.dirname(path.dirname(path.abspath(__file__)))
 
     os.makedirs(application_dir, exist_ok=True)
-    log_path = path.join(application_dir, "log.txt")
+    log_path = path.join(application_dir, "iptvplayer.log")
     user_data_file = path.join(application_dir, "userdata.ini")
     log_level = (
         logging.DEBUG
