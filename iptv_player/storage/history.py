@@ -67,8 +67,16 @@ def clear_history(filename):
 
 def remove_history_entry(filename, key):
     """Remove one history entry by its stable key and return whether it existed."""
+    return remove_history_entries(filename, {key})
+
+
+def remove_history_entries(filename, keys):
+    """Remove several history entries in one file update."""
+    keys = {str(key) for key in keys if key is not None}
+    if not keys:
+        return False
     entries = load_history(filename)
-    retained = [entry for entry in entries if entry.get("key") != key]
+    retained = [entry for entry in entries if entry.get("key") not in keys]
     if len(retained) == len(entries):
         return False
     write_json_file(filename, {

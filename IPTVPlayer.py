@@ -133,6 +133,7 @@ from iptv_player.storage import (
     provider_preferences_file,
     remove_account_data_files,
     record_history,
+    remove_history_entries,
     remove_history_entry,
     repair_misclassified_history,
     reorder_favorites,
@@ -1181,6 +1182,14 @@ class IPTVPlayerApp(QMainWindow):
             history_list.setRootIsDecorated(False)
             history_list.setAlternatingRowColors(True)
             history_list.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+            history_list.setSelectionMode(
+                QtWidgets.QAbstractItemView.ExtendedSelection
+            )
+            history_list.setContextMenuPolicy(Qt.CustomContextMenu)
+            history_list.customContextMenuRequested.connect(
+                lambda position, widget=history_list:
+                self._show_history_context_menu(widget, position)
+            )
             history_list.header().setStretchLastSection(True)
             history_list.header().setSectionResizeMode(
                 0, QtWidgets.QHeaderView.ResizeToContents
@@ -1210,6 +1219,66 @@ class IPTVPlayerApp(QMainWindow):
             item = QTreeWidgetItem((timestamp, entry.get("title", "")))
             item.setData(0, Qt.UserRole, entry)
             history_list.addTopLevelItem(item)
+
+    def _show_history_context_menu(self, history_list, position):
+        """Offer removal for the clicked history row or current selection."""
+        clicked_item = history_list.itemAt(position)
+        if clicked_item is None:
+            return
+        if not clicked_item.isSelected():
+            history_list.clearSelection()
+            clicked_item.setSelected(True)
+            history_list.setCurrentItem(clicked_item)
+
+        entries = []
+        keys = set()
+        for item in history_list.selectedItems():
+            entry = item.data(0, Qt.UserRole)
+            key = entry.get("key") if isinstance(entry, dict) else None
+            if key and key not in keys:
+                keys.add(key)
+                entries.append(entry)
+        if not entries:
+            return
+
+        menu = QMenu(history_list)
+        if len(entries) == 1:
+            remove_action = menu.addAction("Remove from History")
+        else:
+            remove_action = menu.addAction(
+                f"Remove {len(entries)} selected items from History"
+            )
+        selected_action = menu.exec_(
+            history_list.viewport().mapToGlobal(position)
+        )
+        if selected_action is remove_action:
+            self._remove_selected_history_entries(entries)
+
+    def _remove_selected_history_entries(self, entries):
+        """Confirm and remove selected rows from the active account history."""
+        keys = {
+            entry.get("key") for entry in entries
+            if isinstance(entry, dict) and entry.get("key")
+        }
+        if not self.history_file or not keys:
+            return
+
+        count = len(keys)
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Question)
+        dialog.setWindowTitle("Remove from History")
+        if count == 1:
+            dialog.setText("Remove this item from History?")
+        else:
+            dialog.setText(f"Remove these {count} items from History?")
+        dialog.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        dialog.setDefaultButton(QMessageBox.No)
+        self._prepare_dialog_theme(dialog)
+        if dialog.exec_() != QMessageBox.Yes:
+            return
+
+        if remove_history_entries(self.history_file, keys):
+            self.refresh_history_tab()
 
     @staticmethod
     def _history_display_time(value):
