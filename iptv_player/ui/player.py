@@ -743,6 +743,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             dict(self._playlist[self._current_idx].get("history") or {})
             if self._playlist else None
         )
+        self._update_playback_rate_controls()
         self._pending_playback_rate_attempts = 20
         self._auto_advance_triggered = False
         self._pending_resume_ms = max(0, int(resume_ms or 0))
@@ -973,6 +974,11 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._wake_controls()
 
     def _adjust_rate(self, delta):
+        if self._is_live_playback():
+            self.player.set_rate(1.0)
+            self.rate_label.setText("1.00x")
+            self._wake_controls()
+            return
         self._playback_rate = max(
             0.25, min(4.0, round(self._playback_rate + delta, 2))
         )
@@ -1565,17 +1571,33 @@ class EmbeddedPlayerWindow(QMainWindow):
             return 0
 
     def _apply_pending_playback_rate(self):
-        """Restore the global rate once VLC accepts controls for the new media."""
+        """Apply the saved VOD rate or normal speed for a LIVE stream."""
         if not self._pending_playback_rate_attempts or not self.player.is_playing():
             return
         try:
-            self.player.set_rate(self._playback_rate)
-            self.rate_label.setText(f"{self._playback_rate:.2f}x")
+            target_rate = self._effective_playback_rate()
+            self.player.set_rate(target_rate)
+            self.rate_label.setText(f"{target_rate:.2f}x")
             self._pending_playback_rate_attempts -= 1
-            if abs(float(self.player.get_rate()) - self._playback_rate) < 0.01:
+            if abs(float(self.player.get_rate()) - target_rate) < 0.01:
                 self._pending_playback_rate_attempts = 0
         except (TypeError, ValueError):
             self._pending_playback_rate_attempts = 0
+
+    def _is_live_playback(self):
+        """Return whether the current media is a LIVE stream."""
+        return (self._current_history or {}).get("type") == "LIVE"
+
+    def _effective_playback_rate(self):
+        """Keep LIVE playback at normal speed without losing the VOD setting."""
+        return 1.0 if self._is_live_playback() else self._playback_rate
+
+    def _update_playback_rate_controls(self):
+        """Reflect whether speed controls apply to the current media."""
+        enabled = not self._is_live_playback()
+        self.btn_slow.setEnabled(enabled)
+        self.btn_fast.setEnabled(enabled)
+        self.rate_label.setText(f"{self._effective_playback_rate():.2f}x")
 
     @staticmethod
     def _fmt_ms(ms):

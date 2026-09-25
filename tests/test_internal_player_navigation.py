@@ -81,6 +81,15 @@ class _FakeSeekWindow:
         EmbeddedPlayerWindow._commit_wheel_seek(self)
 
 
+class _FakeRateWindow:
+    def __init__(self, content_type, saved_rate):
+        self._current_history = {"type": content_type}
+        self._playback_rate = saved_rate
+
+    def _is_live_playback(self):
+        return EmbeddedPlayerWindow._is_live_playback(self)
+
+
 class InternalPlayerNavigationTests(unittest.TestCase):
     def test_advances_once_inside_configured_end_window(self):
         player = _FakePlayerWindow(seconds=20)
@@ -105,6 +114,18 @@ class InternalPlayerNavigationTests(unittest.TestCase):
         )
         self.assertFalse(
             EmbeddedPlayerWindow._maybe_auto_advance(disabled, 119_000, 120_000)
+        )
+
+    def test_live_uses_normal_speed_without_losing_saved_vod_rate(self):
+        live = _FakeRateWindow("LIVE", 1.5)
+        movie = _FakeRateWindow("VOD", 1.5)
+
+        self.assertEqual(
+            EmbeddedPlayerWindow._effective_playback_rate(live), 1.0
+        )
+        self.assertEqual(live._playback_rate, 1.5)
+        self.assertEqual(
+            EmbeddedPlayerWindow._effective_playback_rate(movie), 1.5
         )
 
     def test_keyboard_seek_stays_at_start_without_accumulating_extra_steps(self):
