@@ -5170,7 +5170,8 @@ class IPTVPlayerApp(QMainWindow):
         # User clicked "Use Internal Player (VLC)". Check libvlc is reachable BEFORE
         # we persist the choice — otherwise the user gets a silent failure later
         # when they try to play something.
-        if not EmbeddedPlayerWindow.is_available():
+        vlc_available, vlc_error = EmbeddedPlayerWindow.availability()
+        if not vlc_available:
             self.set_progress_bar(100, "Internal VLC player unavailable", "error")
             fallback_command = (
                 getattr(self, "last_external_player_command", "") or ""
@@ -5178,7 +5179,7 @@ class IPTVPlayerApp(QMainWindow):
             self.external_player_command = fallback_command
             self.save_external_player_command()
             self._refresh_current_player_label()
-            self._show_internal_vlc_unavailable(fallback_command)
+            self._show_internal_vlc_unavailable(fallback_command, vlc_error)
             return
 
         self.external_player_command = INTERNAL_VLC_COMMAND
@@ -5187,7 +5188,7 @@ class IPTVPlayerApp(QMainWindow):
         self.animate_progress(0, 100, "Internal VLC player enabled")
         QTimer.singleShot(0, self._prewarm_embedded_player)
 
-    def _show_internal_vlc_unavailable(self, fallback_command=""):
+    def _show_internal_vlc_unavailable(self, fallback_command="", diagnostic=""):
         """Explain the VLC requirement and any automatic external fallback."""
         if fallback_command:
             fallback_message = (
@@ -5203,11 +5204,13 @@ class IPTVPlayerApp(QMainWindow):
         error_dialog = QMessageBox(self)
         error_dialog.setIcon(QMessageBox.Warning)
         error_dialog.setWindowTitle("Internal VLC unavailable")
+        diagnostic_message = f"\n\n{diagnostic}" if diagnostic else ""
         error_dialog.setText(
             "Internal VLC requires a compatible VLC installation on this "
-            "computer, but VLC could not be found.\n\n"
-            "Install the latest VLC version from https://www.videolan.org/vlc/, "
-            "restart IPTV Player, and try again.\n\n"
+            "computer, but its native library could not be loaded.\n\n"
+            "Install VLC from https://www.videolan.org/vlc/, restart IPTV Player, "
+            "and try again."
+            f"{diagnostic_message}\n\n"
             f"{fallback_message}"
         )
         error_dialog.setStandardButtons(QMessageBox.Ok)
@@ -5836,7 +5839,11 @@ class IPTVPlayerApp(QMainWindow):
             # VLC may have been removed after Internal VLC was selected. Validate
             # the saved choice before restoring it and reuse the last external player
             # when possible.
-            if command == INTERNAL_VLC_COMMAND and not EmbeddedPlayerWindow.is_available():
+            if command == INTERNAL_VLC_COMMAND:
+                vlc_available, vlc_error = EmbeddedPlayerWindow.availability()
+            else:
+                vlc_available, vlc_error = True, ""
+            if not vlc_available:
                 command = remembered_command or ""
                 try:
                     save_player_preference(
@@ -5846,8 +5853,9 @@ class IPTVPlayerApp(QMainWindow):
                     print(f"Could not save media player fallback: {error}")
                 QTimer.singleShot(
                     0,
-                    lambda fallback=command: self._show_internal_vlc_unavailable(
-                        fallback
+                    lambda fallback=command, diagnostic=vlc_error:
+                    self._show_internal_vlc_unavailable(
+                        fallback, diagnostic
                     ),
                 )
             return command
