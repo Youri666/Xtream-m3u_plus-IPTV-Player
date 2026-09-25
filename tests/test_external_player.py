@@ -26,6 +26,10 @@ class ExternalPlayerCommandTests(unittest.TestCase):
             external_player_display_name(r"C:\Players\custom-player.exe"),
             "custom-player",
         )
+        self.assertEqual(
+            external_player_display_name("/usr/bin/totem"),
+            "Totem (GNOME Videos)",
+        )
 
     def test_windows_vlc_receives_user_agent_before_stream_url(self):
         command = external_player_command(

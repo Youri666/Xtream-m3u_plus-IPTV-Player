@@ -137,7 +137,9 @@ Two account input methods are available:
 
 ![M3U_plus account configuration](screenshots/add-account-m3u-plus.png)
 
-Stream URL formats are fully editable because IPTV providers do not always use the same URL structure. If Live TV does not work with the default format, hover over **Live URL format** to display a tooltip with common alternative formats.
+Stream URL formats are fully editable because IPTV providers do not always use the same URL structure. Use the settings button beside **Live URL format** to select a common format, or enter a custom format required by the provider.
+
+![Common Live URL format presets](screenshots/live-url-format-presets.png)
 
 Each account can use its own **EPG time offset** to correct schedule times by up to 12 hours in either direction. Use **Test connection** to validate the credentials and account status before saving, without downloading the full provider catalog.
 
@@ -146,19 +148,7 @@ The **Startup account** selects which account should be loaded when the applicat
 **My Live TV doesn't work, but Movies and Series do. How can I fix this?**
 
 Some IPTV providers require a different URL format for LIVE streams.
-Edit the affected account and try replacing the **Live URL format** with one of the following:
-
-```text
-{server}/{username}/{password}/{stream_id}
-{server}/{username}/{password}/{stream_id}.ts
-{server}/{username}/{password}/{stream_id}.m3u8
-{server}/{username}/{password}/live/{stream_id}
-{server}/{username}/{password}/live/{stream_id}.ts
-{server}/{username}/{password}/live/{stream_id}.m3u8
-{server}/live/{username}/{password}/{stream_id}
-{server}/live/{username}/{password}/{stream_id}.ts
-{server}/live/{username}/{password}/{stream_id}.m3u8
-```
+Edit the affected account and use the settings button beside **Live URL format** to try one of the common presets. The field remains editable if the provider requires a different format.
 
 If none of these formats work, please open an issue on the V3 repository: [Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues)
 

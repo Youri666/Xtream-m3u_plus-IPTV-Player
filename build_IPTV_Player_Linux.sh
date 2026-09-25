@@ -66,7 +66,6 @@ PYINSTALLER_ARGS=(
   --onefile
   --noconfirm
   --hidden-import vlc
-  --icon "images/TV_icon.png"
   --distpath "$DIST_PATH"
   --workpath "$BUILD_PATH"
   --add-data "images/TV_icon.ico:images"
