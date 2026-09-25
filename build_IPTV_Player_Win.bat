@@ -81,34 +81,34 @@ REM Run PyInstaller directly with all necessary options and added data files
   --noconsole ^
   --noconfirm ^
   --hidden-import vlc ^
-  --icon "Images/TV_icon.ico" ^
+  --icon "images/TV_icon.ico" ^
   --name "IPTV Player" ^
   --workpath %BUILD_PATH% ^
   --distpath %DIST_PATH% ^
-  --add-data "Images/TV_icon.ico;Images" ^
-  --add-data "Images/404_not_found.png;Images" ^
-  --add-data "Images/no_image.jpg;Images" ^
-  --add-data "Images/loading-icon.png;Images" ^
-  --add-data "Images/tv_tab_icon.ico;Images" ^
-  --add-data "Images/movies_tab_icon.ico;Images" ^
-  --add-data "Images/series_tab_icon.ico;Images" ^
-  --add-data "Images/home_tab_icon.ico;Images" ^
-  --add-data "Images/favorite_tab_icon.ico;Images" ^
-  --add-data "Images/favorite_tab_icon_colour.ico;Images" ^
-  --add-data "Images/info_tab_icon.ico;Images" ^
-  --add-data "Images/settings_tab_icon.ico;Images" ^
-  --add-data "Images/search_bar_icon.ico;Images" ^
-  --add-data "Images/sorting_icon.ico;Images" ^
-  --add-data "Images/clear_button_icon.ico;Images" ^
-  --add-data "Images/go_back_icon.ico;Images" ^
-  --add-data "Images/account_manager_icon.ico;Images" ^
-  --add-data "Images/film_camera_icon.ico;Images" ^
-  --add-data "Images/primary_full-TMDB.svg;Images" ^
-  --add-data "Images/yt_icon_rgb.png;Images" ^
-  --add-data "Images/unknown_status.png;Images" ^
-  --add-data "Images/online_status.png;Images" ^
-  --add-data "Images/maybe_status.png;Images" ^
-  --add-data "Images/offline_status.png;Images" ^
+  --add-data "images/TV_icon.ico;images" ^
+  --add-data "images/404_not_found.png;images" ^
+  --add-data "images/no_image.jpg;images" ^
+  --add-data "images/loading-icon.png;images" ^
+  --add-data "images/tv_tab_icon.ico;images" ^
+  --add-data "images/movies_tab_icon.ico;images" ^
+  --add-data "images/series_tab_icon.ico;images" ^
+  --add-data "images/home_tab_icon.ico;images" ^
+  --add-data "images/favorite_tab_icon.ico;images" ^
+  --add-data "images/favorite_tab_icon_colour.ico;images" ^
+  --add-data "images/info_tab_icon.ico;images" ^
+  --add-data "images/settings_tab_icon.ico;images" ^
+  --add-data "images/search_bar_icon.ico;images" ^
+  --add-data "images/sorting_icon.ico;images" ^
+  --add-data "images/clear_button_icon.ico;images" ^
+  --add-data "images/go_back_icon.ico;images" ^
+  --add-data "images/account_manager_icon.ico;images" ^
+  --add-data "images/film_camera_icon.ico;images" ^
+  --add-data "images/primary_full-TMDB.svg;images" ^
+  --add-data "images/yt_icon_rgb.png;images" ^
+  --add-data "images/unknown_status.png;images" ^
+  --add-data "images/online_status.png;images" ^
+  --add-data "images/maybe_status.png;images" ^
+  --add-data "images/offline_status.png;images" ^
   %MAIN_SCRIPT%
 IF ERRORLEVEL 1 GOTO build_failed
 

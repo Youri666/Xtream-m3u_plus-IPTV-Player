@@ -717,7 +717,7 @@ class IPTVPlayerApp(QMainWindow):
                 self,
                 attribute,
                 application_resource_path(
-                    path.join('Images', filename), application_root
+                    path.join('images', filename), application_root
                 ),
             )
 

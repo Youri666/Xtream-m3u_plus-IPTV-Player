@@ -5,25 +5,27 @@
 
 # FREE OPENSOURCE M3U/XTREME IPTV PLAYER
 
-This IPTV player, built with Python and PyQt5, supports Xtream Codes accounts, including credential extraction from Xtream M3U Plus `get.php` URLs. Generic M3U playlist files and URLs are not supported.
+This free and open-source IPTV player, built with Python and PyQt5, provides a simple and easy-to-use experience across Windows, macOS, and Linux. Its interface is intentionally lightweight and practical, focusing on useful features and straightforward navigation rather than heavy visual effects or unnecessary complexity.
+
+It supports Xtream Codes accounts, including credential extraction from Xtream M3U Plus `get.php` URLs. Generic M3U playlist files and URLs are not supported as account sources.
 
 [**View all releases**](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases)
 
 # Features
 
-- **Windows, MacOS, and Linux support**
-- **Xtream account support:** Sign in manually or extract credentials from an Xtream M3U Plus `get.php` URL. Generic M3U playlists are not supported.
-- **Multi-account profiles:** Keep favorites, category choices, EPG offsets, tab order, default tab, and cached catalogs separate for each account.
-- **Live TV, Movies, and Series:** Browse categorized catalogs with search, remembered sorting, item counts, favorites, and detailed information panels.
-- **EPG:** View program schedules and descriptions with an account-specific time offset.
-- **History and playback resume:** Return to recently played content and resume partially watched media.
-- **Internal VLC player:** Use playlist navigation, configurable seeking and buffering, subtitles, audio tracks, fullscreen, and optional automatic advancement to the next item.
-- **External players:** Open content in applications such as VLC or SMPlayer.
-- **Movie and Series metadata:** View provider information and optionally fill missing details, posters, and trailers with a personal TMDB API Read Access Token.
-- **Link and M3U export:** Copy direct URLs, save readable text files, or create M3U playlists for Live channels, Movies, Series, individual items, multiple selections, or complete categories.
+- **Windows, macOS, and Linux support**
+- **Xtream account support:** Sign in manually or extract credentials from an Xtream M3U Plus `get.php` URL.
+- **Independent account profiles:** Keep favorites, hidden categories, content tabs, EPG offsets, tab layout, startup tab, and cached catalogs separate for each provider.
+- **Live TV, Movies, and Series:** Browse large categorized catalogs with search, per-list sorting, item counts, multi-selection, detailed information, and customizable favorite order.
+- **EPG:** View program schedules and expandable descriptions with an account-specific time offset.
+- **History and playback resume:** Return directly to recently played content, resume supported media, and automatically remove unavailable entries.
+- **Internal VLC player:** Navigate playlists, seek, change volume or speed, select audio and subtitles, use fullscreen, and optionally continue automatically to the next item.
+- **External player support:** Open content in VLC, SMPlayer, or another installed media player.
+- **TMDB metadata:** Optionally fill missing Movie and Series details, posters, and trailers with a personal API Read Access Token.
+- **Link and M3U export:** Export individual items, multiple selections, or categories as copied URLs, readable text files, or M3U playlists, with safeguards for large provider requests.
 - **Personalized interface:** Reorder tabs, choose the startup tab, resize columns, and use Light, Dark, or System themes.
 - **Update notifications:** Check manually or automatically for stable releases; beta builds can also follow newer beta versions.
-- **Cross-platform build scripts:** Create Windows, MacOS, and Linux packages from isolated local Python environments.
+- **Cross-platform build scripts:** Create Windows, macOS, and Linux packages from isolated local Python environments.
 
 ### Recommended media players
 
@@ -31,19 +33,33 @@ For the best experience, install [VLC media player](https://www.videolan.org/vlc
 
 For external playback, the following players are supported:
 
-- [VLC media player](https://www.videolan.org/vlc/) — recommended
+- [VLC media player](https://www.videolan.org/vlc/) (recommended)
 - [SMPlayer](https://www.smplayer.info/)
 
-# Future plans
-
-- **M3U file support:** Select a local M3U file or a URL to an M3U file and load its data.
-
-
 # User Guide
+
+- [Main interface](#main-interface)
+  - [Exporting links and M3U playlists](#exporting-links-and-m3u-playlists)
+- [History tab](#history-tab)
+- [Info tab](#info-tab)
+- [Settings](#settings)
+  - [IPTV accounts](#iptv-accounts)
+  - [Content](#content)
+  - [Window behavior](#window-behavior)
+  - [Sorting](#sorting)
+  - [Media player](#media-player)
+  - [Advanced settings](#advanced-settings)
+  - [Updates](#updates)
+- [Internal player](#internal-player)
+  - [Keyboard shortcuts](#keyboard-shortcuts)
 
 ## Main interface
 
 The main interface is organized into six tabs: **Live**, **Movies**, **Series**, **History**, **Info**, and **Settings**.
+
+The account selector above the tabs switches immediately between configured IPTV accounts. Under **Settings**, use **IPTV accounts** to add, edit, or remove accounts, **Startup account** to choose which one is loaded when the application starts, and **Active account** to switch the account currently in use.
+
+![Account selection and startup account settings](screenshots/account-selection.png)
 
 Tabs can be reordered by dragging them. Their order is saved independently for each IPTV account. The tab shown at startup can be selected with **Default tab** under **Settings → Content and appearance**, including an option to restore the last selected tab.
 
@@ -54,12 +70,24 @@ The **Live**, **Movies**, and **Series** tabs all use the same three-column layo
 
 You can navigate through the first two columns with the **Up/Down arrow keys** and use **Enter** to open or select an item.
 
-Use **Ctrl** or **Shift** to select multiple categories or items. Right-click a selection to copy its direct URLs, save a readable text file, or create an M3U playlist that can be opened in a compatible media player. Selecting **All** takes priority over any other selected category. Complete `All` exports are disabled by default, and complete-Series exports are limited to 10 series because every series requires a separate provider request. Both safeguards can be adjusted under **Settings → Advanced settings → M3U export**.
-
 Both the category and content lists include a **search bar**, a **clear search** button, and a **filter** button.  
 The first column also includes a **Categories** button that lets you choose which categories are visible.
 
-![Main interface showing the common three-column layout used by Live, Movies and Series](Screenshots/main-interface.png)
+![Main interface showing the common three-column layout used by Live, Movies and Series](screenshots/main-interface.png)
+
+### Exporting links and M3U playlists
+
+Right-click a category or an item to:
+
+- copy its direct download URL to the clipboard;
+- save a readable text file with titles and URLs;
+- create an M3U playlist that can be opened in VLC, SMPlayer, or another compatible player.
+
+To select and export multiple categories or items, use **Ctrl** or **Shift** on Windows and Linux, or **Command (⌘)** or **Shift** on macOS. Right-clicking an item outside the current selection replaces the selection with that item.
+
+Selecting **All** takes priority over any other selected category. Complete `All` exports and large Series selections are protected by the limits configured under **Settings → Advanced settings → M3U export**.
+
+![Export context menu](screenshots/export-context-menu.png)
 
 ## History tab
 
@@ -71,7 +99,7 @@ The maximum number of history entries is configurable in **Advanced Settings**. 
 
 History is stored independently for each IPTV account. Activating an entry opens its original tab and category, then selects the corresponding channel, movie, or episode so it can be found quickly. The Internal Player can resume partially watched content from its saved position. If an item is no longer present in the provider catalog, its obsolete entry is automatically removed from History.
 
-![History tab showing recently viewed Live, Movies and Series content](Screenshots/history-tab.png)
+![History tab showing recently viewed Live, Movies and Series content](screenshots/history-tab.png)
 
 ## Info tab
 
@@ -81,30 +109,28 @@ Its content is refreshed automatically when the tab is opened. A manual refresh 
 
 The refresh interval can be configured in **Advanced Settings**. To avoid unnecessary requests, the information is only refreshed while the **Info** tab is actually being viewed.
 
-The selector above the tabs shows the active IPTV account and allows it to be changed quickly.
-
-![Info tab showing account information and refresh controls](Screenshots/info-tab.png)
+![Info tab showing account information and refresh controls](screenshots/info-tab.png)
 
 ## Settings
 
 The **Settings** tab groups the main application preferences, including IPTV accounts, visible content, appearance, sorting, media player selection, advanced options, and update settings.
 
-![Main Settings tab](Screenshots/settings-main.png)
+![Main Settings tab](screenshots/settings-main.png)
 
 ### IPTV accounts
 
 The **IPTV accounts** button opens the account manager, where accounts can be added, edited, or removed.
 
-![IPTV account manager](Screenshots/iptv-accounts.png)
+![IPTV account manager](screenshots/iptv-accounts.png)
 
 Two account input methods are available:
 
 - **Manual/Xtream entry:** enter the server URL, username, password, and stream URL formats manually.
 - **Xtream M3U Plus URL:** paste an Xtream `get.php` URL and let the application extract the required credentials. Generic M3U playlist files and URLs are not supported.
 
-![Manual Xtream account configuration](Screenshots/add-account-xtream.png)
+![Manual Xtream account configuration](screenshots/add-account-xtream.png)
 
-![M3U_plus account configuration](Screenshots/add-account-m3u-plus.png)
+![M3U_plus account configuration](screenshots/add-account-m3u-plus.png)
 
 Stream URL formats are fully editable because IPTV providers do not always use the same URL structure. If Live TV does not work with the default format, hover over **Live URL format** to display a tooltip with common alternative formats.
 
@@ -131,76 +157,81 @@ Edit the affected account and try replacing the **Live URL format** with one of 
 
 If none of these formats work, please open an issue on the V3 repository: [Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues)
 
-### Content and appearance
+### Content
 
 The **LIVE**, **Movies**, and **Series** options control which content sections are displayed. Disabled content types are also hidden from related parts of the application, such as History.
 
 The **Default tab** setting selects the tab opened for each IPTV account. Choose **Last selected tab** to restore the most recently used tab for that account.
 
+### Window behavior
+
 **Keep on top** keeps the main window above other windows.
 
-![Content and appearance](Screenshots/content-appearance.png)
+![Content and appearance](screenshots/content-appearance.png)
 
 The theme can be set to:
 
-- **System** — follows the operating system appearance
+- **System:** follows the operating system appearance
 - **Light**
 - **Dark**
 
-![Content and appearance Dark Theme](Screenshots/content-appearance-dark.png)
+![Content and appearance Dark Theme](screenshots/content-appearance-dark.png)
 
 ### Sorting
 
-The default sorting mode can be configured globally.
+The default sorting behavior can be configured under **Settings → Sorting**:
 
-Available modes include:
-- **Default order** — keep the order provided by the IPTV provider; in Favorites, items can be dragged into a custom order saved separately for each account
-- **A → Z**
-- **Z → A**
-- **Remember per list** — each list/category can use its own sorting mode, selected with the sorting button and remembered for future use
+- **Default order:** Regular categories follow the order provided by the IPTV provider. The **Favorites** category uses the user's custom order.
+- **A → Z:** Sort items alphabetically in ascending order.
+- **Z → A:** Sort items alphabetically in descending order.
+- **Remember per list:** Each category and content list remembers the sorting mode selected from its own sorting button.
 
-The per-list sorting preferences are stored so they persist between sessions.
+When a Favorites list uses **Default order** and its search field is empty, items can be reordered by dragging them in the middle column. The custom order is saved independently for each IPTV account and content type.
 
-![Sorting](Screenshots/sorting.png)
+Manual drag-and-drop ordering is only available in Favorites. It is disabled while the list is sorted alphabetically or filtered by a search, because the displayed order is then temporary.
+
+![Sorting](screenshots/sorting.png)
 
 
 ### Media player
 
 The recommended option is the built-in **Internal VLC** player, which uses the VLC engine installed on the computer.
 
-An external media player can also be selected.
+To use an external player, select **External player**, then use **Browse** to choose its executable. The selected path is retained when switching between internal and external playback, and the active player is identified in the Settings panel. VLC and SMPlayer receive the media title when supported.
 
 The internal player has its own configurable options:
 
-![Internal player settings](Screenshots/internal-player-settings.png)
+![Internal player settings](screenshots/internal-player-settings.png)
 
 These settings control seek, volume, and playback-speed steps, preferred audio and subtitle languages, and what should happen when opening media that was previously started. They also include:
 
-- **Automatically play the next item** — continue through the current playlist without manual input.
-- **Play next item** — start the next item at the end or up to 300 seconds before the current item finishes, allowing final credits to be skipped.
-- **Network buffer** — adjust VLC network caching for streamed media.
+- **Automatically play the next item:** continue through the current playlist without manual input.
+- **Play next item:** start the next item at the end or up to 300 seconds before the current item finishes, allowing final credits to be skipped.
+- **Network buffer:** adjust VLC network caching for streamed media.
 
 When **Previously started media** is set to **Ask**, the player can offer to **Resume**, **Restart**, or **Cancel** playback.
 
 ### Advanced settings
 
-![Advanced settings](Screenshots/advanced-settings.png)
+![Advanced settings](screenshots/advanced-settings.png)
 
 Advanced settings provide additional control over:
-- network timeouts and User-Agent
-- automatic Info-tab refresh
-- provider catalog caching and refresh interval
-- LIVE stream availability checks
-- M3U export safeguards for complete catalogs and multi-Series requests
-- detailed diagnostic logging
-- History size and cleanup
-- optional TMDB metadata enrichment with a connection test
 
-When **LIVE stream status checks** are enabled, the Live TV information panel displays a small status indicator for the selected stream: **green** when the stream is available and **red** when it is unavailable. This check can be disabled from Advanced Settings.
+- **General network:** Configure the User-Agent and the connection and read timeouts used for provider requests.
+- **Provider:** Enable automatic account information refresh and choose its interval. Refreshes only run while the Info tab is visible.
+- **Provider catalog cache:** Reuse locally cached Live, Movie, and Series catalogs to reduce loading time and provider requests. The catalog can also be refreshed manually.
+- **LIVE stream status:** Enable availability checks for the selected Live channel and configure their timeout and retry count.
+- **Diagnostics:** Enable detailed logging when troubleshooting the application.
+- **History:** Choose how many recent entries are retained for each content type or clear the active account's history.
+- **M3U export:** Control potentially large exports. Complete `All` category exports are disabled by default. Complete-Series exports are limited to 10 series because each series requires a separate provider request.
+- **TMDB metadata:** Enter a personal [API Read Access Token](https://developer.themoviedb.org/docs/authentication-application) to fill missing Movie and Series details, posters, and trailers. Use **Test connection** to validate the token before saving.
 
-Provider catalog caching can significantly reduce loading time by reusing locally stored catalog data instead of downloading it again when it is still valid.
+Increase the M3U export limits only when you know that your provider accepts the additional requests.
 
-To complete missing movie and series information, enter a personal [**TMDB API Read Access Token**](https://developer.themoviedb.org/docs/authentication-application) in Advanced Settings and use **Test connection** before saving. TMDB enrichment is only attempted when the IPTV provider supplies a valid TMDB identifier. Existing provider metadata remains unchanged; TMDB fills missing fields only.
+> [!WARNING]
+> **Large Series exports may trigger provider rate limiting or an account ban.**
+
+Use **Restore Defaults** to reset every option shown in this window. Changes are applied when **Save** is selected.
 
 This product uses the TMDB API but is not endorsed or certified by TMDB.
 
@@ -208,7 +239,9 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 The application can check for new releases manually with **Check for updates**, or automatically when **Auto check for updates** is enabled.
 
-![Updates](Screenshots/updates.png)
+Stable builds notify only about newer stable releases. Beta builds can notify about a newer beta or the corresponding stable release, but do not report the same beta version as an update.
+
+![Updates](screenshots/updates.png)
 
 
 ## Internal player
@@ -227,34 +260,34 @@ Playback controls provide previous/next navigation, play/pause, seeking, playbac
 
 ### Keyboard shortcuts
 
-- **Page Up / Page Down** — previous / next item
-- **Left / Right Arrow** — seek backward / forward
-- **Space** — play / pause
-- **+ / -** — increase / decrease playback speed
-- **Mouse wheel over the video or playback controls** — seek backward / forward
-- **Mouse wheel over the volume control** — increase / decrease volume
-- **M** — mute / unmute
-- **A** — cycle through available audio tracks
-- **S** — cycle through available subtitles
-- **F** — toggle fullscreen
+- **Page Up / Page Down:** previous / next item
+- **Left / Right Arrow:** seek backward / forward
+- **Space:** play / pause
+- **+ / -:** increase / decrease playback speed
+- **Mouse wheel over the video or playback controls:** seek backward / forward
+- **Mouse wheel over the volume control:** increase / decrease volume
+- **M:** mute / unmute
+- **A:** cycle through available audio tracks
+- **S:** cycle through available subtitles
+- **F:** toggle fullscreen
 
-![Internal player showing the playlist and playback controls](Screenshots/internal-player.png)
+![Internal player showing the playlist and playback controls](screenshots/internal-player.png)
 
 
 # What's new in V3
 
-Version 3 reorganizes the application into clearer, reusable components and adds automated regression tests, safer configuration migrations, and more consistent behavior across Windows, MacOS, and Linux. The V3.1 releases extend that foundation with more account personalization, playback controls, metadata, and export options.
+Version 3 reorganizes the application into clearer, reusable components and adds automated regression tests, safer configuration migrations, and more consistent behavior across Windows, macOS, and Linux. The V3.1 releases extend that foundation with account personalization, improved playback, richer metadata, and flexible export options.
 
-| | |
+| Area | Highlights |
 |---|---|
 | **Refactored and tested codebase** | The interface, provider access, configuration, storage, caching, themes, playback, and startup logic now use dedicated components. Automated tests cover the main workflows and bug fixes. |
-| **Safer configuration and diagnostics** | Settings are written atomically and upgraded through configuration migrations. Network options, privacy-conscious logging, and isolated build environments make the application easier to maintain and troubleshoot. |
-| **Better multi-account support** | Accounts use stable identifiers and keep their catalogs, favorites, category preferences, EPG offsets, tab order, default tab, and last selected tab independently. The account selector provides quick switching without losing the current functional tab. |
-| **Improved catalogs and navigation** | Shared Live, Movies, and Series components provide consistent searching, sorting, category counts, favorite handling, and stale-selection cleanup. Provider caching can reduce startup and account-switching time. |
+| **Safer configuration and diagnostics** | Settings are written atomically and upgraded through configuration migrations. Network controls, privacy-conscious logging, clearer VLC installation diagnostics, and isolated build environments make the application easier to maintain and troubleshoot. |
+| **Better multi-account support** | Each account keeps its catalogs, favorites, hidden categories, content tabs, EPG offset, tab order, startup tab, and last selected tab independently. The account selector provides quick switching without losing the current functional tab. |
+| **Improved catalogs and navigation** | Live, Movies, and Series share consistent searching, per-list sorting, category counts, multi-selection, and stale-selection cleanup. Favorites can use a custom drag-and-drop order, and provider caching reduces repeated catalog downloads. |
 | **Richer information panels** | Movie and Series descriptions use the available space more effectively, Live EPG descriptions are easier to read, and optional TMDB enrichment can fill metadata, posters, and trailers missing from the provider. |
-| **VOD link export** | Context menus can copy direct Movie or Episode URLs, or save structured link files for Movies, Episodes, Seasons, and complete Series. Sensitive URLs and credentials are excluded from diagnostic logs. |
-| **Internal Player improvements** | Playback can pause when minimized, resume previously started media, advance automatically to the next item, skip final credits, use configurable network buffering, and seek by dragging or using the mouse wheel. |
-| **Interface and update improvements** | Themes follow Windows, MacOS, and Linux more reliably, dialogs and information panels have been polished, and beta builds can detect newer beta releases as well as the corresponding stable release. |
+| **Link and M3U export** | Context menus can export Live channels, Movies, Series, Seasons, Episodes, multiple selections, or categories as copied URLs, readable text files, or M3U playlists. Safety limits protect against excessive provider requests. |
+| **Player improvements** | The Internal Player can resume media, pause when minimized, advance automatically, skip final credits, use configurable buffering, and seek by dragging or scrolling. External VLC and SMPlayer integration has also been improved. |
+| **Interface and update improvements** | Themes and dialogs behave more consistently across supported systems, Advanced Settings uses a more accessible two-column layout, and beta builds can detect newer beta releases or the corresponding stable release. |
 
 
 # How to compile the source code
