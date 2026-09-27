@@ -6,6 +6,7 @@ import ctypes.util
 from os import path
 import sys
 import time
+from urllib.parse import urlsplit
 
 from PyQt5.QtCore import QByteArray, QEvent, QPoint, QSize, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import (
@@ -34,13 +35,16 @@ from PyQt5.QtWidgets import (
     QSlider,
     QStyle,
     QToolTip,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from iptv_player.config import write_config_file
+from iptv_player.config import application_resource_path, write_config_file
 from iptv_player.constants import DEFAULT_RESUME_BEHAVIOR, RESUME_BEHAVIORS
 from iptv_player.storage.history import resume_position
+from iptv_player.stream_info import collect_stream_information
 from iptv_player.ui.theme import (
     application_palette_is_dark,
     apply_windows_title_bar_theme,
@@ -219,6 +223,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._subtitle_language = ""
         self._progress_callback = progress_callback
         self._current_history = None
+        self._current_stream_protocol = ""
         self._pending_resume_ms = 0
         self._pending_resume_attempts = 0
         self._deferred_present = False
@@ -294,6 +299,12 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_slow   = QPushButton("−")
         self.btn_fast   = QPushButton("+")
         self.rate_label = QLabel(f"{self._playback_rate:.2f}x")
+        self.btn_info   = QPushButton()
+        self.btn_info.setEnabled(False)
+        self.btn_info.setCheckable(True)
+        self.btn_info.setIcon(QIcon(application_resource_path(
+            "images/info_tab_icon.ico"
+        )))
         self.btn_mute   = QPushButton()
         self.vol_slider = QSlider(Qt.Horizontal)
         self.vol_slider.setRange(0, 100)
@@ -309,8 +320,9 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.pl_pos     = QLabel("")
 
         for b in (self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
-                  self.btn_next, self.btn_slow, self.btn_fast, self.btn_mute,
-                  self.btn_audio, self.btn_subs, self.btn_fs, self.btn_sidebar):
+                  self.btn_next, self.btn_slow, self.btn_fast, self.btn_info,
+                  self.btn_mute, self.btn_audio, self.btn_subs, self.btn_fs,
+                  self.btn_sidebar):
             b.setFixedHeight(30)
             b.setIconSize(QSize(18, 18))
             b.setCursor(Qt.PointingHandCursor)
@@ -327,6 +339,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_next.setToolTip("Next (Page Down)")
         self.btn_slow.setToolTip("Slower (-)")
         self.btn_fast.setToolTip("Faster (+)")
+        self.btn_info.setToolTip("Stream information")
         self.btn_mute.setToolTip("Mute (M)")
         self.btn_audio.setToolTip("Select audio track (A cycles tracks)")
         self.btn_subs.setToolTip("Subtitles (S)")
@@ -339,6 +352,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_next.clicked.connect(self.next)
         self.btn_slow.clicked.connect(lambda: self._adjust_rate(-self._speed_step))
         self.btn_fast.clicked.connect(lambda: self._adjust_rate(self._speed_step))
+        self.btn_info.clicked.connect(self._toggle_stream_information)
         self.btn_mute.clicked.connect(self.toggle_mute)
         self.vol_slider.valueChanged.connect(self.set_volume)
         self.btn_audio.clicked.connect(self._show_audio_menu)
@@ -366,6 +380,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         btn_row.addStretch(1)
         btn_row.addWidget(self.pl_pos)
         btn_row.addStretch(1)
+        btn_row.addWidget(self.btn_info)
+        btn_row.addSpacing(20)
 
         audio_layout = QHBoxLayout(self.audio_controls)
         audio_layout.setContentsMargins(0, 0, 0, 0)
@@ -445,6 +461,33 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._track_osd_timer = QTimer(self)
         self._track_osd_timer.setSingleShot(True)
         self._track_osd_timer.timeout.connect(self._hide_track_osd)
+
+        # A larger technical-information OSD stays separate from short seek,
+        # volume, and track messages and is anchored to the video's top-right.
+        self.stream_info_panel = QFrame(central)
+        self.stream_info_panel.setObjectName("streamInfoPanel")
+        self.stream_info_panel.setFixedSize(430, 340)
+        stream_info_layout = QVBoxLayout(self.stream_info_panel)
+        stream_info_layout.setContentsMargins(12, 10, 12, 10)
+        stream_info_layout.setSpacing(6)
+        stream_info_header = QHBoxLayout()
+        self.stream_info_title = QLabel("Stream information")
+        self.stream_info_title.setObjectName("streamInfoTitle")
+        stream_info_header.addWidget(self.stream_info_title)
+        stream_info_header.addStretch(1)
+        stream_info_layout.addLayout(stream_info_header)
+        self.stream_info_tree = QTreeWidget(self.stream_info_panel)
+        self.stream_info_tree.setColumnCount(2)
+        self.stream_info_tree.setHeaderLabels(("Property", "Value"))
+        self.stream_info_tree.setRootIsDecorated(True)
+        self.stream_info_tree.setAlternatingRowColors(True)
+        self.stream_info_tree.header().setStretchLastSection(True)
+        self.stream_info_tree.header().setSectionResizeMode(
+            0, self.stream_info_tree.header().ResizeToContents
+        )
+        stream_info_layout.addWidget(self.stream_info_tree, 1)
+        self.stream_info_panel.hide()
+
         self._wheel_seek_timer = QTimer(self)
         self._wheel_seek_timer.setSingleShot(True)
         self._wheel_seek_timer.setInterval(600)
@@ -631,8 +674,9 @@ class EmbeddedPlayerWindow(QMainWindow):
 
         for button in (
             self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
-            self.btn_next, self.btn_slow, self.btn_fast, self.btn_mute,
-            self.btn_audio, self.btn_subs, self.btn_fs, self.btn_sidebar
+            self.btn_next, self.btn_slow, self.btn_fast, self.btn_info,
+            self.btn_mute, self.btn_audio, self.btn_subs, self.btn_fs,
+            self.btn_sidebar
         ):
             button.setStyleSheet(button_style)
         self.overlay.setStyleSheet(overlay_style)
@@ -643,8 +687,22 @@ class EmbeddedPlayerWindow(QMainWindow):
         osd_background = "rgba(20,20,22,220)" if dark else "rgba(248,248,248,235)"
         self.track_osd.setStyleSheet(
             f"background: {osd_background}; color: {label_color}; "
-            "border: 1px solid palette(mid); border-radius: 6px; "
+            "border: 1px solid palette(mid); border-radius: 0; "
             "padding: 8px 14px; font-size: 13px; font-weight: bold;"
+        )
+        panel_background = (
+            "rgba(20,20,22,235)" if dark else "rgba(248,248,248,245)"
+        )
+        panel_border = "#555" if dark else "#aaa"
+        self.stream_info_panel.setStyleSheet(
+            f"QFrame#streamInfoPanel {{ background: {panel_background}; "
+            f"color: {label_color}; border: 1px solid {panel_border}; "
+            "border-radius: 0; }"
+            "QLabel#streamInfoTitle { border: none; font-weight: bold; "
+            "font-size: 14px; }"
+            "QTreeWidget { background: transparent; border: none; }"
+            "QHeaderView::section { background: transparent; border: none; "
+            "padding: 4px; font-weight: bold; }"
         )
         self._apply_native_title_bar_theme(dark)
         self._refresh_standard_icons()
@@ -708,6 +766,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._wheel_seek_timer.stop()
         self._track_osd_timer.stop()
         self._hide_track_osd()
+        self._hide_stream_information()
         self._report_progress(force=True)
         if playlist is not None:
             self._playlist = list(playlist)
@@ -724,6 +783,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.title_label.setText(title)
 
         media = self.instance.media_new(url)
+        self._current_stream_protocol = urlsplit(str(url)).scheme.upper()
+        self.btn_info.setEnabled(True)
         media.add_option(f":network-caching={self._network_caching_ms}")
         # VLC accepts ISO 639 language codes as per-media options. Leaving a
         # preference empty preserves VLC's own default track-selection policy.
@@ -1243,6 +1304,40 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._seek_target_ms = 0
         self._seek_sequence_origin_ms = 0
 
+    def _toggle_stream_information(self, checked):
+        """Toggle the technical-information panel from the Info button."""
+        if checked:
+            self._show_stream_information()
+        else:
+            self._hide_stream_information()
+
+    def _show_stream_information(self):
+        """Show technical details reported locally by libVLC."""
+        sections = collect_stream_information(
+            self._vlc, self.player, self._current_stream_protocol
+        )
+        self.stream_info_tree.clear()
+        for section_name, fields in sections:
+            section_item = QTreeWidgetItem((section_name, ""))
+            section_font = section_item.font(0)
+            section_font.setBold(True)
+            section_item.setFont(0, section_font)
+            self.stream_info_tree.addTopLevelItem(section_item)
+            section_item.setFirstColumnSpanned(True)
+            for label, value in fields:
+                section_item.addChild(QTreeWidgetItem((label, str(value))))
+            section_item.setExpanded(True)
+        self._reposition_stream_info_panel()
+        self.stream_info_panel.show()
+        self.stream_info_panel.raise_()
+        self.btn_info.setChecked(True)
+        self._wake_controls()
+
+    def _hide_stream_information(self):
+        """Hide the technical-information OSD."""
+        self.stream_info_panel.hide()
+        self.btn_info.setChecked(False)
+
     # ---------- fullscreen ----------
     def toggle_fullscreen(self):
         if self._is_fullscreen:
@@ -1387,6 +1482,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         if not self.centralWidget():
             return
         self._reposition_track_osd()
+        self._reposition_stream_info_panel()
         if not self._is_fullscreen:
             return
         w = self.centralWidget().width()
@@ -1406,6 +1502,16 @@ class EmbeddedPlayerWindow(QMainWindow):
         x = origin.x() + max(0, (self.video_frame.width() - self.track_osd.width()) // 2)
         y = origin.y() + 20
         self.track_osd.move(x, y)
+
+    def _reposition_stream_info_panel(self):
+        """Anchor stream information inside the video's top-right corner."""
+        if not hasattr(self, "stream_info_panel") or not self.centralWidget():
+            return
+        origin = self.video_frame.mapTo(self.centralWidget(), QPoint(0, 0))
+        x = origin.x() + max(
+            8, self.video_frame.width() - self.stream_info_panel.width() - 16
+        )
+        self.stream_info_panel.move(x, origin.y() + 16)
 
     # ---------- VLC poll ----------
     def _poll_state(self):
@@ -1746,6 +1852,12 @@ class EmbeddedPlayerWindow(QMainWindow):
         # fire the player's toggle_fullscreen().
         if not self._obj_is_in_player(obj):
             return False
+
+        if et == QEvent.ToolTip and obj is self.btn_info:
+            QToolTip.showText(
+                event.globalPos(), self.btn_info.toolTip(), self.btn_info
+            )
+            return True
 
         if et in (QEvent.MouseMove, QEvent.MouseButtonPress, QEvent.MouseButtonDblClick,
                   QEvent.KeyPress, QEvent.Wheel):

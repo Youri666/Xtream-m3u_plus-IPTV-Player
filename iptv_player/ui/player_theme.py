@@ -10,6 +10,7 @@ QPushButton {
     font-size: 16px;
 }
 QPushButton:hover { background: rgba(91, 141, 239, 200); }
+QPushButton:checked { background: rgba(124, 58, 237, 220); }
 QPushButton:disabled { color: #888; background: rgba(45,45,48,80); }
 """
 
@@ -67,6 +68,7 @@ QPushButton {
     font-size: 14px;
 }
 QPushButton:hover { background: rgba(91, 141, 239, 210); color: white; }
+QPushButton:checked { background: #5b8def; color: white; }
 QPushButton:disabled { color: #999; background: rgba(225,225,225,180); }
 """
 
