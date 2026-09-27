@@ -4,8 +4,24 @@ import sys
 import subprocess
 import os
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QPalette
+from PyQt5.QtCore import QSize, Qt
+from PyQt5.QtGui import QColor, QIcon, QPalette, QPixmap
+
+
+def grayscale_icon(icon, size=QSize(24, 24)):
+    """Convert an icon to grayscale while preserving shading and transparency."""
+    image = icon.pixmap(size).toImage()
+    for y in range(image.height()):
+        for x in range(image.width()):
+            color = image.pixelColor(x, y)
+            gray = round(
+                0.299 * color.red()
+                + 0.587 * color.green()
+                + 0.114 * color.blue()
+            )
+            color.setRgb(gray, gray, gray, color.alpha())
+            image.setPixelColor(x, y, color)
+    return QIcon(QPixmap.fromImage(image))
 
 
 def remember_system_palette(app):

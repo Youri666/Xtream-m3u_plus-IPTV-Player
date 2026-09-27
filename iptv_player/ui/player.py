@@ -302,9 +302,10 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_info   = QPushButton()
         self.btn_info.setEnabled(False)
         self.btn_info.setCheckable(True)
-        self.btn_info.setIcon(QIcon(application_resource_path(
+        self._stream_info_icon = QIcon(application_resource_path(
             "images/info_tab_icon.ico"
-        )))
+        ))
+        self.btn_info.setIcon(self._stream_info_icon)
         self.btn_mute   = QPushButton()
         self.vol_slider = QSlider(Qt.Horizontal)
         self.vol_slider.setRange(0, 100)
@@ -587,9 +588,9 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._audio_language = str(audio_language or "").strip().lower()
         self._subtitle_language = str(subtitle_language or "").strip().lower()
 
-    def _tinted_standard_icon(self, standard_pixmap):
-        """Tint a Qt standard icon so it remains visible on the active theme."""
-        source = self.style().standardIcon(standard_pixmap).pixmap(24, 24)
+    def _tinted_icon(self, source_icon):
+        """Tint an icon so it remains visible on the active theme."""
+        source = source_icon.pixmap(24, 24)
 
         def tinted_pixmap(color):
             pixmap = QPixmap(source.size())
@@ -605,6 +606,10 @@ class EmbeddedPlayerWindow(QMainWindow):
         icon.addPixmap(tinted_pixmap(self._icon_color), QIcon.Normal)
         icon.addPixmap(tinted_pixmap(self._disabled_icon_color), QIcon.Disabled)
         return icon
+
+    def _tinted_standard_icon(self, standard_pixmap):
+        """Tint a Qt standard icon so it remains visible on the active theme."""
+        return self._tinted_icon(self.style().standardIcon(standard_pixmap))
 
     @staticmethod
     def _player_window_icon():
@@ -649,6 +654,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         muted = self._muted or self._volume == 0
         volume_icon = QStyle.SP_MediaVolumeMuted if muted else QStyle.SP_MediaVolume
         self._set_standard_icon(self.btn_mute, volume_icon)
+        self.btn_info.setIcon(self._tinted_icon(self._stream_info_icon))
         fullscreen_icon = (
             QStyle.SP_TitleBarNormalButton
             if self._is_fullscreen else QStyle.SP_TitleBarMaxButton

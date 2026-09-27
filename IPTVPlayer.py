@@ -96,6 +96,7 @@ from iptv_player.ui.theme import (
     application_palette_is_dark,
     apply_application_theme,
     apply_windows_title_bar_theme,
+    grayscale_icon,
 )
 from iptv_player.ui.dialogs.settings import (
     CategoryVisibilityDialog,
@@ -923,11 +924,11 @@ class IPTVPlayerApp(QMainWindow):
         return QIcon(pixmap)
 
     def _custom_category_add_icon(self, dark):
-        """Keep the native add icon in light mode and tint it for dark mode."""
+        """Keep the native add icon in light mode and desaturate it in dark mode."""
         icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogNewFolder)
         if not dark:
             return icon
-        return self._tinted_icon(icon, QColor("#f2f2f2"))
+        return grayscale_icon(icon)
 
     def _refresh_theme_icons(self, dark):
         """Refresh monochrome icons after the application palette changes."""
@@ -2444,10 +2445,32 @@ class IPTVPlayerApp(QMainWindow):
                 requests, title, "m3u", includes_all=all_category is not None
             )
 
+    def _custom_category_name_dialog(self, title, current_name=""):
+        """Prompt for a category name using the application dialog theme."""
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setLabelText("Category name:")
+        dialog.setInputMode(QInputDialog.TextInput)
+        dialog.setTextEchoMode(QLineEdit.Normal)
+        dialog.setTextValue(current_name)
+        self._prepare_dialog_theme(dialog)
+        accepted = dialog.exec_() == QDialog.Accepted
+        return dialog.textValue(), accepted
+
+    def _show_custom_category_name_error(self):
+        """Explain the naming requirement with the application dialog theme."""
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Information)
+        dialog.setWindowTitle("Custom category")
+        dialog.setText("Enter a unique, non-empty category name.")
+        dialog.setStandardButtons(QMessageBox.Ok)
+        self._prepare_dialog_theme(dialog)
+        dialog.exec_()
+
     def _create_custom_category(self, stream_type, initial_item_ids=None):
         """Prompt for and create a provider-local content category."""
-        name, accepted = QInputDialog.getText(
-            self, "Create custom category", "Category name:"
+        name, accepted = self._custom_category_name_dialog(
+            "Create custom category"
         )
         if not accepted:
             return
@@ -2455,11 +2478,7 @@ class IPTVPlayerApp(QMainWindow):
             self.favorites_file, stream_type, name
         )
         if category_id is None:
-            QMessageBox.information(
-                self,
-                "Custom category",
-                "Enter a unique, non-empty category name.",
-            )
+            self._show_custom_category_name_error()
             return
         if initial_item_ids:
             set_custom_category_membership(
@@ -2481,11 +2500,8 @@ class IPTVPlayerApp(QMainWindow):
         ), None)
         if current is None:
             return
-        name, accepted = QInputDialog.getText(
-            self,
+        name, accepted = self._custom_category_name_dialog(
             "Rename custom category",
-            "Category name:",
-            QLineEdit.Normal,
             current["name"],
         )
         if not accepted:
@@ -2493,11 +2509,7 @@ class IPTVPlayerApp(QMainWindow):
         if not rename_custom_category(
             self.favorites_file, stream_type, category_id, name
         ):
-            QMessageBox.information(
-                self,
-                "Custom category",
-                "Enter a unique, non-empty category name.",
-            )
+            self._show_custom_category_name_error()
             return
         self._rebuild_custom_categories(stream_type, category_id)
 
@@ -2511,13 +2523,16 @@ class IPTVPlayerApp(QMainWindow):
         ), None)
         if current is None:
             return
-        answer = QMessageBox.question(
-            self,
-            "Delete custom category",
-            f'Delete the custom category "{current["name"]}"?',
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Question)
+        dialog.setWindowTitle("Delete custom category")
+        dialog.setText(
+            f'Delete the custom category "{current["name"]}"?'
         )
+        dialog.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        dialog.setDefaultButton(QMessageBox.No)
+        self._prepare_dialog_theme(dialog)
+        answer = dialog.exec_()
         if answer != QMessageBox.Yes:
             return
         if delete_custom_category(
