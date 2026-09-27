@@ -1,5 +1,6 @@
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QSize, Qt
+from PyQt5.QtGui import QColor, QIcon, QPainter, QPixmap
 from PyQt5.QtWidgets import (
     QFormLayout,
     QLabel,
@@ -19,6 +20,7 @@ from iptv_player.config import (
 )
 from iptv_player.provider.credentials import parse_xtream_m3u_url
 from iptv_player.provider.workers import AccountInfoWorker
+from iptv_player.ui.theme import application_palette_is_dark
 
 
 LIVE_URL_FORMAT_PRESETS = (
@@ -32,6 +34,23 @@ LIVE_URL_FORMAT_PRESETS = (
     "{server}/live/{username}/{password}/{stream_id}.ts",
     "{server}/live/{username}/{password}/{stream_id}.m3u8",
 )
+
+
+def _add_icon(widget):
+    """Return the native add icon, tinted only when the dark theme needs it."""
+    icon = widget.style().standardIcon(QtWidgets.QStyle.SP_FileDialogNewFolder)
+    if not application_palette_is_dark(QtWidgets.qApp):
+        return icon
+
+    source = icon.pixmap(24, 24)
+    tinted = QPixmap(source.size())
+    tinted.fill(Qt.transparent)
+    painter = QPainter(tinted)
+    painter.drawPixmap(0, 0, source)
+    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    painter.fillRect(tinted.rect(), QColor("#f2f2f2"))
+    painter.end()
+    return QIcon(tinted)
 
 
 class AccountManager(QtWidgets.QDialog):
@@ -49,7 +68,7 @@ class AccountManager(QtWidgets.QDialog):
 
         #Create buttons for adding, selecting and deleting accounts
         self.add_button = QPushButton("Add")
-        self.add_button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogNewFolder))
+        self.add_button.setIcon(_add_icon(self))
         self.add_button.clicked.connect(self.add_account)
 
         self.edit_button = QPushButton("Edit")
