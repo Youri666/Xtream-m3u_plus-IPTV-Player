@@ -216,6 +216,9 @@ class IPTVPlayerApp(QMainWindow):
     """Own the active account's views and dispatch work to providers and players."""
     def __init__(self):
         super().__init__()
+        # An accepted startup update is handled before the main event loop begins.
+        # main() uses this flag to avoid showing the window again after close().
+        self._update_exit_requested = False
         self.setWindowTitle(f"IPTV Player {CURRENT_VERSION}")
         self.resize(1300, 900)
 
@@ -3437,6 +3440,7 @@ class IPTVPlayerApp(QMainWindow):
                 reply = update_dialog.exec_()
 
                 if reply == QMessageBox.Yes:
+                    self._update_exit_requested = True
                     QDesktopServices.openUrl(QUrl(release.download_page))
                     self.close()
                     return
@@ -6287,6 +6291,8 @@ def main():
     configure_qt_application(app)
 
     player = IPTVPlayerApp()
+    if player._update_exit_requested:
+        return
     player.show()
     QtWidgets.qApp.processEvents()
     sys.exit(app.exec_())
