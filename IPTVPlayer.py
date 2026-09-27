@@ -299,6 +299,8 @@ class IPTVPlayerApp(QMainWindow):
         self.current_series_entry = None
         self.current_series_season = None
         self._pending_history_series = None
+        self._series_view_states = {}
+        self._series_back_click_guard_until = 0.0
         self._download_export_batch = None
 
         self.streaming_search_history_list      = []
@@ -2183,6 +2185,10 @@ class IPTVPlayerApp(QMainWindow):
                 self.streaming_item_double_clicked
             )
             list_widget.itemClicked.connect(self.streaming_item_clicked)
+            list_widget.itemPressed.connect(
+                lambda _item, content_type=spec['stream_type']:
+                self._update_favorite_reordering(content_type)
+            )
             list_widget.keyboardActivated.connect(
                 self.streaming_item_keyboard_activated
             )
@@ -4810,6 +4816,7 @@ class IPTVPlayerApp(QMainWindow):
                 # A category selection always starts at the series-list root.
                 self.series_navigation_level = 0
                 self.prev_double_clicked_streaming_item = 0
+                self._series_view_states.clear()
 
             is_favorites_view = (selected_item_text == self.fav_categories_text)
 
@@ -5015,6 +5022,20 @@ class IPTVPlayerApp(QMainWindow):
             if not clicked_item:
                 return
 
+            if time.monotonic() < self._series_back_click_guard_until:
+                return
+
+            if (
+                clicked_item.text() == self.go_back_text
+                and self.series_navigation_level > 0
+            ):
+                self._navigate_series_back()
+                self._series_back_click_guard_until = (
+                    time.monotonic()
+                    + QApplication.doubleClickInterval() / 1000.0
+                )
+                return
+
             if (clicked_item == self.prev_clicked_streaming_item):
                 return
 
@@ -5140,6 +5161,9 @@ class IPTVPlayerApp(QMainWindow):
             if not clicked_item:
                 return
 
+            if time.monotonic() < self._series_back_click_guard_until:
+                return
+
             clicked_item_text = clicked_item.text()
             clicked_item_data = clicked_item.data(Qt.UserRole)
 
@@ -5180,14 +5204,15 @@ class IPTVPlayerApp(QMainWindow):
                     return
 
                 if 'series' in stream_type:
+                    self._capture_series_view_state(0)
                     self.current_series_entry = clicked_item_data
                     self.series_navigation_level = 1
                     self.show_seasons(clicked_item_data)
             elif self.series_navigation_level == 1:
                 if clicked_item_text == self.go_back_text:
-                    self.series_navigation_level = 0
-                    self.go_back_to_level(self.series_navigation_level)
+                    self._navigate_series_back()
                 else:
+                    self._capture_series_view_state(1)
                     self.current_series_season = clicked_item_text.removeprefix(
                         "Season "
                     )
@@ -5195,8 +5220,7 @@ class IPTVPlayerApp(QMainWindow):
                     self.show_episodes(clicked_item_data)
             elif self.series_navigation_level == 2:
                 if clicked_item_text == self.go_back_text:
-                    self.series_navigation_level = 1
-                    self.go_back_to_level(self.series_navigation_level)
+                    self._navigate_series_back()
                 else:
                     # Play episode.
                     self.play_item(
@@ -5210,6 +5234,84 @@ class IPTVPlayerApp(QMainWindow):
         except Exception as e:
             print(f"failed item double click: {e}")
 
+    def _navigate_series_back(self):
+        """Return one Series level and restore the previous list position."""
+        if self.series_navigation_level <= 0:
+            return
+        self.series_navigation_level -= 1
+        self.prev_clicked_streaming_item = None
+        self.prev_double_clicked_streaming_item = None
+        self.go_back_to_level(self.series_navigation_level)
+
+    def _capture_series_view_state(self, navigation_level):
+        """Remember the current row and scroll position for one Series level."""
+        list_widget = self.streaming_list_widgets['Series']
+        current_item = list_widget.currentItem()
+        identity = None
+        if current_item is not None:
+            data = current_item.data(Qt.UserRole)
+            if navigation_level == 0 and isinstance(data, dict):
+                identity = ('series_id', str(data.get('series_id', '')))
+            else:
+                identity = ('text', current_item.text())
+        self._series_view_states[navigation_level] = {
+            'identity': identity,
+            'row': list_widget.currentRow(),
+            'scroll': list_widget.verticalScrollBar().value(),
+        }
+
+    def _restore_series_view_state(self, navigation_level, attempts=50):
+        """Restore a Series view after Qt finishes its batched list layout."""
+        if self.series_navigation_level != navigation_level:
+            return
+        state = self._series_view_states.get(navigation_level)
+        if not state:
+            return
+        list_widget = self.streaming_list_widgets['Series']
+        identity = state.get('identity')
+        selected_item = None
+        saved_row = int(state.get('row', -1))
+        candidate_rows = []
+        if 0 <= saved_row < list_widget.count():
+            candidate_rows.append(saved_row)
+        candidate_rows.extend(
+            row for row in range(list_widget.count()) if row != saved_row
+        )
+        for row in candidate_rows:
+            candidate = list_widget.item(row)
+            data = candidate.data(Qt.UserRole)
+            if identity and identity[0] == 'series_id':
+                matches = (
+                    isinstance(data, dict)
+                    and str(data.get('series_id', '')) == identity[1]
+                )
+            else:
+                matches = bool(identity and candidate.text() == identity[1])
+            if matches:
+                selected_item = candidate
+                break
+
+        if selected_item is not None:
+            list_widget.setCurrentItem(selected_item)
+
+        target_scroll = max(0, int(state.get('scroll', 0)))
+        scroll_bar = list_widget.verticalScrollBar()
+        if scroll_bar.maximum() < target_scroll and attempts > 0:
+            QTimer.singleShot(
+                20,
+                lambda level=navigation_level, remaining=attempts - 1:
+                self._restore_series_view_state(level, remaining),
+            )
+            return
+        if scroll_bar.maximum() >= target_scroll:
+            scroll_bar.setValue(target_scroll)
+        elif selected_item is not None:
+            # Even if an unusually slow layout outlives the retries, return to
+            # the selected series instead of leaving the user at the top.
+            list_widget.scrollToItem(
+                selected_item, QtWidgets.QAbstractItemView.PositionAtCenter
+            )
+
     def streaming_item_keyboard_activated(self, item):
         """Apply the normal selection work, then open or play the chosen entry."""
         self.streaming_item_clicked(item)
@@ -5220,8 +5322,6 @@ class IPTVPlayerApp(QMainWindow):
         self.set_progress_bar(0, "Loading items")
 
         self.streaming_list_widgets['Series'].clear()
-
-        self.streaming_list_widgets['Series'].scrollToTop()
 
         if series_navigation_level == 0:  # From seasons back to series list
             for entry in self.currently_loaded_streams['Series']:
@@ -5249,6 +5349,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.streaming_list_widgets['Series'].addItem(item)
 
         self.animate_progress(0, 100, "Loading finished")
+        self._restore_series_view_state(series_navigation_level)
         self._update_favorite_reordering('Series')
 
     def show_seasons(self, seasons_data):

@@ -119,6 +119,25 @@ class FavoriteStorageTests(unittest.TestCase):
             ordered = entries_in_favorite_order(str(file_path), "Movies", entries)
             self.assertEqual([entry["stream_id"] for entry in ordered], [20, 10])
 
+    def test_reorders_series_using_series_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "favorites.json"
+            set_favorite(str(file_path), "Series", 10, True)
+            set_favorite(str(file_path), "Series", 20, True)
+            set_favorite(str(file_path), "Series", 30, True)
+
+            reorder_favorites(str(file_path), "Series", [30, 10, 20])
+
+            entries = [
+                {"series_id": 10, "favorite": True},
+                {"series_id": 20, "favorite": True},
+                {"series_id": 30, "favorite": True},
+            ]
+            ordered = entries_in_favorite_order(str(file_path), "Series", entries)
+            self.assertEqual(
+                [entry["series_id"] for entry in ordered], [30, 10, 20]
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
