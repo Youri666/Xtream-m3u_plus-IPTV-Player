@@ -922,6 +922,13 @@ class IPTVPlayerApp(QMainWindow):
         painter.end()
         return QIcon(pixmap)
 
+    def _custom_category_add_icon(self, dark):
+        """Keep the native add icon in light mode and tint it for dark mode."""
+        icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogNewFolder)
+        if not dark:
+            return icon
+        return self._tinted_icon(icon, QColor("#f2f2f2"))
+
     def _refresh_theme_icons(self, dark):
         """Refresh monochrome icons after the application palette changes."""
         color = QColor("#f2f2f2" if dark else "#202020")
@@ -971,6 +978,10 @@ class IPTVPlayerApp(QMainWindow):
             if hasattr(search_bar, 'category_visibility_button'):
                 search_bar.category_visibility_button.setIcon(
                     self._category_icon(color)
+                )
+            if hasattr(search_bar, 'add_custom_category_button'):
+                search_bar.add_custom_category_button.setIcon(
+                    self._custom_category_add_icon(dark)
                 )
 
         if hasattr(self, 'address_book_button'):
@@ -1657,7 +1668,9 @@ class IPTVPlayerApp(QMainWindow):
                 self.add_custom_category_buttons = {}
             add_category_button = QToolButton()
             add_category_button.setIcon(
-                self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogNewFolder)
+                self._custom_category_add_icon(
+                    application_palette_is_dark(QtWidgets.qApp)
+                )
             )
             add_category_button.setToolTip(
                 f"Create a custom {stream_type} category"
