@@ -4,9 +4,16 @@ import unittest
 
 from iptv_player.storage.favorites import (
     account_favorites_file,
+    create_custom_category,
+    delete_custom_category,
+    entries_in_custom_category,
     entries_in_favorite_order,
+    load_custom_categories,
     migrate_legacy_favorites_file,
+    rename_custom_category,
+    reorder_custom_category,
     reorder_favorites,
+    set_custom_category_membership,
     set_favorite,
 )
 
@@ -137,6 +144,74 @@ class FavoriteStorageTests(unittest.TestCase):
             self.assertEqual(
                 [entry["series_id"] for entry in ordered], [30, 10, 20]
             )
+
+    def test_custom_live_category_lifecycle_and_membership(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "favorites.json"
+            category_id = create_custom_category(file_path, "LIVE", "Sports")
+
+            self.assertIsNotNone(category_id)
+            self.assertIsNone(create_custom_category(
+                file_path, "LIVE", "sports"
+            ))
+            self.assertTrue(set_custom_category_membership(
+                file_path, "LIVE", category_id, [20, 10], True
+            ))
+            self.assertTrue(set_custom_category_membership(
+                file_path, "LIVE", category_id, [30, 20], True
+            ))
+            self.assertEqual(
+                load_custom_categories(file_path, "LIVE")[0]["stream_ids"],
+                [10, 30, 20],
+            )
+
+            entries = [
+                {"stream_id": 10}, {"stream_id": 20}, {"stream_id": 30}
+            ]
+            ordered = entries_in_custom_category(
+                file_path, "LIVE", category_id, entries
+            )
+            self.assertEqual(
+                [entry["stream_id"] for entry in ordered], [10, 30, 20]
+            )
+
+            self.assertTrue(reorder_custom_category(
+                file_path, "LIVE", category_id, [30, 10, 20]
+            ))
+            self.assertTrue(set_custom_category_membership(
+                file_path, "LIVE", category_id, [10], False
+            ))
+            self.assertTrue(rename_custom_category(
+                file_path, "LIVE", category_id, "Documentaries"
+            ))
+            category = load_custom_categories(file_path, "LIVE")[0]
+            self.assertEqual(category["name"], "Documentaries")
+            self.assertEqual(category["stream_ids"], [30, 20])
+
+            self.assertTrue(delete_custom_category(
+                file_path, "LIVE", category_id
+            ))
+            self.assertEqual(load_custom_categories(file_path, "LIVE"), [])
+
+    def test_custom_series_categories_use_series_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = Path(directory) / "favorites.json"
+            category_id = create_custom_category(file_path, "Series", "Anime")
+            set_custom_category_membership(
+                file_path, "Series", category_id, [42], True
+            )
+
+            entries = [
+                {"series_id": 42, "name": "Series"},
+                {"series_id": 99, "name": "Other"},
+            ]
+            self.assertEqual(
+                entries_in_custom_category(
+                    file_path, "Series", category_id, entries
+                ),
+                [entries[0]],
+            )
+            self.assertEqual(load_custom_categories(file_path, "Movies"), [])
 
 
 if __name__ == "__main__":
