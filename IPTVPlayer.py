@@ -33,7 +33,7 @@ from PyQt5.QtWidgets import (
     QListWidget, QWidget, QFileDialog, QCheckBox, QSizePolicy, QHBoxLayout,
     QDialog, QTabWidget, QListWidgetItem, QMenu, QAction, QActionGroup,
     QTextEdit, QGridLayout, QMessageBox, QListView, QTreeWidget, QTreeWidgetItem, QComboBox, QSplitter,
-    QGroupBox, QRadioButton, QButtonGroup, QToolButton
+    QFrame, QGroupBox, QInputDialog, QRadioButton, QButtonGroup, QToolButton
 )
 
 from iptv_player.ui.info_panels import LiveInfoBox, MovieInfoBox, SeriesInfoBox
@@ -126,8 +126,12 @@ from iptv_player.storage import (
     account_favorites_file,
     account_history_file,
     clear_history,
+    create_custom_category,
+    delete_custom_category,
+    entries_in_custom_category,
     entries_in_favorite_order,
     load_history,
+    load_custom_categories,
     load_provider_preferences,
     migrate_legacy_favorites_file,
     provider_preferences_file,
@@ -135,10 +139,13 @@ from iptv_player.storage import (
     record_history,
     remove_history_entries,
     remove_history_entry,
+    rename_custom_category,
+    reorder_custom_category,
     repair_misclassified_history,
     reorder_favorites,
     resume_position,
     save_provider_preferences,
+    set_custom_category_membership,
     set_favorite,
 )
 from iptv_player.provider.cache import account_cache_key
@@ -455,6 +462,7 @@ class IPTVPlayerApp(QMainWindow):
             stream_type = spec['stream_type']
             attribute = spec['attribute']
             splitter = self._create_content_splitter(
+                stream_type,
                 self.category_search_widgets[stream_type],
                 self.category_list_widgets[stream_type],
                 self.streaming_search_widgets[stream_type],
@@ -729,6 +737,7 @@ class IPTVPlayerApp(QMainWindow):
 
     def _create_content_splitter(
         self,
+        stream_type,
         category_search,
         category_list,
         streaming_search,
@@ -742,7 +751,11 @@ class IPTVPlayerApp(QMainWindow):
         category_container = QWidget()
         category_layout = QVBoxLayout(category_container)
         category_layout.setContentsMargins(0, 0, 0, 0)
-        category_layout.addWidget(category_search)
+        category_header = QHBoxLayout()
+        category_header.setContentsMargins(0, 0, 0, 0)
+        category_header.setSpacing(4)
+        category_header.addWidget(category_search, 1)
+        category_layout.addLayout(category_header)
         category_layout.addWidget(category_list)
         category_container.setMinimumWidth(150)
 
@@ -1400,6 +1413,19 @@ class IPTVPlayerApp(QMainWindow):
             source_name != self.fav_categories_text
             or bool(catalog_entry.get("favorite"))
         )
+        custom_id = self._custom_category_id(source_id)
+        if custom_id:
+            custom_item_ids = {
+                category["id"]: set(category["stream_ids"])
+                for category in load_custom_categories(
+                    self.favorites_file, stream_type
+                )
+            }
+            id_field = "series_id" if stream_type == "Series" else "stream_id"
+            source_is_available = (
+                catalog_entry.get(id_field)
+                in custom_item_ids.get(custom_id, set())
+            )
         actual_category_id = str(catalog_entry.get("category_id", ""))
         fallback_item = None
         all_item = None
@@ -1626,6 +1652,23 @@ class IPTVPlayerApp(QMainWindow):
             )
             search_bar.category_visibility_button = category_visibility_button
             container_layout.addWidget(category_visibility_button)
+
+            if not hasattr(self, "add_custom_category_buttons"):
+                self.add_custom_category_buttons = {}
+            add_category_button = QToolButton()
+            add_category_button.setIcon(
+                self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogNewFolder)
+            )
+            add_category_button.setToolTip(
+                f"Create a custom {stream_type} category"
+            )
+            add_category_button.clicked.connect(
+                lambda _checked=False, content_type=stream_type:
+                self._create_custom_category(content_type)
+            )
+            self.add_custom_category_buttons[stream_type] = add_category_button
+            search_bar.add_custom_category_button = add_category_button
+            container_layout.addWidget(add_category_button)
         container_layout.addWidget(sort_button)
 
         search_bar.keyPressEvent = lambda event: self.search_bar_key_pressed(
@@ -1700,9 +1743,42 @@ class IPTVPlayerApp(QMainWindow):
             count = len(self._entries_in_visible_categories(stream_type))
         elif category_name == self.fav_categories_text:
             count = len(self._favorites_in_user_order(stream_type))
+        elif self._custom_category_id(category_id):
+            count = len(self._custom_category_entries(stream_type, category_id))
         else:
             count = self.category_item_counts[stream_type].get(str(category_id), 0)
         return f"{category_name} ({count})"
+
+    @staticmethod
+    def _custom_category_id(category_id):
+        """Extract a local custom-category id from its synthetic category id."""
+        prefix = "custom:"
+        text = str(category_id or "")
+        return text[len(prefix):] if text.startswith(prefix) else ""
+
+    def _custom_category_data(self, stream_type):
+        """Return custom categories in their fixed first-column order."""
+        return [
+            {
+                "category_name": category["name"],
+                "category_id": f"custom:{category['id']}",
+                "custom_category_id": category["id"],
+                "category_kind": "custom",
+            }
+            for category in load_custom_categories(
+                self.favorites_file, stream_type
+            )
+        ]
+
+    def _custom_category_entries(self, stream_type, category_id):
+        """Return currently available catalog entries from a custom category."""
+        custom_id = self._custom_category_id(category_id) or str(category_id)
+        return entries_in_custom_category(
+            self.favorites_file,
+            stream_type,
+            custom_id,
+            self.entries_per_stream_type.get(stream_type, []),
+        )
 
     def _new_category_item(self, stream_type, category_data):
         """Create a category row while keeping its undecorated name in item data."""
@@ -1714,13 +1790,52 @@ class IPTVPlayerApp(QMainWindow):
         item.setData(Qt.UserRole, category_data)
         return item
 
+    @staticmethod
+    def _insert_category_separator(list_widget, row):
+        """Insert a non-selectable native horizontal separator."""
+        item = QListWidgetItem()
+        item.setData(Qt.UserRole, {"category_kind": "separator"})
+        item.setFlags(Qt.NoItemFlags)
+        item.setSizeHint(QSize(0, 9))
+        list_widget.insertItem(row, item)
+        separator = QFrame(list_widget)
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        list_widget.setItemWidget(item, separator)
+
+    def _insert_fixed_categories(self, stream_type):
+        """Place local categories above the provider-defined category rows."""
+        list_widget = self.category_list_widgets[stream_type]
+        row = 0
+        list_widget.insertItem(row, self._new_category_item(
+            stream_type, {"category_name": self.all_categories_text}
+        ))
+        row += 1
+        list_widget.insertItem(row, self._new_category_item(
+            stream_type, {"category_name": self.fav_categories_text}
+        ))
+        row += 1
+        custom_categories = self._custom_category_data(stream_type)
+        self._insert_category_separator(list_widget, row)
+        row += 1
+        for category in custom_categories:
+            list_widget.insertItem(
+                row, self._new_category_item(stream_type, category)
+            )
+            row += 1
+        if custom_categories:
+            self._insert_category_separator(list_widget, row)
+
     def _refresh_category_count_labels(self, stream_type):
         """Refresh visible category counts without rebuilding the list."""
         list_widget = self.category_list_widgets[stream_type]
         for row in range(list_widget.count()):
             item = list_widget.item(row)
             category_data = item.data(Qt.UserRole)
-            if not isinstance(category_data, dict):
+            if (
+                not isinstance(category_data, dict)
+                or category_data.get('category_kind') == 'separator'
+            ):
                 continue
             item.setText(self._category_display_text(
                 stream_type,
@@ -2028,8 +2143,13 @@ class IPTVPlayerApp(QMainWindow):
                 for row in range(list_widget.count()):
                     item = list_widget.item(row)
                     item_data = item.data(Qt.UserRole) or {}
-                    if item_data.get('category_name') in (
-                        self.all_categories_text, self.fav_categories_text
+                    if (
+                        item_data.get('category_name') in (
+                            self.all_categories_text, self.fav_categories_text
+                        )
+                        or item_data.get('category_kind') in (
+                            'custom', 'separator'
+                        )
                     ):
                         matches.append(item)
 
@@ -2059,15 +2179,7 @@ class IPTVPlayerApp(QMainWindow):
                         self.streaming_list_widgets[stream_type].addItem(item)
 
             if list_content_type == 'category':
-                itemAll = self._new_category_item(
-                    stream_type, {'category_name': self.all_categories_text}
-                )
-                self.category_list_widgets[stream_type].insertItem(0, itemAll)
-
-                itemFav = self._new_category_item(
-                    stream_type, {'category_name': self.fav_categories_text}
-                )
-                self.category_list_widgets[stream_type].insertItem(1, itemFav)
+                self._insert_fixed_categories(stream_type)
         finally:
             list_widget.setUpdatesEnabled(True)
             list_widget.viewport().update()
@@ -2232,15 +2344,27 @@ class IPTVPlayerApp(QMainWindow):
             """)
 
     def _show_category_download_context_menu(self, stream_type, position):
-        """Export the combined contents of one or more selected categories."""
+        """Manage custom categories or export selected category contents."""
         list_widget = self.category_list_widgets[stream_type]
         clicked_item = list_widget.itemAt(position)
         if clicked_item is None:
             return
         selected_items = context_selected_items(list_widget, clicked_item)
-        categories = [item.data(Qt.UserRole) or {} for item in selected_items]
+        categories = [
+            item.data(Qt.UserRole) or {} for item in selected_items
+            if (item.data(Qt.UserRole) or {}).get("category_kind") != "separator"
+        ]
         if not categories:
             return
+
+        clicked_category = clicked_item.data(Qt.UserRole) or {}
+        custom_id = clicked_category.get("custom_category_id", "")
+        menu = QMenu(list_widget)
+        rename_action = delete_action = None
+        if custom_id:
+            rename_action = menu.addAction("Rename custom category…")
+            delete_action = menu.addAction("Delete custom category…")
+            menu.addSeparator()
 
         all_category = next(
             (
@@ -2270,10 +2394,6 @@ class IPTVPlayerApp(QMainWindow):
                 seen.add(identity)
                 entries.append(entry)
 
-        if not entries:
-            self.animate_progress(0, 100, "No items are available to export", "error")
-            return
-
         requests = [
             self._root_download_request(stream_type, entry) for entry in entries
         ]
@@ -2286,14 +2406,19 @@ class IPTVPlayerApp(QMainWindow):
             if len(category_names) == 1
             else f"{len(category_names)} selected categories"
         )
-        menu = QMenu(list_widget)
         count = len(categories)
         label = "category" if count == 1 else f"{count} categories"
         copy_action = menu.addAction(f"Copy {label} download URLs")
         save_action = menu.addAction(f"Save {label} as text file…")
         m3u_action = menu.addAction(f"Save {label} as M3U playlist…")
+        for action in (copy_action, save_action, m3u_action):
+            action.setEnabled(bool(requests))
         selected_action = menu.exec_(list_widget.viewport().mapToGlobal(position))
-        if selected_action is copy_action:
+        if selected_action is rename_action:
+            self._rename_custom_category(stream_type, custom_id)
+        elif selected_action is delete_action:
+            self._delete_custom_category(stream_type, custom_id)
+        elif selected_action is copy_action:
             self._export_download_requests(
                 requests, title, "copy", includes_all=all_category is not None
             )
@@ -2305,6 +2430,120 @@ class IPTVPlayerApp(QMainWindow):
             self._export_download_requests(
                 requests, title, "m3u", includes_all=all_category is not None
             )
+
+    def _create_custom_category(self, stream_type, initial_item_ids=None):
+        """Prompt for and create a provider-local content category."""
+        name, accepted = QInputDialog.getText(
+            self, "Create custom category", "Category name:"
+        )
+        if not accepted:
+            return
+        category_id = create_custom_category(
+            self.favorites_file, stream_type, name
+        )
+        if category_id is None:
+            QMessageBox.information(
+                self,
+                "Custom category",
+                "Enter a unique, non-empty category name.",
+            )
+            return
+        if initial_item_ids:
+            set_custom_category_membership(
+                self.favorites_file,
+                stream_type,
+                category_id,
+                initial_item_ids,
+                True,
+            )
+        self._rebuild_custom_categories(stream_type, category_id)
+
+    def _rename_custom_category(self, stream_type, category_id):
+        """Prompt for a new name and refresh the selected custom category."""
+        current = next((
+            category for category in load_custom_categories(
+                self.favorites_file, stream_type
+            )
+            if category["id"] == str(category_id)
+        ), None)
+        if current is None:
+            return
+        name, accepted = QInputDialog.getText(
+            self,
+            "Rename custom category",
+            "Category name:",
+            QLineEdit.Normal,
+            current["name"],
+        )
+        if not accepted:
+            return
+        if not rename_custom_category(
+            self.favorites_file, stream_type, category_id, name
+        ):
+            QMessageBox.information(
+                self,
+                "Custom category",
+                "Enter a unique, non-empty category name.",
+            )
+            return
+        self._rebuild_custom_categories(stream_type, category_id)
+
+    def _delete_custom_category(self, stream_type, category_id):
+        """Delete a custom category after an explicit confirmation."""
+        current = next((
+            category for category in load_custom_categories(
+                self.favorites_file, stream_type
+            )
+            if category["id"] == str(category_id)
+        ), None)
+        if current is None:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Delete custom category",
+            f'Delete the custom category "{current["name"]}"?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        if delete_custom_category(
+            self.favorites_file, stream_type, category_id
+        ):
+            self._rebuild_custom_categories(stream_type)
+
+    def _rebuild_custom_categories(self, stream_type, selected_custom_id=None):
+        """Refresh local category rows and invalidate their cached views."""
+        for cache in (
+            self.category_view_cache.get(stream_type, {}),
+            self.category_item_cache.get(stream_type, {}),
+        ):
+            for key in list(cache):
+                if str(key[0]).startswith("category:custom:"):
+                    cache.pop(key, None)
+        self.active_category_view_key[stream_type] = None
+        search_bar = self.category_search_bars[stream_type]
+        search_bar.clear()
+        self.search_in_list("category", stream_type, "")
+
+        list_widget = self.category_list_widgets[stream_type]
+        target_id = (
+            f"custom:{selected_custom_id}" if selected_custom_id
+            else None
+        )
+        target_item = None
+        for row in range(list_widget.count()):
+            item = list_widget.item(row)
+            data = item.data(Qt.UserRole) or {}
+            if target_id and data.get("category_id") == target_id:
+                target_item = item
+                break
+            if target_id is None and data.get("category_name") == self.all_categories_text:
+                target_item = item
+        if target_item is not None:
+            list_widget.setCurrentItem(target_item)
+            self.prev_clicked_category_item[stream_type] = None
+            list_widget.itemClicked.emit(target_item)
 
     def _root_download_request(self, stream_type, entry):
         """Describe one top-level catalog entry for the shared export pipeline."""
@@ -2386,6 +2625,39 @@ class IPTVPlayerApp(QMainWindow):
             else f"{len(requests)} selected items"
         )
         menu = QMenu(list_widget)
+        custom_actions = {}
+        create_custom_action = None
+        item_ids = []
+        supports_custom_categories = (
+            stream_type != "Series" or self.series_navigation_level == 0
+        )
+        if supports_custom_categories:
+            custom_menu = menu.addMenu("Custom categories")
+            id_field = "series_id" if stream_type == "Series" else "stream_id"
+            item_ids = [
+                item.data(Qt.UserRole).get(id_field)
+                for item in selected_items
+                if isinstance(item.data(Qt.UserRole), dict)
+                and item.data(Qt.UserRole).get(id_field) is not None
+            ]
+            for category in load_custom_categories(
+                self.favorites_file, stream_type
+            ):
+                action = custom_menu.addAction(category["name"])
+                action.setCheckable(True)
+                current_ids = set(category["stream_ids"])
+                action.setChecked(bool(item_ids) and all(
+                    item_id in current_ids for item_id in item_ids
+                ))
+                custom_actions[action] = (
+                    category["id"], item_ids, not action.isChecked()
+                )
+            if custom_actions:
+                custom_menu.addSeparator()
+            create_custom_action = custom_menu.addAction(
+                "Create custom category…"
+            )
+            menu.addSeparator()
         if len(requests) == 1:
             scope = requests[0]["scope"]
             plural = "s" if scope in ("season", "series") else ""
@@ -2400,12 +2672,46 @@ class IPTVPlayerApp(QMainWindow):
         save_action = menu.addAction(save_label)
         m3u_action = menu.addAction(m3u_label)
         selected_action = menu.exec_(list_widget.viewport().mapToGlobal(position))
-        if selected_action is copy_action:
+        if selected_action in custom_actions:
+            category_id, selected_ids, enabled = custom_actions[selected_action]
+            if set_custom_category_membership(
+                self.favorites_file,
+                stream_type,
+                category_id,
+                selected_ids,
+                enabled,
+            ):
+                self._custom_membership_changed(stream_type, category_id)
+        elif selected_action is create_custom_action:
+            self._create_custom_category(stream_type, item_ids)
+        elif selected_action is copy_action:
             self._export_download_requests(requests, title, "copy")
         elif selected_action is save_action:
             self._export_download_requests(requests, title, "save")
         elif selected_action is m3u_action:
             self._export_download_requests(requests, title, "m3u")
+
+    def _custom_membership_changed(self, stream_type, category_id):
+        """Invalidate one custom view and refresh its count or contents."""
+        cache_prefix = f"category:custom:{category_id}"
+        for cache in (
+            self.category_view_cache.get(stream_type, {}),
+            self.category_item_cache.get(stream_type, {}),
+        ):
+            for key in list(cache):
+                if key[0] == cache_prefix:
+                    cache.pop(key, None)
+        self._refresh_category_count_labels(stream_type)
+
+        _category_name, selected_id = self._selected_category(stream_type)
+        if self._custom_category_id(selected_id) != str(category_id):
+            return
+        self.active_category_view_key[stream_type] = None
+        category_list = self.category_list_widgets[stream_type]
+        category_item = category_list.currentItem()
+        if category_item is not None:
+            self.prev_clicked_category_item[stream_type] = None
+            category_list.itemClicked.emit(category_item)
 
     def _episode_download_url(self, episode):
         """Build an episode URL using the active account's customized template."""
@@ -4667,15 +4973,18 @@ class IPTVPlayerApp(QMainWindow):
         return entries_in_favorite_order(self.favorites_file, stream_type, entries)
 
     def _favorite_reordering_enabled(self, stream_type):
-        """Return whether the visible list can safely define favorite order."""
-        category_name, _category_id = self._selected_category(stream_type)
+        """Return whether the visible list can safely define a local order."""
+        category_name, category_id = self._selected_category(stream_type)
         sorting_enabled, _sort_order = getattr(
             self.streaming_search_bars[stream_type],
             'current_sorting',
             (self.sorting_enabled, self.sorting_order),
         )
         return (
-            category_name == self.fav_categories_text
+            (
+                category_name == self.fav_categories_text
+                or bool(self._custom_category_id(category_id))
+            )
             and not sorting_enabled
             and not self.streaming_search_bars[stream_type].text().strip()
             and (stream_type != 'Series' or self.series_navigation_level == 0)
@@ -4696,7 +5005,7 @@ class IPTVPlayerApp(QMainWindow):
         list_widget.setDragDropOverwriteMode(False)
 
     def _favorite_items_reordered(self, stream_type):
-        """Save a completed favorite drag-and-drop operation for this account."""
+        """Save a completed local-category drag-and-drop operation."""
         if not self._favorite_reordering_enabled(stream_type):
             return
         list_widget = self.streaming_list_widgets[stream_type]
@@ -4708,7 +5017,14 @@ class IPTVPlayerApp(QMainWindow):
         id_key = 'series_id' if stream_type == 'Series' else 'stream_id'
         ordered_ids = [entry.get(id_key) for entry in entries]
         ordered_ids = [item_id for item_id in ordered_ids if item_id is not None]
-        reorder_favorites(self.favorites_file, stream_type, ordered_ids)
+        category_name, category_id = self._selected_category(stream_type)
+        custom_id = self._custom_category_id(category_id)
+        if custom_id:
+            reorder_custom_category(
+                self.favorites_file, stream_type, custom_id, ordered_ids
+            )
+        else:
+            reorder_favorites(self.favorites_file, stream_type, ordered_ids)
         self.currently_loaded_streams[stream_type] = list(entries)
 
         cache_key = self._category_view_key(
@@ -4760,6 +5076,8 @@ class IPTVPlayerApp(QMainWindow):
             return self._favorites_in_user_order(stream_type)
         if category_name == self.all_categories_text:
             return self._entries_in_visible_categories(stream_type)
+        if self._custom_category_id(category_id):
+            return self._custom_category_entries(stream_type, category_id)
         return [
             entry for entry in self.entries_per_stream_type[stream_type]
             if entry.get('category_id') == category_id
@@ -6150,6 +6468,13 @@ class IPTVPlayerApp(QMainWindow):
                         entry.get('category_name', ''), search_terms
                     )
                 ]
+                if search_terms:
+                    matching_entries.extend(
+                        entry for entry in self._custom_category_data(stream_type)
+                        if title_matches_search(
+                            entry.get('category_name', ''), search_terms
+                        )
+                    )
                 category_list_enabled, category_list_order = (
                     self._sorting_for_category_list(stream_type)
                 )
@@ -6178,15 +6503,7 @@ class IPTVPlayerApp(QMainWindow):
 
                     # if search bar is empty
                     if not search_terms:
-                        itemAll = self._new_category_item(
-                            stream_type, {'category_name': self.all_categories_text}
-                        )
-                        list_widget.insertItem(0, itemAll)
-
-                        itemFav = self._new_category_item(
-                            stream_type, {'category_name': self.fav_categories_text}
-                        )
-                        list_widget.insertItem(1, itemFav)
+                        self._insert_fixed_categories(stream_type)
 
                     if not list_widget.count():
                         list_widget.addItem("No search results found...")
