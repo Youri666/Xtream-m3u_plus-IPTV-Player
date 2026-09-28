@@ -39,6 +39,7 @@ For external playback, the following players are supported:
 # User Guide
 
 - [Main interface](#main-interface)
+  - [Custom categories](#custom-categories)
   - [Switching accounts](#switching-accounts)
   - [Exporting links and M3U playlists](#exporting-links-and-m3u-playlists)
 - [History tab](#history-tab)
@@ -71,6 +72,26 @@ Both the category and content lists include a **search bar**, a **clear search**
 The first column also includes a **Categories** button that lets you choose which categories are visible.
 
 ![Main interface showing the common three-column layout used by Live, Movies and Series](screenshots/main-interface.png)
+
+### Custom categories
+
+Custom categories can be created independently for **Live**, **Movies**, and **Series**. They are stored separately for each IPTV account and appear between **Favorites** and the categories supplied by the provider.
+
+Use the add button next to **Categories** to create an empty custom category.
+
+![Creating a custom category](screenshots/custom-category-create.png)
+
+To organize content, select one or more items in the middle column and right-click the selection. Open **Custom categories** to add the selected items to an existing category or remove them from a checked category. **Create custom category…** creates a new category and immediately adds the selection to it.
+
+Use **Ctrl** or **Shift** on Windows and Linux, or **Command (⌘)** or **Shift** on macOS, to select multiple items.
+
+![Assigning selected content to a custom category or creating a new category](screenshots/custom-category-assignment-menu.png)
+
+Right-click a custom category to rename or delete it. The same menu can also copy or export the category contents.
+
+![Managing and exporting a custom category](screenshots/custom-category-management-menu.png)
+
+When **Default order** is selected and the content search is empty, items inside a custom category can be reordered by dragging them.
 
 ### Switching accounts
 
@@ -180,14 +201,14 @@ The theme can be set to:
 
 The default sorting behavior can be configured under **Settings → Sorting**:
 
-- **Default order:** Regular categories follow the order provided by the IPTV provider. The **Favorites** category uses the user's custom order.
+- **Default order:** Regular categories follow the order provided by the IPTV provider. **Favorites** and custom categories use the user's custom order.
 - **A → Z:** Sort items alphabetically in ascending order.
 - **Z → A:** Sort items alphabetically in descending order.
 - **Remember per list:** Each category and content list remembers the sorting mode selected from its own sorting button.
 
-When a Favorites list uses **Default order** and its search field is empty, items can be reordered by dragging them in the middle column. The custom order is saved independently for each IPTV account and content type.
+When a Favorites or custom category list uses **Default order** and its search field is empty, items can be reordered by dragging them in the middle column. The custom order is saved independently for each IPTV account and content type.
 
-Manual drag-and-drop ordering is only available in Favorites. It is disabled while the list is sorted alphabetically or filtered by a search, because the displayed order is then temporary.
+Manual drag-and-drop ordering is available in Favorites and custom categories. It is disabled while the list is sorted alphabetically or filtered by a search, because the displayed order is then temporary.
 
 ![Sorting](screenshots/sorting.png)
 
