@@ -41,7 +41,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from iptv_player.config import application_resource_path, write_config_file
+from iptv_player.config import write_config_file
 from iptv_player.constants import DEFAULT_RESUME_BEHAVIOR, RESUME_BEHAVIORS
 from iptv_player.storage.history import resume_position
 from iptv_player.stream_info import collect_stream_information
@@ -302,10 +302,6 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_info   = QPushButton()
         self.btn_info.setEnabled(False)
         self.btn_info.setCheckable(True)
-        self._stream_info_icon = QIcon(application_resource_path(
-            "images/info_tab_icon.ico"
-        ))
-        self.btn_info.setIcon(self._stream_info_icon)
         self.btn_mute   = QPushButton()
         self.vol_slider = QSlider(Qt.Horizontal)
         self.vol_slider.setRange(0, 100)
@@ -591,10 +587,11 @@ class EmbeddedPlayerWindow(QMainWindow):
 
     def _tinted_icon(self, source_icon):
         """Tint an icon so it remains visible on the active theme."""
-        source = source_icon.pixmap(24, 24)
+        source = source_icon.pixmap(96, 96)
 
         def tinted_pixmap(color):
             pixmap = QPixmap(source.size())
+            pixmap.setDevicePixelRatio(source.devicePixelRatio())
             pixmap.fill(Qt.transparent)
             painter = QPainter(pixmap)
             painter.drawPixmap(0, 0, source)
@@ -615,29 +612,45 @@ class EmbeddedPlayerWindow(QMainWindow):
     @staticmethod
     def _player_window_icon():
         """Create a compact player icon that remains clear in the native caption."""
-        pixmap = QPixmap(24, 24)
+        pixmap = QPixmap(96, 96)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setBrush(QColor("#7c3aed"))
         painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(2, 2, 20, 20, 5, 5)
+        painter.drawRoundedRect(8, 8, 80, 80, 20, 20)
         painter.setBrush(Qt.white)
-        painter.drawPolygon(QPolygon([QPoint(9, 7), QPoint(9, 17), QPoint(17, 12)]))
+        painter.drawPolygon(QPolygon([
+            QPoint(36, 28), QPoint(36, 68), QPoint(68, 48)
+        ]))
         painter.end()
         return QIcon(pixmap)
 
     @staticmethod
     def _menu_icon(color):
         """Draw a crisp menu symbol without relying on a platform glyph font."""
-        pixmap = QPixmap(24, 24)
+        pixmap = QPixmap(96, 96)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
-        pen = QPen(color, 2, Qt.SolidLine, Qt.RoundCap)
-        painter.setPen(pen)
-        for y in (7, 12, 17):
-            painter.drawLine(6, y, 18, y)
+        painter.setPen(QPen(color, 8, Qt.SolidLine, Qt.RoundCap))
+        for y in (28, 48, 68):
+            painter.drawLine(24, y, 72, y)
+        painter.end()
+        return QIcon(pixmap)
+
+    @staticmethod
+    def _information_icon(color):
+        """Draw a scalable outlined information symbol for the player."""
+        pixmap = QPixmap(96, 96)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QPen(color, 7, Qt.SolidLine, Qt.RoundCap))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawEllipse(10, 10, 76, 76)
+        painter.drawPoint(48, 31)
+        painter.drawLine(48, 44, 48, 67)
         painter.end()
         return QIcon(pixmap)
 
@@ -655,7 +668,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         muted = self._muted or self._volume == 0
         volume_icon = QStyle.SP_MediaVolumeMuted if muted else QStyle.SP_MediaVolume
         self._set_standard_icon(self.btn_mute, volume_icon)
-        self.btn_info.setIcon(self._tinted_icon(self._stream_info_icon))
+        self.btn_info.setIcon(self._information_icon(self._icon_color))
         fullscreen_icon = (
             QStyle.SP_TitleBarNormalButton
             if self._is_fullscreen else QStyle.SP_TitleBarMaxButton

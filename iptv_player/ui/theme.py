@@ -10,7 +10,9 @@ from PyQt5.QtGui import QColor, QIcon, QPalette, QPixmap
 
 def grayscale_icon(icon, size=QSize(24, 24)):
     """Convert an icon to grayscale while preserving shading and transparency."""
-    image = icon.pixmap(size).toImage()
+    source_size = max(96, size.width(), size.height())
+    source = icon.pixmap(source_size, source_size)
+    image = source.toImage()
     for y in range(image.height()):
         for x in range(image.width()):
             color = image.pixelColor(x, y)
@@ -21,7 +23,9 @@ def grayscale_icon(icon, size=QSize(24, 24)):
             )
             color.setRgb(gray, gray, gray, color.alpha())
             image.setPixelColor(x, y, color)
-    return QIcon(QPixmap.fromImage(image))
+    result = QPixmap.fromImage(image)
+    result.setDevicePixelRatio(source.devicePixelRatio())
+    return QIcon(result)
 
 
 def remember_system_palette(app):

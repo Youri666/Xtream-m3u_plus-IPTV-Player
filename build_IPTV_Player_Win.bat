@@ -86,23 +86,24 @@ REM Run PyInstaller directly with all necessary options and added data files
   --workpath %BUILD_PATH% ^
   --distpath %DIST_PATH% ^
   --add-data "images/TV_icon.ico;images" ^
+  --add-data "images/TV_icon.png;images" ^
   --add-data "images/404_not_found.png;images" ^
   --add-data "images/no_image.jpg;images" ^
   --add-data "images/loading-icon.png;images" ^
-  --add-data "images/tv_tab_icon.ico;images" ^
-  --add-data "images/movies_tab_icon.ico;images" ^
-  --add-data "images/series_tab_icon.ico;images" ^
-  --add-data "images/home_tab_icon.ico;images" ^
-  --add-data "images/favorite_tab_icon.ico;images" ^
-  --add-data "images/favorite_tab_icon_colour.ico;images" ^
-  --add-data "images/info_tab_icon.ico;images" ^
-  --add-data "images/settings_tab_icon.ico;images" ^
-  --add-data "images/search_bar_icon.ico;images" ^
-  --add-data "images/sorting_icon.ico;images" ^
-  --add-data "images/clear_button_icon.ico;images" ^
-  --add-data "images/go_back_icon.ico;images" ^
-  --add-data "images/account_manager_icon.ico;images" ^
-  --add-data "images/film_camera_icon.ico;images" ^
+  --add-data "images/tv_tab_icon.png;images" ^
+  --add-data "images/movies_tab_icon.png;images" ^
+  --add-data "images/series_tab_icon.png;images" ^
+  --add-data "images/home_tab_icon.png;images" ^
+  --add-data "images/favorite_tab_icon.png;images" ^
+  --add-data "images/favorite_tab_icon_colour.png;images" ^
+  --add-data "images/info_tab_icon.png;images" ^
+  --add-data "images/settings_tab_icon.png;images" ^
+  --add-data "images/search_bar_icon.png;images" ^
+  --add-data "images/sorting_icon.png;images" ^
+  --add-data "images/clear_button_icon.png;images" ^
+  --add-data "images/go_back_icon.png;images" ^
+  --add-data "images/account_manager_icon.png;images" ^
+  --add-data "images/film_camera_icon.png;images" ^
   --add-data "images/primary_full-TMDB.svg;images" ^
   --add-data "images/yt_icon_rgb.png;images" ^
   --add-data "images/unknown_status.png;images" ^
