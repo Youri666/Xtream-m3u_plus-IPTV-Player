@@ -340,7 +340,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_next.setToolTip("Next (Page Down)")
         self.btn_slow.setToolTip("Slower (-)")
         self.btn_fast.setToolTip("Faster (+)")
-        self.btn_info.setToolTip("Stream information")
+        self.btn_info.setToolTip("Stream information (I)")
         self.btn_mute.setToolTip("Mute (M)")
         self.btn_audio.setToolTip("Select audio track (A cycles tracks)")
         self.btn_subs.setToolTip("Subtitles (S)")
@@ -538,6 +538,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         QShortcut(QKeySequence(Qt.Key_A),     self, activated=self._cycle_audio)
         QShortcut(QKeySequence(Qt.Key_S),     self, activated=self._cycle_subs)
         QShortcut(QKeySequence(Qt.Key_M),     self, activated=self.toggle_mute)
+        QShortcut(QKeySequence(Qt.Key_I),     self, activated=self._toggle_stream_information_shortcut)
         QShortcut(QKeySequence(Qt.Key_PageUp), self, activated=self.previous)
         QShortcut(QKeySequence(Qt.Key_PageDown), self, activated=self.next)
         QShortcut(QKeySequence(Qt.Key_Left),  self, activated=lambda: self.seek_by(-self._seek_step_ms))
@@ -1316,6 +1317,10 @@ class EmbeddedPlayerWindow(QMainWindow):
             self._show_stream_information()
         else:
             self._hide_stream_information()
+
+    def _toggle_stream_information_shortcut(self):
+        """Toggle technical stream information from the I shortcut."""
+        self._toggle_stream_information(not self.btn_info.isChecked())
 
     def _show_stream_information(self):
         """Show technical details reported locally by libVLC."""

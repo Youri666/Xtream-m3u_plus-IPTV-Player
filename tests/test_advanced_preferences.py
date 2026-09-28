@@ -29,6 +29,7 @@ class AdvancedPreferenceTests(unittest.TestCase):
                 allow_all_category_exports=True,
                 max_series_per_export=42,
                 tmdb_read_access_token="test-token",
+                tmdb_language="fra",
             )
 
             save_advanced_preferences(filename, expected)
@@ -65,6 +66,7 @@ class AdvancedPreferenceTests(unittest.TestCase):
             self.assertFalse(preferences.allow_all_category_exports)
             self.assertEqual(preferences.max_series_per_export, 100000)
             self.assertEqual(preferences.tmdb_read_access_token, "")
+            self.assertEqual(preferences.tmdb_language, "eng")
 
 
 if __name__ == "__main__":

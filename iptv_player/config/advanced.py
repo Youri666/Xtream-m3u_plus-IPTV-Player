@@ -8,6 +8,8 @@ from iptv_player.constants import (
     DEFAULT_ALLOW_ALL_CATEGORY_EXPORTS,
     DEFAULT_HISTORY_SIZE,
     DEFAULT_MAX_SERIES_PER_EXPORT,
+    DEFAULT_TMDB_LANGUAGE,
+    TMDB_LANGUAGE_LOCALES,
 )
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 from iptv_player.provider.network import (
@@ -40,6 +42,7 @@ class AdvancedPreferences:
     allow_all_category_exports: bool = DEFAULT_ALLOW_ALL_CATEGORY_EXPORTS
     max_series_per_export: int = DEFAULT_MAX_SERIES_PER_EXPORT
     tmdb_read_access_token: str = ""
+    tmdb_language: str = DEFAULT_TMDB_LANGUAGE
 
 
 def load_advanced_preferences(filename):
@@ -108,6 +111,13 @@ def load_advanced_preferences(filename):
         tmdb_read_access_token=config.get(
             "TMDB", "read_access_token", fallback=""
         ).strip(),
+        tmdb_language=_choice(
+            config,
+            "TMDB",
+            "language",
+            DEFAULT_TMDB_LANGUAGE,
+            TMDB_LANGUAGE_LOCALES,
+        ),
     )
 
 
@@ -149,7 +159,8 @@ def save_advanced_preferences(filename, preferences):
         "max_series_per_export": str(preferences.max_series_per_export),
     }
     config["TMDB"] = {
-        "read_access_token": preferences.tmdb_read_access_token
+        "read_access_token": preferences.tmdb_read_access_token,
+        "language": preferences.tmdb_language,
     }
     write_config_file(filename, config)
 
@@ -169,3 +180,9 @@ def _boolean(config, section, option, fallback):
         return config.getboolean(section, option, fallback=fallback)
     except (ValueError, configparser.Error):
         return fallback
+
+
+def _choice(config, section, option, fallback, choices):
+    """Read one string preference and reject unsupported manual values."""
+    value = config.get(section, option, fallback=fallback).strip()
+    return value if value in choices else fallback

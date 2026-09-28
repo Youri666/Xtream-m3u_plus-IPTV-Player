@@ -3703,7 +3703,8 @@ class IPTVPlayerApp(QMainWindow):
                              account_auto_refresh_enabled, catalog_cache_enabled,
                              catalog_cache_max_age_hours, detailed_logging_enabled,
                              history_size, allow_all_category_exports,
-                             max_series_per_export, tmdb_read_access_token):
+                             max_series_per_export, tmdb_read_access_token,
+                             tmdb_language):
         """Apply and persist all advanced provider settings in one operation."""
         preferences = AdvancedPreferences(
             user_agent=user_agent or DEFAULT_USER_AGENT_HEADER,
@@ -3721,6 +3722,7 @@ class IPTVPlayerApp(QMainWindow):
             allow_all_category_exports=allow_all_category_exports,
             max_series_per_export=max_series_per_export,
             tmdb_read_access_token=tmdb_read_access_token,
+            tmdb_language=tmdb_language,
         )
 
         try:
@@ -3760,10 +3762,13 @@ class IPTVPlayerApp(QMainWindow):
         self.allow_all_category_exports = preferences.allow_all_category_exports
         self.max_series_per_export = preferences.max_series_per_export
         previous_tmdb_token = getattr(self, "tmdb_read_access_token", None)
+        previous_tmdb_language = getattr(self, "tmdb_language", None)
         self.tmdb_read_access_token = preferences.tmdb_read_access_token
+        self.tmdb_language = preferences.tmdb_language
         if (
             not hasattr(self, "_tmdb_metadata_cache")
             or previous_tmdb_token != self.tmdb_read_access_token
+            or previous_tmdb_language != self.tmdb_language
         ):
             self._tmdb_metadata_cache = {}
         self._apply_stream_status_visibility()
@@ -4782,7 +4787,9 @@ class IPTVPlayerApp(QMainWindow):
             )
             return
 
-        worker = TmdbFetcher(token, media_type, normalized_id)
+        worker = TmdbFetcher(
+            token, media_type, normalized_id, self.tmdb_language
+        )
         worker.signals.finished.connect(
             lambda metadata:
             self._cache_and_apply_tmdb_enrichment(

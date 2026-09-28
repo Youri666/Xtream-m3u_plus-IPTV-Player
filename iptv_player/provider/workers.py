@@ -430,11 +430,12 @@ class TmdbFetcherSignals(QObject):
 class TmdbFetcher(QRunnable):
     """Fetch TMDB details or validate a user-provided read access token."""
 
-    def __init__(self, access_token, media_type=None, tmdb_id=None):
+    def __init__(self, access_token, media_type=None, tmdb_id=None, language="eng"):
         super().__init__()
         self.access_token = access_token
         self.media_type = media_type
         self.tmdb_id = tmdb_id
+        self.language = language
         self.signals = TmdbFetcherSignals()
 
     @pyqtSlot()
@@ -446,6 +447,7 @@ class TmdbFetcher(QRunnable):
                     NETWORK_SETTINGS.connection_timeout,
                     NETWORK_SETTINGS.read_timeout,
                 ),
+                language=self.language,
             )
             if self.media_type and self.tmdb_id:
                 result = client.details(self.media_type, self.tmdb_id)

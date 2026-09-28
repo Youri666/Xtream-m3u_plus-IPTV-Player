@@ -30,6 +30,7 @@ from iptv_player.constants import (
     DEFAULT_ALLOW_ALL_CATEGORY_EXPORTS,
     DEFAULT_HISTORY_SIZE,
     DEFAULT_MAX_SERIES_PER_EXPORT,
+    DEFAULT_TMDB_LANGUAGE,
     MEDIA_LANGUAGE_OPTIONS,
 )
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
@@ -254,13 +255,28 @@ class NetworkSettingsDialog(QDialog):
         self.tmdb_token_entry.setToolTip(
             "Enrich Movies and Series when the provider supplies a TMDB id"
         )
+        self.tmdb_token_entry.textChanged.connect(
+            lambda _text: self._set_tmdb_test_status(None)
+        )
         self.tmdb_test_button = QPushButton("Test connection")
         self.tmdb_test_button.clicked.connect(self.test_tmdb_connection)
-        self.tmdb_test_status = QLabel("")
+        self.tmdb_test_status = QLabel(
+            '<span style="color:#808080">●</span>'
+        )
+        self.tmdb_test_status.setToolTip("Connection not tested")
+        self.tmdb_language_box = QComboBox()
+        for language_name, language_code in MEDIA_LANGUAGE_OPTIONS:
+            self.tmdb_language_box.addItem(language_name, language_code)
+        tmdb_language_index = self.tmdb_language_box.findData(
+            parent.tmdb_language
+        )
+        self.tmdb_language_box.setCurrentIndex(max(0, tmdb_language_index))
         tmdb_test_layout = QHBoxLayout()
         tmdb_test_layout.addWidget(self.tmdb_test_button)
         tmdb_test_layout.addWidget(self.tmdb_test_status)
         tmdb_test_layout.addStretch(1)
+        tmdb_test_layout.addWidget(QLabel("Language:"))
+        tmdb_test_layout.addWidget(self.tmdb_language_box)
         tmdb_attribution = QLabel(
             "This product uses the TMDB API but is not endorsed or certified by TMDB."
         )
@@ -373,15 +389,23 @@ class NetworkSettingsDialog(QDialog):
         )
         self.max_series_export_spin.setValue(DEFAULT_MAX_SERIES_PER_EXPORT)
         self.tmdb_token_entry.clear()
+        default_language_index = self.tmdb_language_box.findData(
+            DEFAULT_TMDB_LANGUAGE
+        )
+        self.tmdb_language_box.setCurrentIndex(default_language_index)
+        self._set_tmdb_test_status(None)
 
     def test_tmdb_connection(self):
         """Validate the entered TMDB token without saving the dialog."""
         token = self.tmdb_token_entry.text().strip()
         if not token:
-            self.tmdb_test_status.setText("Failed")
+            self._set_tmdb_test_status(False)
             return
         self.tmdb_test_button.setEnabled(False)
-        self.tmdb_test_status.setText("Testing…")
+        self.tmdb_test_status.setText(
+            '<span style="color:#808080">●</span>'
+        )
+        self.tmdb_test_status.setToolTip("Testing connection")
         worker = TmdbFetcher(token)
         worker.signals.finished.connect(self._tmdb_test_succeeded)
         worker.signals.error.connect(self._tmdb_test_failed)
@@ -389,11 +413,24 @@ class NetworkSettingsDialog(QDialog):
 
     def _tmdb_test_succeeded(self, _result):
         self.tmdb_test_button.setEnabled(True)
-        self.tmdb_test_status.setText("OK")
+        self._set_tmdb_test_status(True)
 
     def _tmdb_test_failed(self, _error):
         self.tmdb_test_button.setEnabled(True)
-        self.tmdb_test_status.setText("Failed")
+        self._set_tmdb_test_status(False)
+
+    def _set_tmdb_test_status(self, success):
+        """Display a compact connection state matching the account test."""
+        if success is None:
+            color, tooltip = "#808080", "Connection not tested"
+        elif success:
+            color, tooltip = "#2ea44f", "Connection successful"
+        else:
+            color, tooltip = "#d64545", "Connection failed"
+        self.tmdb_test_status.setText(
+            f'<span style="color:{color}">●</span>'
+        )
+        self.tmdb_test_status.setToolTip(tooltip)
 
     def save_settings(self, force_catalog_refresh=False):
         """Apply the complete dialog state as one coherent configuration update."""
@@ -413,6 +450,7 @@ class NetworkSettingsDialog(QDialog):
             self.allow_all_exports_checkbox.isChecked(),
             self.max_series_export_spin.value(),
             self.tmdb_token_entry.text().strip(),
+            self.tmdb_language_box.currentData() or DEFAULT_TMDB_LANGUAGE,
         )
         if force_catalog_refresh:
             self.parent_app.refresh_provider_catalog()
