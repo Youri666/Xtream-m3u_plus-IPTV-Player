@@ -13,7 +13,7 @@ class ApplicationDefaultsTests(unittest.TestCase):
     def test_version_uses_release_tag_format(self):
         self.assertRegex(
             CURRENT_VERSION,
-            r"^V\d+\.\d+\.\d+(?:-(?:alpha|beta|rc))?$",
+            r"^v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc))?$",
         )
 
     def test_internal_player_defaults_remain_bounded(self):

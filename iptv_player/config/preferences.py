@@ -72,7 +72,35 @@ def save_auto_update_preference(filename, enabled):
         config = read_config_file(filename)
     except (configparser.Error, UnicodeDecodeError):
         config = configparser.ConfigParser()
-    config["Updater"] = {"auto-update-checker": bool(enabled)}
+    if not config.has_section("Updater"):
+        config.add_section("Updater")
+    config.set("Updater", "auto-update-checker", str(bool(enabled)))
+    write_config_file(filename, config)
+
+
+def load_beta_update_preference(filename):
+    """Return the saved beta-channel choice, or None when absent."""
+    try:
+        config = read_config_file(filename)
+    except (configparser.Error, UnicodeDecodeError):
+        return None
+    if not config.has_option("Updater", "receive-beta-updates"):
+        return None
+    try:
+        return config.getboolean("Updater", "receive-beta-updates")
+    except ValueError:
+        return None
+
+
+def save_beta_update_preference(filename, enabled):
+    """Persist whether prerelease updates may be offered."""
+    try:
+        config = read_config_file(filename)
+    except (configparser.Error, UnicodeDecodeError):
+        config = configparser.ConfigParser()
+    if not config.has_section("Updater"):
+        config.add_section("Updater")
+    config.set("Updater", "receive-beta-updates", str(bool(enabled)))
     write_config_file(filename, config)
 
 

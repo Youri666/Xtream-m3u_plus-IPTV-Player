@@ -42,7 +42,8 @@ def _version_sort_key(version):
 
 
 def fetch_latest_release(
-    repository, connection_timeout, current_version="", request_get=None
+    repository, connection_timeout, current_version="", request_get=None,
+    include_prereleases=None,
 ):
     """Fetch the newest release available to the current release channel."""
     request_get = request_get or requests.get
@@ -52,7 +53,11 @@ def fetch_latest_release(
     if not isinstance(releases, list):
         raise ValueError("GitHub returned invalid release metadata")
 
-    accepts_prereleases = is_prerelease_version(current_version)
+    accepts_prereleases = (
+        is_prerelease_version(current_version)
+        if include_prereleases is None
+        else bool(include_prereleases)
+    )
     eligible = [
         release for release in releases
         if isinstance(release, dict)
