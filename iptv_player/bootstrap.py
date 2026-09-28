@@ -9,11 +9,32 @@ import sys
 import threading
 import traceback
 
-from PyQt5 import QtCore
+from PyQt5 import QtCore, QtGui
 from PyQt5.QtGui import QFont
 
 from iptv_player.config import load_advanced_preferences, writable_data_directory
 from iptv_player.utils.privacy import redact_log_credentials
+
+
+def configure_qt_high_dpi():
+    """Enable Qt's logical-pixel scaling before QApplication is created."""
+    application_class = QtCore.QCoreApplication
+    for attribute_name in ("AA_EnableHighDpiScaling", "AA_UseHighDpiPixmaps"):
+        attribute = getattr(QtCore.Qt, attribute_name, None)
+        if attribute is not None:
+            application_class.setAttribute(attribute, True)
+
+    # PassThrough preserves fractional Windows scale factors such as 125% and
+    # 150%. Older Qt 5 builds do not expose this API and keep their native
+    # rounding policy instead.
+    rounding_policy = getattr(QtCore.Qt, "HighDpiScaleFactorRoundingPolicy", None)
+    set_rounding_policy = getattr(
+        QtGui.QGuiApplication,
+        "setHighDpiScaleFactorRoundingPolicy",
+        None,
+    )
+    if rounding_policy is not None and set_rounding_policy is not None:
+        set_rounding_policy(rounding_policy.PassThrough)
 
 
 class _CredentialRedactionFilter(logging.Filter):

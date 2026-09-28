@@ -39,6 +39,7 @@ from PyQt5.QtWidgets import (
 from iptv_player.ui.info_panels import LiveInfoBox, MovieInfoBox, SeriesInfoBox
 from iptv_player.ui.player import EmbeddedPlayerWindow
 from iptv_player.bootstrap import (
+    configure_qt_high_dpi,
     configure_qt_application,
     install_logging,
     set_detailed_logging,
@@ -707,30 +708,30 @@ class IPTVPlayerApp(QMainWindow):
     def _init_resource_paths(self):
         """Resolve all packaged image assets from one declarative mapping."""
         filenames = {
-            'path_to_window_icon': 'TV_icon.ico',
+            'path_to_window_icon': 'TV_icon.png',
             'path_to_no_img': 'no_image.jpg',
             'path_to_loading_img': 'loading-icon.png',
             'path_to_404_img': '404_not_found.png',
             'path_to_yt_img': 'yt_icon_rgb.png',
             'path_to_tmdb_img': 'primary_full-TMDB.svg',
-            'path_to_live_icon': 'tv_tab_icon.ico',
-            'path_to_movies_icon': 'movies_tab_icon.ico',
-            'path_to_series_icon': 'series_tab_icon.ico',
-            'path_to_home_icon': 'home_tab_icon.ico',
-            'path_to_favorites_icon': 'favorite_tab_icon.ico',
-            'path_to_fav_colour_icon': 'favorite_tab_icon_colour.ico',
+            'path_to_live_icon': 'tv_tab_icon.png',
+            'path_to_movies_icon': 'movies_tab_icon.png',
+            'path_to_series_icon': 'series_tab_icon.png',
+            'path_to_home_icon': 'home_tab_icon.png',
+            'path_to_favorites_icon': 'favorite_tab_icon.png',
+            'path_to_fav_colour_icon': 'favorite_tab_icon_colour.png',
             'path_to_online_status_icon': 'online_status.png',
             'path_to_offline_status_icon': 'offline_status.png',
             'path_to_maybe_status_icon': 'maybe_status.png',
             'path_to_unknown_status_icon': 'unknown_status.png',
-            'path_to_info_icon': 'info_tab_icon.ico',
-            'path_to_settings_icon': 'settings_tab_icon.ico',
-            'path_to_search_icon': 'search_bar_icon.ico',
-            'path_to_sorting_icon': 'sorting_icon.ico',
-            'path_to_clear_btn_icon': 'clear_button_icon.ico',
-            'path_to_go_back_icon': 'go_back_icon.ico',
-            'path_to_account_icon': 'account_manager_icon.ico',
-            'path_to_mediaplayer_icon': 'film_camera_icon.ico',
+            'path_to_info_icon': 'info_tab_icon.png',
+            'path_to_settings_icon': 'settings_tab_icon.png',
+            'path_to_search_icon': 'search_bar_icon.png',
+            'path_to_sorting_icon': 'sorting_icon.png',
+            'path_to_clear_btn_icon': 'clear_button_icon.png',
+            'path_to_go_back_icon': 'go_back_icon.png',
+            'path_to_account_icon': 'account_manager_icon.png',
+            'path_to_mediaplayer_icon': 'film_camera_icon.png',
         }
         application_root = path.dirname(__file__)
         for attribute, filename in filenames.items():
@@ -885,7 +886,7 @@ class IPTVPlayerApp(QMainWindow):
         migrate_legacy_player_volume(self.user_data_file, self.data_directory)
 
     def init_icons(self):
-        self.tab_icon_size = QSize(24, 24)
+        self.tab_icon_size = QSize(18, 18)
 
         self.live_icon              = QIcon(self.path_to_live_icon)
         self.movies_icon            = QIcon(self.path_to_movies_icon)
@@ -906,8 +907,9 @@ class IPTVPlayerApp(QMainWindow):
 
     def _tinted_icon(self, source_icon, color):
         """Create a monochrome copy of an icon that contrasts with the theme."""
-        source = source_icon.pixmap(24, 24)
+        source = source_icon.pixmap(96, 96)
         tinted = QPixmap(source.size())
+        tinted.setDevicePixelRatio(source.devicePixelRatio())
         tinted.fill(Qt.transparent)
         painter = QPainter(tinted)
         painter.drawPixmap(0, 0, source)
@@ -920,12 +922,12 @@ class IPTVPlayerApp(QMainWindow):
         """Draw a transparent category grid using the current theme contrast."""
         # Some native Qt list icons have an opaque background. Tinting such an
         # icon colors its complete rectangle, so draw this simple symbol directly.
-        pixmap = QPixmap(24, 24)
+        pixmap = QPixmap(96, 96)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
-        for x in (4, 13):
-            for y in (4, 13):
-                painter.fillRect(x, y, 7, 7, color)
+        for x in (16, 52):
+            for y in (16, 52):
+                painter.fillRect(x, y, 28, 28, color)
         painter.end()
         return QIcon(pixmap)
 
@@ -1005,14 +1007,21 @@ class IPTVPlayerApp(QMainWindow):
     def init_tab_widget(self):
         self.tab_widget = QTabWidget()
         self.tab_widget.setMovable(True)
+        self.tab_widget.setIconSize(self.tab_icon_size)
 
         self.history_tab  = QWidget()
         self.info_tab     = QWidget()
-        self.settings_tab = QWidget()
+        self.settings_tab = QtWidgets.QScrollArea()
+        self.settings_tab.setWidgetResizable(True)
+        self.settings_tab.setFrameShape(QFrame.NoFrame)
+        self.settings_tab.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.settings_tab.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.settings_content = QWidget()
+        self.settings_tab.setWidget(self.settings_content)
 
         self.history_tab_layout     = QHBoxLayout(self.history_tab)
         self.info_tab_layout        = QVBoxLayout(self.info_tab)
-        self.settings_layout        = QGridLayout(self.settings_tab)
+        self.settings_layout        = QGridLayout(self.settings_content)
 
         self.content_tabs = {}
         self.content_tab_layouts = {}
@@ -1589,6 +1598,12 @@ class IPTVPlayerApp(QMainWindow):
         # the user click another column before the sorting menu becomes available.
         sort_button = QToolButton()
         sort_button.setIcon(self.sorting_icon)
+        sort_button.setIconSize(self.tab_icon_size)
+        sort_button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        sort_button.setStyleSheet(
+            "QToolButton { padding: 0; } "
+            "QToolButton::menu-indicator { image: none; }"
+        )
         sort_button.setToolTip("Set sorting order")
         sort_button.setPopupMode(QToolButton.InstantPopup)
 
@@ -1621,6 +1636,9 @@ class IPTVPlayerApp(QMainWindow):
         # Keep clearing independent from editor focus for the same reason.
         clear_button = QToolButton()
         clear_button.setIcon(self.clear_btn_icon)
+        clear_button.setIconSize(self.tab_icon_size)
+        clear_button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        clear_button.setStyleSheet("QToolButton { padding: 0; }")
         clear_button.setToolTip("Clear search")
 
         clear_button.clicked.connect(lambda: self.clear_search(search_bar, list_content_type, stream_type, list_widgets, search_history_list_idx))
@@ -1659,6 +1677,7 @@ class IPTVPlayerApp(QMainWindow):
                            else "#202020")
                 )
             )
+            category_visibility_button.setIconSize(self.tab_icon_size)
             category_visibility_button.setToolButtonStyle(
                 Qt.ToolButtonTextBesideIcon
             )
@@ -1679,6 +1698,7 @@ class IPTVPlayerApp(QMainWindow):
                     application_palette_is_dark(QtWidgets.qApp)
                 )
             )
+            add_category_button.setIconSize(self.tab_icon_size)
             add_category_button.setToolTip(
                 f"Create a custom {stream_type} category"
             )
@@ -1690,6 +1710,18 @@ class IPTVPlayerApp(QMainWindow):
             search_bar.add_custom_category_button = add_category_button
             container_layout.addWidget(add_category_button)
         container_layout.addWidget(sort_button)
+
+        toolbar_controls = [search_bar, clear_button, sort_button]
+        if list_content_type == 'category':
+            toolbar_controls.extend([
+                category_visibility_button,
+                add_category_button,
+            ])
+        toolbar_height = max(
+            control.sizeHint().height() for control in toolbar_controls
+        )
+        for control in toolbar_controls:
+            control.setFixedHeight(toolbar_height)
 
         search_bar.keyPressEvent = lambda event: self.search_bar_key_pressed(
             event,
@@ -3324,6 +3356,7 @@ class IPTVPlayerApp(QMainWindow):
 
         self.address_book_button = QPushButton("IPTV accounts")
         self.address_book_button.setIcon(self.account_manager_icon)
+        self.address_book_button.setIconSize(self.tab_icon_size)
         self.address_book_button.setToolTip("Manage IPTV accounts")
         self.address_book_button.clicked.connect(self.open_address_book)
 
@@ -3420,6 +3453,7 @@ class IPTVPlayerApp(QMainWindow):
 
         self.choose_player_button = QPushButton("Browse…")
         self.choose_player_button.setIcon(self.mediaplayer_icon)
+        self.choose_player_button.setIconSize(self.tab_icon_size)
         self.choose_player_button.setToolTip("Select an external media player executable")
         self.choose_player_button.clicked.connect(self.choose_external_player)
 
@@ -6769,6 +6803,7 @@ def main():
     if '--embedded-player-process' in sys.argv:
         sys.exit(run_embedded_player_process())
 
+    configure_qt_high_dpi()
     install_logging()
     app = QApplication(sys.argv)
     configure_qt_application(app)

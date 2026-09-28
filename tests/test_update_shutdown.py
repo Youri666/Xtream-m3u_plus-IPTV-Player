@@ -29,6 +29,7 @@ class UpdateShutdownTests(unittest.TestCase):
         namespace = {
             "sys": SimpleNamespace(argv=[], exit=Mock()),
             "run_embedded_player_process": Mock(),
+            "configure_qt_high_dpi": Mock(),
             "install_logging": Mock(),
             "QApplication": application_factory,
             "configure_qt_application": Mock(),
