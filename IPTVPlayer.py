@@ -71,6 +71,7 @@ from iptv_player.config import (
     load_account_id,
     load_accounts,
     load_auto_update_preference,
+    load_beta_update_preference,
     load_content_preferences,
     remove_content_preferences,
     load_advanced_preferences,
@@ -83,6 +84,7 @@ from iptv_player.config import (
     migrate_user_data_file,
     parse_account,
     save_auto_update_preference,
+    save_beta_update_preference,
     save_advanced_preferences,
     save_internal_player_preferences,
     save_player_preference,
@@ -159,7 +161,11 @@ from iptv_player.external_player import (
     external_player_display_name,
     launch_external_player,
 )
-from iptv_player.updater import fetch_latest_release, is_newer_version
+from iptv_player.updater import (
+    fetch_latest_release,
+    is_newer_version,
+    is_prerelease_version,
+)
 from iptv_player.provider.network import (
     DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL,
     DEFAULT_CATALOG_CACHE_MAX_AGE_HOURS,
@@ -3493,6 +3499,12 @@ class IPTVPlayerApp(QMainWindow):
         self.auto_update_checkbox.setToolTip("Automatically check for updates at startup")
         self.auto_update_checkbox.stateChanged.connect(self.toggle_auto_update)
 
+        self.beta_update_checkbox = QCheckBox("Receive beta updates")
+        self.beta_update_checkbox.setToolTip(
+            "Include prerelease versions when checking for updates"
+        )
+        self.beta_update_checkbox.stateChanged.connect(self.toggle_beta_updates)
+
         self.advanced_network_button = QPushButton("Advanced settings…")
         self.advanced_network_button.setToolTip(
             "Configure request timeouts, Info refresh, LIVE status checks, retries, and User-Agent"
@@ -3526,6 +3538,7 @@ class IPTVPlayerApp(QMainWindow):
         updates_layout = QHBoxLayout(self.updates_group_box)
         updates_layout.addWidget(self.update_checker)
         updates_layout.addWidget(self.auto_update_checkbox)
+        updates_layout.addWidget(self.beta_update_checkbox)
         updates_layout.addStretch()
 
         # Keep the Settings page in the exact functional order shown to the user.
@@ -3760,7 +3773,10 @@ class IPTVPlayerApp(QMainWindow):
         try:
             logging.debug("Checking for updates")
             release = fetch_latest_release(
-                GITHUB_REPO, NETWORK_SETTINGS.connection_timeout, CURRENT_VERSION
+                GITHUB_REPO,
+                NETWORK_SETTINGS.connection_timeout,
+                CURRENT_VERSION,
+                include_prereleases=self.beta_update_checkbox.isChecked(),
             )
 
             # Only prompt when upstream is strictly newer than what we're running —
@@ -3814,7 +3830,21 @@ class IPTVPlayerApp(QMainWindow):
     def toggle_auto_update(self, state):
         save_auto_update_preference(self.user_data_file, bool(state))
 
+    def toggle_beta_updates(self, state):
+        save_beta_update_preference(self.user_data_file, bool(state))
+
+    def load_default_beta_updates(self):
+        enabled = load_beta_update_preference(self.user_data_file)
+        if enabled is None:
+            enabled = is_prerelease_version(CURRENT_VERSION)
+            try:
+                save_beta_update_preference(self.user_data_file, enabled)
+            except OSError as e:
+                print(f"Could not write user data file: {e}")
+        self.beta_update_checkbox.setChecked(enabled)
+
     def load_default_auto_update(self):
+        self.load_default_beta_updates()
         enabled = load_auto_update_preference(self.user_data_file)
         if enabled is None:
             enabled = True

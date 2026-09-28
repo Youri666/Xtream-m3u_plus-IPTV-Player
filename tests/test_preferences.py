@@ -7,12 +7,14 @@ from iptv_player.config.preferences import (
     INTERNAL_VLC_COMMAND,
     PlayerPreference,
     load_auto_update_preference,
+    load_beta_update_preference,
     load_content_preferences,
     remove_content_preferences,
     load_player_preference,
     load_sorting_preference,
     load_theme_preference,
     save_auto_update_preference,
+    save_beta_update_preference,
     save_content_preferences,
     save_player_preference,
     save_sorting_preference,
@@ -64,6 +66,24 @@ class ApplicationPreferenceTests(unittest.TestCase):
 
             save_auto_update_preference(filename, True)
             self.assertTrue(load_auto_update_preference(filename))
+
+    def test_update_preferences_are_saved_independently(self):
+        with tempfile.TemporaryDirectory() as directory:
+            filename = Path(directory) / "userdata.ini"
+            self.assertIsNone(load_beta_update_preference(filename))
+
+            save_auto_update_preference(filename, True)
+            save_beta_update_preference(filename, True)
+            self.assertTrue(load_auto_update_preference(filename))
+            self.assertTrue(load_beta_update_preference(filename))
+
+            save_auto_update_preference(filename, False)
+            self.assertFalse(load_auto_update_preference(filename))
+            self.assertTrue(load_beta_update_preference(filename))
+
+            save_beta_update_preference(filename, False)
+            self.assertFalse(load_auto_update_preference(filename))
+            self.assertFalse(load_beta_update_preference(filename))
 
     def test_theme_preference_validates_saved_and_manually_edited_values(self):
         with tempfile.TemporaryDirectory() as directory:

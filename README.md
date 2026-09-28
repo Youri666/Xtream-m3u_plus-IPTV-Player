@@ -257,9 +257,9 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 ### Updates
 
-The application can check for new releases manually with **Check for updates**, or automatically when **Auto check for updates** is enabled.
+The application can check for new releases manually with **Check for updates**, or automatically when **Auto check for updates** is enabled. Enable **Receive beta updates** to include prerelease versions in both types of checks.
 
-Stable builds notify only about newer stable releases. Beta builds can notify about a newer beta or the corresponding stable release, but do not report the same beta version as an update.
+When **Receive beta updates** is disabled, only stable releases are offered. It is enabled by default on beta builds and disabled by default on stable builds. A stable release with the same version number always replaces its beta.
 
 ![Updates](screenshots/updates.png)
 
@@ -363,7 +363,7 @@ The build creates:
 
 ```text
 dist/IPTV Player.app
-dist/IPTV Player Vx.x.x.dmg
+dist/IPTV Player vx.x.x.dmg
 ```
 
 The `.app` bundle can be used for local testing. The versioned `.dmg` package is intended for distribution.
