@@ -37,6 +37,26 @@ MEDIA_LANGUAGE_OPTIONS = (
     ("Turkish", "tur"),
 )
 
+TMDB_LANGUAGE_LOCALES = {
+    "ara": "ar-SA",
+    "zho": "zh-CN",
+    "nld": "nl-NL",
+    "eng": "en-US",
+    "fra": "fr-FR",
+    "deu": "de-DE",
+    "hin": "hi-IN",
+    "ita": "it-IT",
+    "jpn": "ja-JP",
+    "kor": "ko-KR",
+    "pol": "pl-PL",
+    "por": "pt-PT",
+    "ron": "ro-RO",
+    "rus": "ru-RU",
+    "spa": "es-ES",
+    "tur": "tr-TR",
+}
+DEFAULT_TMDB_LANGUAGE = "eng"
+
 DEFAULT_URL_FORMATS = {
     "live": "{server}/live/{username}/{password}/{stream_id}.{container_extension}",
     "movie": "{server}/movie/{username}/{password}/{stream_id}.{container_extension}",

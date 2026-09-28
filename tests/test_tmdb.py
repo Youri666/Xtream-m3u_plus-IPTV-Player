@@ -42,6 +42,36 @@ class TmdbClientTests(unittest.TestCase):
         self.assertEqual(normalized["youtube_trailer"], "abc")
         self.assertTrue(normalized["poster_url"].endswith("/poster.jpg"))
 
+    def test_localized_details_fill_missing_fields_from_english(self):
+        localized_response = Mock()
+        localized_response.json.return_value = {
+            "title": "Titre français",
+            "overview": "",
+        }
+        english_response = Mock()
+        english_response.json.return_value = {
+            "title": "English title",
+            "overview": "English description",
+        }
+        request_get = Mock(
+            side_effect=[localized_response, english_response]
+        )
+
+        metadata = TmdbClient(
+            "token", (3, 5), request_get, language="fra"
+        ).details("movie", "42")
+
+        self.assertEqual(metadata["name"], "Titre français")
+        self.assertEqual(metadata["description"], "English description")
+        self.assertEqual(
+            request_get.call_args_list[0].kwargs["params"]["language"],
+            "fr-FR",
+        )
+        self.assertEqual(
+            request_get.call_args_list[1].kwargs["params"]["language"],
+            "en-US",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

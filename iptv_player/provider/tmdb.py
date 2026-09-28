@@ -2,6 +2,8 @@
 
 import requests
 
+from iptv_player.constants import DEFAULT_TMDB_LANGUAGE, TMDB_LANGUAGE_LOCALES
+
 
 TMDB_API_BASE = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
@@ -10,9 +12,18 @@ TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 class TmdbClient:
     """Fetch public TMDB metadata without exposing the access token in URLs."""
 
-    def __init__(self, access_token, timeout, request_get=None):
+    def __init__(
+        self,
+        access_token,
+        timeout,
+        request_get=None,
+        language=DEFAULT_TMDB_LANGUAGE,
+    ):
         self.access_token = str(access_token or "").strip()
         self.timeout = timeout
+        self.language = (
+            language if language in TMDB_LANGUAGE_LOCALES else DEFAULT_TMDB_LANGUAGE
+        )
         self.request_get = request_get or requests.get
 
     def test_connection(self):
@@ -23,11 +34,33 @@ class TmdbClient:
         """Return normalized movie or television metadata."""
         if media_type not in ("movie", "tv"):
             raise ValueError("Unsupported TMDB media type")
+        locale = TMDB_LANGUAGE_LOCALES[self.language]
         data = self._get(
             f"{media_type}/{tmdb_id}",
-            params={"language": "en-US", "append_to_response": "credits,videos"},
+            params={"language": locale, "append_to_response": "credits,videos"},
         )
-        return normalize_tmdb_details(media_type, data)
+        metadata = normalize_tmdb_details(media_type, data)
+        localized_fields = (
+            "name", "genre", "director", "cast", "description"
+        )
+        needs_english_fallback = any(
+            metadata.get(field) in (None, "", 0, "0")
+            for field in localized_fields
+        )
+        if locale != "en-US" and needs_english_fallback:
+            english_data = self._get(
+                f"{media_type}/{tmdb_id}",
+                params={
+                    "language": "en-US",
+                    "append_to_response": "credits,videos",
+                },
+            )
+            english_metadata = normalize_tmdb_details(media_type, english_data)
+            metadata = {
+                key: value if value not in (None, "", 0, "0") else english_metadata.get(key)
+                for key, value in metadata.items()
+            }
+        return metadata
 
     def _get(self, endpoint, params=None):
         if not self.access_token:

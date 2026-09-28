@@ -1,2 +1,2 @@
-"""Core package for IPTV Player V3."""
+"""Core package for IPTV Player v3."""
 

@@ -175,7 +175,7 @@ The **Startup account** selects which account should be loaded when the applicat
 Some IPTV providers require a different URL format for LIVE streams.
 Edit the affected account and use the settings button beside **Live URL format** to try one of the common presets. The field remains editable if the provider requires a different format.
 
-If none of these formats work, please open an issue on the V3 repository: [Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues)
+If none of these formats work, please open an issue on the v3 repository: [Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues)
 
 ### Content
 
@@ -244,7 +244,7 @@ Advanced settings provide additional control over:
 - **Diagnostics:** Enable detailed logging when troubleshooting the application.
 - **History:** Choose how many recent entries are retained for each content type or clear the active account's history.
 - **M3U export:** Control potentially large exports. Complete `All` category exports are disabled by default. Complete-Series exports are limited to 10 series because each series requires a separate provider request.
-- **TMDB metadata:** Enter a personal [API Read Access Token](https://developer.themoviedb.org/docs/authentication-application) to fill missing Movie and Series details, posters, and trailers. Use **Test connection** to validate the token before saving.
+- **TMDB metadata:** Enter a personal [API Read Access Token](https://developer.themoviedb.org/docs/authentication-application) to fill missing Movie and Series details, posters, and trailers. Select the language used for metadata; missing localized fields fall back to English. Use **Test connection** to validate the token before saving. The indicator turns green when the connection succeeds or red when it fails.
 
 Increase the M3U export limits only when you know that your provider accepts the additional requests.
 
@@ -272,6 +272,8 @@ The button in the upper-left corner shows or hides the playlist panel. Its conte
 
 Playback controls provide previous/next navigation, play/pause, seeking, playback speed, volume, audio track selection, subtitles when available, and fullscreen mode.
 
+The **Information** button displays technical details reported by VLC for the current stream, including its protocol, input bitrate, video resolution and frame rate, and the available audio and subtitle tracks. Select the button again to hide the panel.
+
 - Drag the progress bar with the left mouse button to move backward or forward.
 - Use the mouse wheel over the progress bar to seek in configurable steps. Multiple wheel movements are briefly accumulated to allow precise seeking.
 - Use the mouse wheel over the video or playback controls to seek; use it over the volume control to adjust the volume.
@@ -287,6 +289,7 @@ Playback controls provide previous/next navigation, play/pause, seeking, playbac
 - **Mouse wheel over the video or playback controls:** seek backward / forward
 - **Mouse wheel over the volume control:** increase / decrease volume
 - **M:** mute / unmute
+- **I:** show / hide stream information
 - **A:** cycle through available audio tracks
 - **S:** cycle through available subtitles
 - **F:** toggle fullscreen
@@ -294,9 +297,9 @@ Playback controls provide previous/next navigation, play/pause, seeking, playbac
 ![Internal player showing the playlist and playback controls](screenshots/internal-player.png)
 
 
-# What's new in V3
+# What's new in v3
 
-Version 3 reorganizes the application into clearer, reusable components and adds automated regression tests, safer configuration migrations, and more consistent behavior across Windows, macOS, and Linux. The V3.1 releases extend that foundation with account personalization, improved playback, richer metadata, and flexible export options.
+Version 3 reorganizes the application into clearer, reusable components and adds automated regression tests, safer configuration migrations, and more consistent behavior across Windows, macOS, and Linux. The v3.1 releases extend that foundation with account personalization, improved playback, richer metadata, and flexible export options.
 
 | Area | Highlights |
 |---|---|
