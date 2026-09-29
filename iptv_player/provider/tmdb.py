@@ -6,7 +6,7 @@ from iptv_player.constants import DEFAULT_TMDB_LANGUAGE, TMDB_LANGUAGE_LOCALES
 
 
 TMDB_API_BASE = "https://api.themoviedb.org/3"
-TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
+TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w780"
 
 
 class TmdbClient:

@@ -40,7 +40,10 @@ class TmdbClientTests(unittest.TestCase):
         self.assertEqual(normalized["name"], "Movie")
         self.assertEqual(normalized["director"], "Director Name")
         self.assertEqual(normalized["youtube_trailer"], "abc")
-        self.assertTrue(normalized["poster_url"].endswith("/poster.jpg"))
+        self.assertEqual(
+            normalized["poster_url"],
+            "https://image.tmdb.org/t/p/w780/poster.jpg",
+        )
 
     def test_localized_details_fill_missing_fields_from_english(self):
         localized_response = Mock()

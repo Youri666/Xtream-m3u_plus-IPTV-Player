@@ -244,7 +244,7 @@ Advanced settings provide additional control over:
 - **Diagnostics:** Enable detailed logging when troubleshooting the application.
 - **History:** Choose how many recent entries are retained for each content type or clear the active account's history.
 - **M3U export:** Control potentially large exports. Complete `All` category exports are disabled by default. Complete-Series exports are limited to 10 series because each series requires a separate provider request.
-- **TMDB metadata:** Enter a personal [API Read Access Token](https://developer.themoviedb.org/docs/authentication-application) to fill missing Movie and Series details, posters, and trailers. Select the language used for metadata; missing localized fields fall back to English. Use **Test connection** to validate the token before saving. The indicator turns green when the connection succeeds or red when it fails.
+- **TMDB metadata:** Enter a personal [API Read Access Token](https://developer.themoviedb.org/docs/authentication-application) to fill missing Movie and Series details, posters, and trailers. Provider posters retain priority; when one is missing, TMDB supplies a higher-resolution `w780` poster when available. Select the language used for metadata; missing localized fields fall back to English. Use **Test connection** to validate the token before saving. The inline state changes from **Testing…** to **OK** or **Failed**, with a detailed result message.
 
 Increase the M3U export limits only when you know that your provider accepts the additional requests.
 
@@ -277,6 +277,7 @@ The **Information** button displays technical details reported by VLC for the cu
 - Drag the progress bar with the left mouse button to move backward or forward.
 - Use the mouse wheel over the progress bar to seek in configurable steps. Multiple wheel movements are briefly accumulated to allow precise seeking.
 - Use the mouse wheel over the video or playback controls to seek; use it over the volume control to adjust the volume.
+- Use the mouse wheel over the playback-speed controls (`−  1.00x  +`) to decrease or increase the speed by the configured step.
 - During Live TV playback, **LIVE** is displayed instead of a playback position.
 - Minimizing the player automatically pauses playback; restoring the window resumes it.
 
@@ -353,6 +354,9 @@ The generated files are written to the `dist` directory.
 
 - Install the latest Python 3 from [python.org](https://www.python.org/downloads/macos/).
 - Install the latest VLC from [videolan.org](https://www.videolan.org/vlc/) in `/Applications`.
+  On Apple Silicon Macs, use the **Universal** VLC package to avoid an
+  architecture mismatch between IPTV Player and the installed libVLC library.
+  Make sure that `VLC.app` is located directly in `/Applications`.
 
 #### 2. Build the application
 
