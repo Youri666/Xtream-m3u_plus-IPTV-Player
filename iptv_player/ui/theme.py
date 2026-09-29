@@ -109,6 +109,11 @@ def apply_application_theme(app, theme_name):
     dark = selected_theme == "Dark" or (
         selected_theme == "System" and is_system_dark(app)
     )
+
+    # Recreate Fusion before changing its palette. Qt caches palette-dependent
+    # standard icons, so reusing the same style after a live theme change can
+    # leave light button artwork visible on the dark palette.
+    app.setStyle("Fusion")
     if dark:
         palette = QPalette()
         palette.setColor(QPalette.Window, QColor(45, 45, 48))
