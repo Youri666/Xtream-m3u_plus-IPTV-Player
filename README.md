@@ -31,6 +31,11 @@ It supports Xtream Codes accounts, including credential extraction from Xtream M
 
 For the best experience, install [VLC media player](https://www.videolan.org/vlc/). VLC is required for the **Internal Player** and is the highly recommended option.
 
+On a Mac with Apple Silicon, install the **Universal version of VLC** and place
+`VLC.app` directly in `/Applications`. The Universal package contains both Intel
+and Apple Silicon libraries and avoids architecture compatibility errors with
+the Internal Player.
+
 For external playback, the following players are supported:
 
 - [VLC media player](https://www.videolan.org/vlc/) (recommended)
