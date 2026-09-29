@@ -1600,10 +1600,6 @@ class IPTVPlayerApp(QMainWindow):
         sort_button.setIcon(self.sorting_icon)
         sort_button.setIconSize(self.tab_icon_size)
         sort_button.setToolButtonStyle(Qt.ToolButtonIconOnly)
-        sort_button.setStyleSheet(
-            "QToolButton { padding: 0; } "
-            "QToolButton::menu-indicator { image: none; }"
-        )
         sort_button.setToolTip("Set sorting order")
         sort_button.setPopupMode(QToolButton.InstantPopup)
 
@@ -1638,7 +1634,6 @@ class IPTVPlayerApp(QMainWindow):
         clear_button.setIcon(self.clear_btn_icon)
         clear_button.setIconSize(self.tab_icon_size)
         clear_button.setToolButtonStyle(Qt.ToolButtonIconOnly)
-        clear_button.setStyleSheet("QToolButton { padding: 0; }")
         clear_button.setToolTip("Clear search")
 
         clear_button.clicked.connect(lambda: self.clear_search(search_bar, list_content_type, stream_type, list_widgets, search_history_list_idx))
