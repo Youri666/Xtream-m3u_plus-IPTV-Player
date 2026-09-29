@@ -299,6 +299,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_slow   = QPushButton("−")
         self.btn_fast   = QPushButton("+")
         self.rate_label = QLabel(f"{self._playback_rate:.2f}x")
+        self.rate_controls = QWidget()
+        self.rate_controls.setObjectName("rateControls")
         self.btn_info   = QPushButton()
         self.btn_info.setEnabled(False)
         self.btn_info.setCheckable(True)
@@ -336,6 +338,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_next.setToolTip("Next (Page Down)")
         self.btn_slow.setToolTip("Slower (-)")
         self.btn_fast.setToolTip("Faster (+)")
+        self.rate_label.setToolTip("Change playback speed with the mouse wheel")
         self.btn_info.setToolTip("Stream information (I)")
         self.btn_mute.setToolTip("Mute (M)")
         self.btn_audio.setToolTip("Select audio track (A cycles tracks)")
@@ -371,9 +374,14 @@ class EmbeddedPlayerWindow(QMainWindow):
         btn_row.addWidget(self.btn_ffwd)
         btn_row.addWidget(self.btn_next)
         btn_row.addSpacing(12)
-        btn_row.addWidget(self.btn_slow)
-        btn_row.addWidget(self.rate_label)
-        btn_row.addWidget(self.btn_fast)
+        rate_layout = QHBoxLayout(self.rate_controls)
+        rate_layout.setContentsMargins(0, 0, 0, 0)
+        rate_layout.setSpacing(4)
+        rate_layout.addWidget(self.btn_slow)
+        rate_layout.addWidget(self.rate_label)
+        rate_layout.addWidget(self.btn_fast)
+        self.rate_controls.setCursor(Qt.PointingHandCursor)
+        btn_row.addWidget(self.rate_controls)
         btn_row.addStretch(1)
         btn_row.addWidget(self.pl_pos)
         btn_row.addStretch(1)
@@ -1911,7 +1919,14 @@ class EmbeddedPlayerWindow(QMainWindow):
                 delta = 0
             over_player_controls = self._event_is_over_widget(event, self.overlay)
             over_audio_controls = self._event_is_over_widget(event, self.audio_controls)
+            over_rate_controls = self._event_is_over_widget(event, self.rate_controls)
             over_video = self._event_is_over_widget(event, self.video_frame)
+            if over_rate_controls:
+                if delta > 0:
+                    self._adjust_rate(self._speed_step)
+                elif delta < 0:
+                    self._adjust_rate(-self._speed_step)
+                return True
             if (over_player_controls and not over_audio_controls) or over_video:
                 if self.seek_slider.isEnabled():
                     if delta > 0:

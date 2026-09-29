@@ -48,7 +48,8 @@ echo "PyInstaller version:"
 # python-vlc is only a binding. The VLC application supplies libVLC at runtime.
 if [ ! -d "/Applications/VLC.app" ]; then
   echo "WARNING: VLC was not found in /Applications."
-  echo "Install the latest VLC from https://www.videolan.org/vlc/ before using the internal player."
+  echo "Install VLC Universal from https://www.videolan.org/vlc/ before using the internal player."
+  echo "On Apple Silicon, the Universal package avoids Intel/ARM architecture mismatches."
 fi
 
 # Remove outputs from an earlier build only after dependency checks succeed.

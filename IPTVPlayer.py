@@ -1670,7 +1670,6 @@ class IPTVPlayerApp(QMainWindow):
         container_layout.addWidget(clear_button)
         if list_content_type == 'category':
             category_visibility_button = QToolButton()
-            category_visibility_button.setText("Categories")
             category_visibility_button.setIcon(
                 self._category_icon(
                     QColor("#f2f2f2" if application_palette_is_dark(QtWidgets.qApp)
@@ -1678,9 +1677,8 @@ class IPTVPlayerApp(QMainWindow):
                 )
             )
             category_visibility_button.setIconSize(self.tab_icon_size)
-            category_visibility_button.setToolButtonStyle(
-                Qt.ToolButtonTextBesideIcon
-            )
+            category_visibility_button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            category_visibility_button.setAccessibleName("Categories")
             category_visibility_button.setToolTip(
                 f"Choose which {stream_type} categories are displayed"
             )

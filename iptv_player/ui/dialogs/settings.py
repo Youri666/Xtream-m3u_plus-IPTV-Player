@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QStyle,
@@ -260,10 +261,8 @@ class NetworkSettingsDialog(QDialog):
         )
         self.tmdb_test_button = QPushButton("Test connection")
         self.tmdb_test_button.clicked.connect(self.test_tmdb_connection)
-        self.tmdb_test_status = QLabel(
-            '<span style="color:#808080">●</span>'
-        )
-        self.tmdb_test_status.setToolTip("Connection not tested")
+        self.tmdb_test_status = QLabel()
+        self.tmdb_test_status.setWordWrap(True)
         self.tmdb_language_box = QComboBox()
         for language_name, language_code in MEDIA_LANGUAGE_OPTIONS:
             self.tmdb_language_box.addItem(language_name, language_code)
@@ -399,13 +398,14 @@ class NetworkSettingsDialog(QDialog):
         """Validate the entered TMDB token without saving the dialog."""
         token = self.tmdb_token_entry.text().strip()
         if not token:
-            self._set_tmdb_test_status(False)
+            self._show_tmdb_connection_result(
+                False,
+                "Enter a TMDB API Read Access Token first.",
+                title="Missing access token",
+            )
             return
         self.tmdb_test_button.setEnabled(False)
-        self.tmdb_test_status.setText(
-            '<span style="color:#808080">●</span>'
-        )
-        self.tmdb_test_status.setToolTip("Testing connection")
+        self.tmdb_test_status.setText("Testing…")
         worker = TmdbFetcher(token)
         worker.signals.finished.connect(self._tmdb_test_succeeded)
         worker.signals.error.connect(self._tmdb_test_failed)
@@ -413,24 +413,44 @@ class NetworkSettingsDialog(QDialog):
 
     def _tmdb_test_succeeded(self, _result):
         self.tmdb_test_button.setEnabled(True)
-        self._set_tmdb_test_status(True)
+        self._show_tmdb_connection_result(
+            True,
+            "The TMDB API Read Access Token is valid.",
+        )
 
     def _tmdb_test_failed(self, _error):
         self.tmdb_test_button.setEnabled(True)
-        self._set_tmdb_test_status(False)
+        self._show_tmdb_connection_result(
+            False,
+            "Could not connect to TMDB. Check the access token and your network "
+            "connection, then try again.",
+        )
 
     def _set_tmdb_test_status(self, success):
-        """Display a compact connection state matching the account test."""
+        """Display the same compact connection state as the account test."""
         if success is None:
-            color, tooltip = "#808080", "Connection not tested"
-        elif success:
-            color, tooltip = "#2ea44f", "Connection successful"
-        else:
-            color, tooltip = "#d64545", "Connection failed"
+            self.tmdb_test_status.clear()
+            return
+        word = "OK" if success else "Failed"
+        color = "#2ea44f" if success else "#d64545"
         self.tmdb_test_status.setText(
-            f'<span style="color:{color}">●</span>'
+            f'<span style="color:{color}">●</span> {word}'
         )
-        self.tmdb_test_status.setToolTip(tooltip)
+
+    def _show_tmdb_connection_result(self, success, message, title=""):
+        """Show a detailed themed dialog and a compact inline status."""
+        self._set_tmdb_test_status(success)
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(
+            title or ("Connection successful" if success else "Connection failed")
+        )
+        dialog.setText(message)
+        dialog.setIcon(
+            QMessageBox.Information if success else QMessageBox.Warning
+        )
+        dialog.setStandardButtons(QMessageBox.Ok)
+        self.parent_app._prepare_dialog_theme(dialog)
+        dialog.exec_()
 
     def save_settings(self, force_catalog_refresh=False):
         """Apply the complete dialog state as one coherent configuration update."""
