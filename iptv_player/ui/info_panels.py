@@ -1,9 +1,11 @@
 """Information panels for live channels, movies, and series."""
 
 import unicodedata
+import math
 
 from PyQt5.QtGui import (
-    QFont, QPixmap, QDesktopServices
+    QFont, QPixmap, QDesktopServices, QTextDocument, QPainter,
+    QAbstractTextDocumentLayout
 )
 from PyQt5.QtCore import (
     Qt, QSize, QUrl
@@ -51,6 +53,44 @@ class _DescriptionView(QTextBrowser):
         """Return plain text for compatibility with the former QLabel."""
         return self.toPlainText()
 
+class _EpgDescriptionLabel(QLabel):
+    """Use the same plain-text layout for measurement and painting."""
+
+    def _text_document(self, width):
+        document = QTextDocument()
+        document.setDocumentMargin(0)
+        document.setDefaultFont(self.font())
+        document.setPlainText(self.text())
+        margins = self.contentsMargins()
+        document.setTextWidth(max(1, width - margins.left() - margins.right()))
+        return document
+
+    def heightForWidth(self, width):
+        margins = self.contentsMargins()
+        return (
+            math.ceil(self._text_document(width).size().height())
+            + margins.top() + margins.bottom()
+        )
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        margins = self.contentsMargins()
+        painter.translate(margins.left(), margins.top())
+        context = QAbstractTextDocumentLayout.PaintContext()
+        context.palette = self.palette()
+        document = self._text_document(self.width())
+        document.documentLayout().draw(painter, context)
+        painter.end()
+
+    def sizeHint(self):
+        # QTreeView also consults embedded widgets' size hints and takes the
+        # maximum. QLabel's preferred-width hint can add unwanted wrapped lines.
+        return QSize(0, 0)
+
+    def minimumSizeHint(self):
+        return QSize(0, 0)
+
+
 class _EpgDescriptionDelegate(QStyledItemDelegate):
     """Size embedded descriptions for the available spanned row width."""
 
@@ -67,7 +107,10 @@ class _EpgDescriptionDelegate(QStyledItemDelegate):
                 ancestor = ancestor.parent()
             if not tree.rootIsDecorated():
                 depth -= 1
-            width = max(1, tree.viewport().width() - depth * tree.indentation())
+            # Spanned item widgets cover the full header, including columns
+            # extending beyond the viewport when horizontal scrolling is needed.
+            row_width = max(tree.viewport().width(), tree.header().length())
+            width = max(1, row_width - depth * tree.indentation())
             size.setHeight(label.heightForWidth(width))
         return size
 
@@ -166,7 +209,7 @@ class LiveInfoBox(QWidget):
         cleaned_description = _trim_epg_description(description)
         if not cleaned_description:
             return None
-        label = QLabel(cleaned_description)
+        label = _EpgDescriptionLabel(cleaned_description)
         label.setWordWrap(True)
         label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         label.setContentsMargins(4, 0, 4, 4)
