@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtWidgets import QApplication, QListView, QListWidget, QListWidgetItem
+from PyQt5.QtWidgets import QApplication, QListView, QListWidget, QListWidgetItem, QLineEdit
 
 
 def series_navigation_methods():
@@ -66,6 +66,7 @@ class SeriesNavigationTests(unittest.TestCase):
         )
         self.assertEqual(series_list.layoutMode(), QListView.Batched)
         harness.streaming_list_widgets = {"Series": series_list}
+        harness.streaming_search_bars = {"Series": QLineEdit()}
         harness._series_view_states = {}
         harness.series_navigation_level = 0
         harness._capture_series_view_state(0)
@@ -90,6 +91,7 @@ class SeriesNavigationTests(unittest.TestCase):
         series_list = QListWidget()
         series_list.resize(300, 120)
         harness.streaming_list_widgets = {"Series": series_list}
+        harness.streaming_search_bars = {"Series": QLineEdit()}
         harness._series_view_states = {}
         harness.series_navigation_level = 0
 

@@ -40,6 +40,7 @@ from iptv_player.ui.info_panels import LiveInfoBox, MovieInfoBox, SeriesInfoBox
 from iptv_player.ui.player import EmbeddedPlayerWindow
 from iptv_player.bootstrap import (
     configure_qt_high_dpi,
+    acquire_application_lock,
     configure_qt_application,
     install_logging,
     set_detailed_logging,
@@ -121,6 +122,7 @@ from iptv_player.download_links import (
     structured_download_text,
 )
 from iptv_player.utils.privacy import private_url_log_reference
+from iptv_player.provider.series import episodes_by_season
 from iptv_player.utils.search import (
     normalize_search_text,
     search_relevance_key,
@@ -4668,6 +4670,24 @@ class IPTVPlayerApp(QMainWindow):
             self.animate_progress(0, 100, "Failed fetching series info", "error")
             return
 
+        try:
+            episodes = episodes_by_season(series_info_data.get('episodes'))
+        except ValueError as error:
+            logging.warning("Cannot load series episodes: %s", error)
+            if is_show_request:
+                self._pending_history_series = None
+                self.series_navigation_level = 0
+                self.go_back_to_level(0)
+            self.animate_progress(0, 100, "Invalid series episode data", "error")
+            return
+        series_info_data = dict(series_info_data, episodes=episodes)
+        if is_show_request and not episodes:
+            self._pending_history_series = None
+            self.series_navigation_level = 0
+            self.go_back_to_level(0)
+            self.animate_progress(0, 100, "No episodes available", "error")
+            return
+
         if is_show_request:
             self.streaming_list_widgets['Series'].clear()
 
@@ -5120,7 +5140,7 @@ class IPTVPlayerApp(QMainWindow):
         self.currently_loaded_streams[stream_type] = list(entries)
 
         cache_key = self._category_view_key(
-            stream_type, self.fav_categories_text
+            stream_type, category_name, category_id
         )
         self.category_view_cache[stream_type][cache_key] = list(entries)
         self.active_category_view_key[stream_type] = cache_key
@@ -5295,6 +5315,7 @@ class IPTVPlayerApp(QMainWindow):
                 list_widget.viewport().update()
 
             list_widget.scrollToTop()
+            self._apply_active_stream_search(stream_type)
             self._update_favorite_reordering(stream_type)
 
             self.set_progress_bar(100, "Loading finished")
@@ -5681,6 +5702,7 @@ class IPTVPlayerApp(QMainWindow):
             'identity': identity,
             'row': list_widget.currentRow(),
             'scroll': list_widget.verticalScrollBar().value(),
+            'search': self.streaming_search_bars['Series'].text(),
         }
 
     def _restore_series_view_state(self, navigation_level, attempts=50):
@@ -5773,10 +5795,15 @@ class IPTVPlayerApp(QMainWindow):
                 self.streaming_list_widgets['Series'].addItem(item)
 
         self.animate_progress(0, 100, "Loading finished")
+        state = self._series_view_states.get(series_navigation_level, {})
+        search_bar = self.streaming_search_bars['Series']
+        search_bar.setText(state.get('search', search_bar.text()))
+        self._apply_active_stream_search('Series')
         self._restore_series_view_state(series_navigation_level)
         self._update_favorite_reordering('Series')
 
     def show_seasons(self, seasons_data):
+        self.streaming_search_bars['Series'].clear()
         self._update_favorite_reordering('Series')
         self.set_progress_bar(0, "Loading items")
 
@@ -5787,6 +5814,7 @@ class IPTVPlayerApp(QMainWindow):
         )
 
     def show_episodes(self, episodes_data):
+        self.streaming_search_bars['Series'].clear()
         self._update_favorite_reordering('Series')
         self.set_progress_bar(0, "Loading items")
 
@@ -6551,6 +6579,12 @@ class IPTVPlayerApp(QMainWindow):
         else:
             search_bar.insert(e.text())
 
+    def _apply_active_stream_search(self, stream_type):
+        """Reapply the retained query after replacing a category's rows."""
+        query = self.streaming_search_bars[stream_type].text()
+        if query.strip():
+            self.search_in_list('streaming', stream_type, query)
+
     def search_in_list(self, list_content_type, stream_type, text):
         """Filter source entries for the current column and Series navigation level.
 
@@ -6811,8 +6845,11 @@ def main():
         sys.exit(run_embedded_player_process())
 
     configure_qt_high_dpi()
-    install_logging()
     app = QApplication(sys.argv)
+    instance_lock = acquire_application_lock()
+    if instance_lock is None:
+        return
+    install_logging()
     configure_qt_application(app)
 
     player = IPTVPlayerApp()

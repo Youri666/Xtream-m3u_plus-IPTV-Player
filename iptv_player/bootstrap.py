@@ -12,8 +12,33 @@ import traceback
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtGui import QFont
 
-from iptv_player.config import load_advanced_preferences, writable_data_directory
+from iptv_player.config import application_resource_path, load_advanced_preferences, writable_data_directory
 from iptv_player.utils.privacy import redact_log_credentials
+
+
+def acquire_application_lock():
+    """Keep one main application per user, independently of the installation."""
+    from PyQt5.QtCore import QLockFile, QStandardPaths
+    from PyQt5.QtWidgets import QMessageBox
+
+    directory = path.join(
+        QStandardPaths.writableLocation(QStandardPaths.GenericCacheLocation),
+        "Xtream-m3u-plus-IPTV-Player",
+    )
+    os.makedirs(directory, exist_ok=True)
+    lock = QLockFile(path.join(directory, "application.lock"))
+    if lock.tryLock(0):
+        return lock
+    if lock.error() == QLockFile.LockFailedError:
+        message = "IPTV Player is already running."
+    else:
+        message = "Could not create the application lock. Check your cache folder permissions."
+    dialog = QMessageBox(QMessageBox.Information, "IPTV Player", message, QMessageBox.Ok)
+    dialog.setWindowIcon(QtGui.QIcon(application_resource_path(
+        path.join('images', 'TV_icon.png'), path.dirname(path.dirname(__file__))
+    )))
+    dialog.exec_()
+    return None
 
 
 def configure_qt_high_dpi():
@@ -38,11 +63,19 @@ def configure_qt_high_dpi():
 
 
 class _CredentialRedactionFilter(logging.Filter):
-    """Remove provider credentials before records reach iptvplayer.log."""
+    """Remove private identifiers before records reach iptvplayer.log."""
 
     def filter(self, record):
         record.msg = redact_log_credentials(record.getMessage())
         record.args = ()
+        if record.exc_info:
+            record.exc_text = redact_log_credentials(
+                "".join(traceback.format_exception(*record.exc_info))
+            ).rstrip()
+        elif record.exc_text:
+            record.exc_text = redact_log_credentials(record.exc_text)
+        if record.stack_info:
+            record.stack_info = redact_log_credentials(record.stack_info)
         return True
 
 
@@ -119,6 +152,11 @@ def install_logging(append=False, process_name="Main application"):
     # filter to every output handler so those credentials never reach the file.
     for handler in logging.getLogger().handlers:
         handler.addFilter(_CredentialRedactionFilter())
+
+    # Network DEBUG traces contain endpoint addresses and credential-bearing
+    # paths. Keep warnings and errors, which still pass through redaction.
+    for logger_name in ("urllib3", "requests"):
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
 
     sys.stdout = _StreamToLogger(sys.stdout, logging.INFO)
     sys.stderr = _StreamToLogger(sys.stderr, logging.ERROR)
