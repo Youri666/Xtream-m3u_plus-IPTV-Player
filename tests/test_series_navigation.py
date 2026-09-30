@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtWidgets import QApplication, QListWidget, QListWidgetItem
+from PyQt5.QtWidgets import QApplication, QListView, QListWidget, QListWidgetItem
 
 
 def series_navigation_methods():
@@ -21,6 +21,7 @@ def series_navigation_methods():
         if isinstance(node, ast.ClassDef) and node.name == "IPTVPlayerApp"
     )
     names = {
+        "_scroll_to_catalog_item",
         "_capture_series_view_state",
         "_restore_series_view_state",
         "_navigate_series_back",
@@ -32,7 +33,10 @@ def series_navigation_methods():
         ],
         type_ignores=[],
     )
-    namespace = {"Qt": Qt, "QTimer": QTimer, "QtWidgets": QtWidgets}
+    namespace = {
+        "Qt": Qt, "QTimer": QTimer, "QtWidgets": QtWidgets,
+        "QListView": QListView,
+    }
     exec(compile(module, str(source), "exec"), namespace)
     return {name: namespace[name] for name in names}
 
@@ -41,6 +45,44 @@ class SeriesNavigationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
+
+    def test_reveals_history_selection_before_first_batched_layout(self):
+        harness = type("SeriesHarness", (), series_navigation_methods())()
+        series_list = QListWidget()
+        series_list.resize(300, 120)
+        series_list.setLayoutMode(QListView.Batched)
+        series_list.setBatchSize(20)
+        for row in range(600):
+            series_list.addItem(f"Series {row}")
+        series_list.show()
+        selected_item = series_list.item(550)
+        series_list.setCurrentItem(selected_item)
+        harness._scroll_to_catalog_item(series_list, selected_item)
+        self.app.processEvents()
+        self.assertTrue(
+            series_list.viewport().rect().intersects(
+                series_list.visualItemRect(selected_item)
+            )
+        )
+        self.assertEqual(series_list.layoutMode(), QListView.Batched)
+        harness.streaming_list_widgets = {"Series": series_list}
+        harness._series_view_states = {}
+        harness.series_navigation_level = 0
+        harness._capture_series_view_state(0)
+        series_list.clear()
+        for row in range(600):
+            series_list.addItem(f"Series {row}")
+        harness._restore_series_view_state(0)
+        for _ in range(100):
+            self.app.processEvents()
+        self.assertGreater(harness._series_view_states[0]["scroll"], 0)
+        self.assertEqual(series_list.currentRow(), 550)
+        self.assertTrue(
+            series_list.viewport().rect().intersects(
+                series_list.visualItemRect(series_list.currentItem())
+            )
+        )
+        series_list.close()
 
     def test_restores_selected_series_and_scroll_position(self):
         methods = series_navigation_methods()

@@ -10,7 +10,8 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtWidgets import (
     QVBoxLayout, QLabel, QPushButton, QWidget, QHBoxLayout, QGridLayout,
-    QTreeWidget, QTreeWidgetItem, QScrollArea, QTextBrowser, QFrame
+    QTreeWidget, QTreeWidgetItem, QScrollArea, QTextBrowser, QFrame,
+    QStyledItemDelegate
 )
 
 
@@ -50,6 +51,35 @@ class _DescriptionView(QTextBrowser):
         """Return plain text for compatibility with the former QLabel."""
         return self.toPlainText()
 
+class _EpgDescriptionDelegate(QStyledItemDelegate):
+    """Size embedded descriptions for the available spanned row width."""
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        tree = self.parent()
+        item = tree.itemFromIndex(index)
+        label = tree.itemWidget(item, 0) if item is not None else None
+        if isinstance(label, QLabel) and item.isFirstColumnSpanned():
+            depth = 0
+            ancestor = item
+            while ancestor is not None:
+                depth += 1
+                ancestor = ancestor.parent()
+            if not tree.rootIsDecorated():
+                depth -= 1
+            width = max(1, tree.viewport().width() - depth * tree.indentation())
+            size.setHeight(label.heightForWidth(width))
+        return size
+
+
+class _EpgTree(QTreeWidget):
+    """Recalculate wrapped description rows when the viewport width changes."""
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.doItemsLayout()
+
+
 class LiveInfoBox(QWidget):
     def __init__(self, parent=None):
         super().__init__()
@@ -79,7 +109,10 @@ class LiveInfoBox(QWidget):
         self.cover.setMaximumHeight(self.maxCoverHeight)
 
         #Create entry info window
-        self.live_EPG_info = QTreeWidget()
+        self.live_EPG_info = _EpgTree()
+        self.live_EPG_info.setItemDelegate(
+            _EpgDescriptionDelegate(self.live_EPG_info)
+        )
         self.live_EPG_info.setColumnCount(4)
         self.live_EPG_info.setHeaderLabels(["Date", "From", "To", "Name"])
 

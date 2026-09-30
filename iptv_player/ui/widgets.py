@@ -1,7 +1,29 @@
 """Reusable Qt widgets shared by the application screens."""
 
-from PyQt5.QtCore import Qt, QItemSelectionModel, pyqtSignal
-from PyQt5.QtWidgets import QListWidget, QListWidgetItem
+import math
+
+from PyQt5.QtCore import Qt, QPointF, QItemSelectionModel, pyqtSignal
+from PyQt5.QtGui import QPainter, QPen, QPalette
+from PyQt5.QtWidgets import QListWidget, QListWidgetItem, QWidget
+
+
+class CategorySeparator(QWidget):
+    """Paint a one-device-pixel separator at fractional display scales."""
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        pen = QPen(self.palette().color(QPalette.Mid))
+        pen.setWidth(0)
+        painter.setPen(pen)
+        # Align the cosmetic pen with a physical pixel center, regardless of
+        # the row's position or the screen's fractional device pixel ratio.
+        transform = painter.deviceTransform()
+        center = transform.map(QPointF(0, self.height() / 2))
+        inverse, invertible = transform.inverted()
+        if invertible:
+            y = inverse.map(QPointF(center.x(), math.floor(center.y()) + 0.5)).y()
+            painter.drawLine(QPointF(0, y), QPointF(self.width(), y))
+        painter.end()
 
 
 def context_selected_items(list_widget, clicked_item):
