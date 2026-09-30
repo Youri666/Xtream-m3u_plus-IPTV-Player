@@ -121,6 +121,26 @@ class InfoPanelResetTests(unittest.TestCase):
         self.assertEqual(label.height(), label.heightForWidth(label.width()))
         tree.close()
 
+    def test_live_epg_description_height_matches_overflowing_columns(self):
+        panel = LiveInfoBox(self.parent)
+        tree = panel.live_EPG_info
+        tree.setParent(None)
+        tree.resize(400, 400)
+        tree.setColumnWidth(3, 600)
+        program = QtWidgets.QTreeWidgetItem(["Date", "From", "To", "Name"])
+        tree.addTopLevelItem(program)
+        description = panel.add_epg_description(
+            program, "A description with several words to wrap. " * 5
+            + "\nFirst actor\nSecond actor"
+        )
+        program.setExpanded(True)
+        tree.show()
+        self.app.processEvents()
+        label = tree.itemWidget(description, 0)
+        self.assertGreater(label.width(), tree.viewport().width())
+        self.assertEqual(label.height(), label.heightForWidth(label.width()))
+        tree.close()
+
     def test_live_epg_description_trims_outer_invisible_characters(self):
         panel = LiveInfoBox(self.parent)
         program = QtWidgets.QTreeWidgetItem(["Date", "From", "To", "Name"])
