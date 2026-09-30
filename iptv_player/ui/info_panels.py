@@ -118,6 +118,17 @@ class _EpgDescriptionDelegate(QStyledItemDelegate):
 class _EpgTree(QTreeWidget):
     """Recalculate wrapped description rows when the viewport width changes."""
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setExpandsOnDoubleClick(False)
+        self.itemClicked.connect(self._toggle_program)
+
+    @staticmethod
+    def _toggle_program(item, column):
+        """Toggle program rows while leaving native branch-arrow clicks alone."""
+        if item.parent() is None and item.childCount():
+            item.setExpanded(not item.isExpanded())
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.doItemsLayout()

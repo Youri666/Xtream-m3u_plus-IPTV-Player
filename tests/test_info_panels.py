@@ -6,6 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon, QPixmap
+from PyQt5.QtTest import QTest
 
 from iptv_player.ui.info_panels import LiveInfoBox, MovieInfoBox, SeriesInfoBox
 
@@ -51,6 +52,24 @@ class InfoPanelResetTests(unittest.TestCase):
         panel = LiveInfoBox(self.parent)
 
         self.assertTrue(panel.autoFillBackground())
+
+    def test_epg_program_toggles_with_single_click(self):
+        panel = LiveInfoBox(self.parent)
+        tree = panel.live_EPG_info
+        tree.setParent(None)
+        tree.resize(600, 300)
+        program = QtWidgets.QTreeWidgetItem(["Date", "From", "To", "Program"])
+        tree.addTopLevelItem(program)
+        panel.add_epg_description(program, "Description")
+        tree.show()
+        self.app.processEvents()
+        position = tree.visualItemRect(program).center()
+        QTest.mouseClick(tree.viewport(), Qt.LeftButton, pos=position)
+        self.assertTrue(program.isExpanded())
+        QTest.mouseClick(tree.viewport(), Qt.LeftButton, pos=position)
+        self.assertFalse(program.isExpanded())
+        self.assertFalse(tree.expandsOnDoubleClick())
+        tree.close()
 
     def test_movie_reset_clears_stale_selection(self):
         panel = MovieInfoBox(self.parent)

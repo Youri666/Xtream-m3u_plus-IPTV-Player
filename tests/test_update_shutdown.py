@@ -30,6 +30,7 @@ class UpdateShutdownTests(unittest.TestCase):
             "sys": SimpleNamespace(argv=[], exit=Mock()),
             "run_embedded_player_process": Mock(),
             "configure_qt_high_dpi": Mock(),
+            "acquire_application_lock": Mock(return_value=object()),
             "install_logging": Mock(),
             "QApplication": application_factory,
             "configure_qt_application": Mock(),
