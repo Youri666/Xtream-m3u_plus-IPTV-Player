@@ -99,6 +99,28 @@ class InfoPanelResetTests(unittest.TestCase):
         self.assertEqual(label.text(), "First line\nSecond line")
         self.assertIsNone(panel.add_epg_description(program, " \n\t "))
 
+    def test_live_epg_description_height_follows_available_width(self):
+        panel = LiveInfoBox(self.parent)
+        tree = panel.live_EPG_info
+        tree.setParent(None)
+        program = QtWidgets.QTreeWidgetItem(["Date", "From", "To", "Name"])
+        tree.addTopLevelItem(program)
+        description = panel.add_epg_description(
+            program, "A description with several words to wrap. " * 8
+        )
+        program.setExpanded(True)
+        tree.resize(500, 400)
+        tree.show()
+        self.app.processEvents()
+        label = tree.itemWidget(description, 0)
+        narrow_height = label.height()
+        self.assertEqual(narrow_height, label.heightForWidth(label.width()))
+        tree.resize(900, 400)
+        self.app.processEvents()
+        self.assertLess(label.height(), narrow_height)
+        self.assertEqual(label.height(), label.heightForWidth(label.width()))
+        tree.close()
+
     def test_live_epg_description_trims_outer_invisible_characters(self):
         panel = LiveInfoBox(self.parent)
         program = QtWidgets.QTreeWidgetItem(["Date", "From", "To", "Name"])

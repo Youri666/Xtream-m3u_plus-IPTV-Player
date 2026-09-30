@@ -108,6 +108,7 @@ from iptv_player.ui.dialogs.settings import (
 )
 from iptv_player.ui.dialogs.accounts import AccountManager
 from iptv_player.ui.widgets import (
+    CategorySeparator,
     KeyboardNavigableListWidget,
     context_selected_items,
 )
@@ -1423,7 +1424,7 @@ class IPTVPlayerApp(QMainWindow):
                 and str(data.get("stream_id", "")) == stream_id
             ):
                 stream_list.setCurrentItem(stream_item)
-                stream_list.scrollToItem(stream_item)
+                self._scroll_to_catalog_item(stream_list, stream_item)
                 # Programmatic selection does not emit itemClicked. Run the same
                 # handler as a real click so the EPG or movie panel is refreshed.
                 self.prev_clicked_streaming_item = None
@@ -1514,7 +1515,8 @@ class IPTVPlayerApp(QMainWindow):
             return False
 
         series_list.setCurrentItem(series_item)
-        series_list.scrollToItem(series_item)
+        self._scroll_to_catalog_item(series_list, series_item)
+        self._capture_series_view_state(0)
         # Refresh the Series information panel before entering its season view.
         self.prev_clicked_streaming_item = None
         self.streaming_item_clicked(series_item)
@@ -1837,15 +1839,13 @@ class IPTVPlayerApp(QMainWindow):
 
     @staticmethod
     def _insert_category_separator(list_widget, row):
-        """Insert a non-selectable native horizontal separator."""
+        """Insert a non-selectable separator with consistent physical thickness."""
         item = QListWidgetItem()
         item.setData(Qt.UserRole, {"category_kind": "separator"})
         item.setFlags(Qt.NoItemFlags)
         item.setSizeHint(QSize(0, 9))
         list_widget.insertItem(row, item)
-        separator = QFrame(list_widget)
-        separator.setFrameShape(QFrame.HLine)
-        separator.setFrameShadow(QFrame.Sunken)
+        separator = CategorySeparator(list_widget)
         list_widget.setItemWidget(item, separator)
 
     def _insert_fixed_categories(self, stream_type):
@@ -2320,8 +2320,8 @@ class IPTVPlayerApp(QMainWindow):
                     color: palette(text);
                 }
                 QListWidget::item {
-                    padding-top: 5px;
-                    padding-bottom: 5px;
+                    padding-top: 1px;
+                    padding-bottom: 1px;
                 }
                 QListWidget::item:selected {
                     background-color: palette(highlight);
@@ -2379,8 +2379,8 @@ class IPTVPlayerApp(QMainWindow):
                     color: palette(text);
                 }
                 QListWidget::item {
-                    padding-top: 5px;
-                    padding-bottom: 5px;
+                    padding-top: 1px;
+                    padding-bottom: 1px;
                 }
                 QListWidget::item:selected {
                     background-color: palette(highlight);
@@ -4721,7 +4721,7 @@ class IPTVPlayerApp(QMainWindow):
                             and str(episode_data.get("id", "")) == episode_id
                         ):
                             episode_list.setCurrentItem(episode_item)
-                            episode_list.scrollToItem(episode_item)
+                            self._scroll_to_catalog_item(episode_list, episode_item)
                             episode_found = True
                             break
                 if not episode_found:
@@ -5653,6 +5653,19 @@ class IPTVPlayerApp(QMainWindow):
         self.prev_double_clicked_streaming_item = None
         self.go_back_to_level(self.series_navigation_level)
 
+    @staticmethod
+    def _scroll_to_catalog_item(list_widget, item):
+        """Finish a pending batched layout before revealing a selected item."""
+        layout_mode = list_widget.layoutMode()
+        try:
+            list_widget.setLayoutMode(QListView.SinglePass)
+            list_widget.doItemsLayout()
+            list_widget.scrollToItem(
+                item, QtWidgets.QAbstractItemView.PositionAtCenter
+            )
+        finally:
+            list_widget.setLayoutMode(layout_mode)
+
     def _capture_series_view_state(self, navigation_level):
         """Remember the current row and scroll position for one Series level."""
         list_widget = self.streaming_list_widgets['Series']
@@ -5703,6 +5716,7 @@ class IPTVPlayerApp(QMainWindow):
 
         if selected_item is not None:
             list_widget.setCurrentItem(selected_item)
+            self._scroll_to_catalog_item(list_widget, selected_item)
 
         target_scroll = max(0, int(state.get('scroll', 0)))
         scroll_bar = list_widget.verticalScrollBar()
