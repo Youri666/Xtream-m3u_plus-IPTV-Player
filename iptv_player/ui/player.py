@@ -52,6 +52,7 @@ from iptv_player.ui.theme import (
 )
 from iptv_player.vlc_diagnostics import describe_vlc_load_failure
 from iptv_player.linux_vlc_runtime import configure_linux_vlc_plugins
+from iptv_player.ui.widgets import KeyboardNavigableListWidget
 from iptv_player.ui.player_theme import (
     DARK_BUTTON_STYLE,
     DARK_OVERLAY_STYLE,
@@ -427,11 +428,11 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.sidebar_search.setPlaceholderText("Filter…")
         self.sidebar_search.textChanged.connect(self._refresh_sidebar)
 
-        self.playlist_list = QListWidget()
+        self.playlist_list = KeyboardNavigableListWidget()
         self.playlist_list.setObjectName("playlistList")
         self.playlist_list.setCursor(Qt.PointingHandCursor)
-        self.playlist_list.itemActivated.connect(self._playlist_item_activated)
-        self.playlist_list.itemClicked.connect(self._playlist_item_activated)
+        self.playlist_list.itemDoubleClicked.connect(self._playlist_item_activated)
+        self.playlist_list.keyboardActivated.connect(self._playlist_item_activated)
 
         sidebar_lay = QVBoxLayout(self.sidebar)
         sidebar_lay.setContentsMargins(8, 8, 8, 8)

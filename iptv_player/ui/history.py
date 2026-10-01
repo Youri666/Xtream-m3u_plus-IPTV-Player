@@ -1,10 +1,28 @@
 """Present episode history as series groups without changing saved entries."""
 
-from PyQt5.QtCore import Qt, QSignalBlocker
-from PyQt5.QtWidgets import QTreeWidgetItem
+from PyQt5.QtCore import Qt, QSignalBlocker, pyqtSignal
+from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem
 
 
 GROUP_ROLE = Qt.UserRole + 1
+
+
+class HistoryTreeWidget(QTreeWidget):
+    """Open history on double-click or Enter regardless of desktop activation policy."""
+
+    openRequested = pyqtSignal(QTreeWidgetItem, int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setExpandsOnDoubleClick(False)
+        self.itemDoubleClicked.connect(self.openRequested.emit)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter) and self.currentItem() is not None:
+            self.openRequested.emit(self.currentItem(), self.currentColumn())
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 def _item_identity(item):
