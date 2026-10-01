@@ -37,7 +37,9 @@ from PyQt5.QtWidgets import (
 )
 
 from iptv_player.ui.info_panels import LiveInfoBox, MovieInfoBox, SeriesInfoBox
-from iptv_player.ui.history import GROUP_ROLE, populate_history_tree, selected_history_entries
+from iptv_player.ui.history import (
+    GROUP_ROLE, HistoryTreeWidget, populate_history_tree, selected_history_entries,
+)
 from iptv_player.internal_player_runtime import internal_player_environment
 from iptv_player.ui.player import EmbeddedPlayerWindow
 from iptv_player.bootstrap import (
@@ -1226,11 +1228,10 @@ class IPTVPlayerApp(QMainWindow):
         ):
             group = QGroupBox(label)
             layout = QVBoxLayout(group)
-            history_list = QTreeWidget()
+            history_list = HistoryTreeWidget()
             history_list.setColumnCount(2)
             history_list.setHeaderLabels(("Last viewed", "Title"))
             history_list.setRootIsDecorated(stream_type == 'Series')
-            history_list.setExpandsOnDoubleClick(False)
             history_list.setAlternatingRowColors(True)
             history_list.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
             history_list.setSelectionMode(
@@ -1248,7 +1249,7 @@ class IPTVPlayerApp(QMainWindow):
             history_list.header().setSectionResizeMode(
                 1, QtWidgets.QHeaderView.Stretch
             )
-            history_list.itemActivated.connect(self._history_item_activated)
+            history_list.openRequested.connect(self._history_item_activated)
             layout.addWidget(history_list)
             self.history_groups[stream_type] = group
             self.history_widgets[stream_type] = history_list
@@ -3126,8 +3127,8 @@ class IPTVPlayerApp(QMainWindow):
             self.sorting_order = 1
             self.remember_category_sorting = False
         elif current_sorting == "Remember per list":
-            # Unsaved categories inherit the last persisted global preference.
-            self.sorting_enabled = True
+            # Unsaved lists retain the provider's order.
+            self.sorting_enabled = False
             self.sorting_order = 0
             self.remember_category_sorting = True
         else:
@@ -3290,9 +3291,10 @@ class IPTVPlayerApp(QMainWindow):
             self.remember_category_sorting = False
             self.category_sort_fallback = 'z_a'
         elif sorting_order == "Remember per list":
-            self.sorting_enabled = True
+            self.sorting_enabled = False
             self.sorting_order = 0
             self.remember_category_sorting = True
+            self.category_sort_fallback = 'disabled'
         else:
             self.sorting_enabled = False
             self.sorting_order = 0

@@ -8,9 +8,47 @@ from unittest.mock import Mock
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication, QTreeWidget, QAbstractItemView
+from PyQt5.QtWidgets import QApplication, QTreeWidget, QAbstractItemView, QProxyStyle, QStyle, QTreeWidgetItem
+from PyQt5.QtTest import QTest, QSignalSpy
 
-from iptv_player.ui.history import GROUP_ROLE, populate_history_tree, selected_history_entries
+from iptv_player.ui.history import GROUP_ROLE, HistoryTreeWidget, populate_history_tree, selected_history_entries
+
+
+class SingleClickActivationStyle(QProxyStyle):
+    def styleHint(self, hint, option=None, widget=None, returnData=None):
+        if hint == QStyle.SH_ItemView_ActivateItemOnSingleClick:
+            return 1
+        return super().styleHint(hint, option, widget, returnData)
+
+
+class HistoryActivationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_single_click_only_selects_even_with_desktop_single_click_policy(self):
+        tree = HistoryTreeWidget()
+        style = SingleClickActivationStyle()
+        tree.setStyle(style)
+        tree.setColumnCount(2)
+        item = QTreeWidgetItem(['date', 'Series'])
+        item.addChild(QTreeWidgetItem(['date', 'Episode']))
+        tree.addTopLevelItem(item)
+        tree.show()
+        self.app.processEvents()
+        spy = QSignalSpy(tree.openRequested)
+        position = tree.visualItemRect(item).center()
+        QTest.mouseClick(tree.viewport(), Qt.LeftButton, pos=position)
+        self.assertEqual(len(spy), 0)
+        self.assertEqual(tree.currentItem(), item)
+        QTest.mouseDClick(tree.viewport(), Qt.LeftButton, pos=position)
+        self.assertEqual(len(spy), 1)
+        self.assertFalse(item.isExpanded())
+        QTest.keyClick(tree, Qt.Key_Return)
+        self.assertEqual(len(spy), 2)
+        QTest.keyClick(tree, Qt.Key_Enter)
+        self.assertEqual(len(spy), 3)
+        tree.close()
 
 
 class HistoryGroupTests(unittest.TestCase):
