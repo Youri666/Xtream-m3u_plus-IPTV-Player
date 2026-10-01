@@ -31,9 +31,10 @@ def external_player_display_name(player):
     return filename or "External player"
 
 
-def external_player_environment(environment=None, platform=None):
+def external_player_environment(environment=None, platform=None, frozen=None):
     """Return an environment isolated from this application's Qt runtime."""
     platform = platform or sys.platform
+    frozen = getattr(sys, 'frozen', False) if frozen is None else frozen
     child_environment = dict(os.environ if environment is None else environment)
     for variable in (
         "QT_PLUGIN_PATH",
@@ -54,6 +55,8 @@ def external_player_environment(environment=None, platform=None):
         original = child_environment.pop(f"{library_path}_ORIG", None)
         if original is not None:
             child_environment[library_path] = original
+        elif platform.startswith('linux') and frozen:
+            child_environment.pop(library_path, None)
 
     return child_environment
 
