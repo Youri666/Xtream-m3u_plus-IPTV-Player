@@ -22,7 +22,7 @@ import uuid
 from collections import Counter
 from multiprocessing.connection import Listener
 from datetime import datetime
-from PyQt5.QtGui import QIcon, QFont, QPixmap, QColor, QDesktopServices, QPainter
+from PyQt5.QtGui import QIcon, QFont, QPixmap, QColor, QDesktopServices, QPainter, QRegion
 from PyQt5.QtCore import (
     Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize,
     QThreadPool, QUrl, QByteArray
@@ -737,6 +737,7 @@ class IPTVPlayerApp(QMainWindow):
             'path_to_sorting_icon': 'sorting_icon.png',
             'path_to_clear_btn_icon': 'clear_button_icon.png',
             'path_to_go_back_icon': 'go_back_icon.png',
+            'path_to_play_icon': 'play_icon.png',
             'path_to_account_icon': 'account_manager_icon.png',
             'path_to_mediaplayer_icon': 'film_camera_icon.png',
         }
@@ -925,6 +926,15 @@ class IPTVPlayerApp(QMainWindow):
         painter.end()
         return QIcon(tinted)
 
+    def _content_play_icon(self, color=None):
+        """Remove transparent asset margins so Play matches the favorite icon scale."""
+        source = QPixmap(self.path_to_play_icon)
+        bounds = QRegion(source.mask()).boundingRect()
+        if not bounds.isEmpty():
+            source = source.copy(bounds)
+        icon = QIcon(source)
+        return self._tinted_icon(icon, color) if color is not None else icon
+
     def _category_icon(self, color):
         """Draw a transparent category grid using the current theme contrast."""
         # Some native Qt list icons have an opaque background. Tinting such an
@@ -999,6 +1009,9 @@ class IPTVPlayerApp(QMainWindow):
                 search_bar.add_custom_category_button.setIcon(
                     self._custom_category_add_icon(dark)
                 )
+
+        for info_box in getattr(self, 'info_boxes', {}).values():
+            info_box.play_button.setIcon(self._content_play_icon(color))
 
         if hasattr(self, 'address_book_button'):
             self.address_book_button.setIcon(self.account_manager_icon)
@@ -3080,7 +3093,61 @@ class IPTVPlayerApp(QMainWindow):
         for spec in CONTENT_TAB_SPECS:
             info_box = spec['info_box_class'](self)
             self.info_boxes[spec['stream_type']] = info_box
+            policy = info_box.sizePolicy()
+            policy.setRetainSizeWhenHidden(True)
+            info_box.setSizePolicy(policy)
             setattr(self, f"{spec['attribute']}_info_box", info_box)
+            stream_type = spec['stream_type']
+            button = QPushButton(info_box)
+            button.setFlat(True)
+            button.setFixedSize(info_box.fav_button.size())
+            button.setIconSize(info_box.fav_button.iconSize())
+            button.setIcon(self._content_play_icon())
+            button.setAccessibleName('Play selected item')
+            button.setEnabled(False)
+            button.clicked.connect(
+                lambda _checked=False, content_type=stream_type:
+                self._activate_selected_content(content_type)
+            )
+            info_box.play_button = button
+            info_box.title_layout.addWidget(button)
+            self._update_content_play_button(stream_type)
+            self.streaming_list_widgets[stream_type].currentItemChanged.connect(
+                lambda _current, _previous, content_type=stream_type:
+                self._update_content_play_button(content_type)
+            )
+            self.streaming_list_widgets[stream_type].itemSelectionChanged.connect(
+                lambda content_type=stream_type:
+                self._update_content_play_button(content_type)
+            )
+
+    def _update_content_play_button(self, stream_type):
+        """Offer the same action as the selected row's double-click."""
+        item = self.streaming_list_widgets[stream_type].currentItem()
+        data = item.data(Qt.UserRole) if item is not None else None
+        selected = (
+            bool(data) and isinstance(data, (dict, list))
+            and item.isSelected() and item.text() != self.go_back_text
+        )
+        browsing_series = stream_type == 'Series' and self.series_navigation_level > 0
+        info_box = self.info_boxes[stream_type]
+        has_details = selected or (browsing_series and bool(self.current_series_entry))
+        info_box.setVisible(has_details)
+        info_box.fav_button.setVisible(has_details)
+        enabled = selected and (stream_type != 'Series' or self.series_navigation_level == 2)
+        button = info_box.play_button
+        button.setVisible(enabled)
+        button.setEnabled(enabled)
+        button.setCursor(Qt.PointingHandCursor if enabled else Qt.ArrowCursor)
+        button.setToolTip('Play selected item')
+
+    def _activate_selected_content(self, stream_type):
+        """Reuse catalog activation rather than introducing another playback path."""
+        self._update_content_play_button(stream_type)
+        button = self.info_boxes[stream_type].play_button
+        if button.isEnabled() and not button.isHidden():
+            item = self.streaming_list_widgets[stream_type].currentItem()
+            self.streaming_item_double_clicked(item)
 
     def _next_info_request_generation(self, stream_type):
         """Invalidate older asynchronous details and return the new request token."""
@@ -3107,6 +3174,7 @@ class IPTVPlayerApp(QMainWindow):
         if stream_type == "Series":
             self.current_series_entry = None
             self.current_series_season = None
+        self._update_content_play_button(stream_type)
 
     def load_default_sorting_order(self):
         sorting_order = load_sorting_preference(self.user_data_file)
