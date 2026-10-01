@@ -38,6 +38,7 @@ from PyQt5.QtWidgets import (
 
 from iptv_player.ui.info_panels import LiveInfoBox, MovieInfoBox, SeriesInfoBox
 from iptv_player.ui.history import GROUP_ROLE, populate_history_tree, selected_history_entries
+from iptv_player.internal_player_runtime import internal_player_environment
 from iptv_player.ui.player import EmbeddedPlayerWindow
 from iptv_player.bootstrap import (
     configure_qt_high_dpi,
@@ -6254,7 +6255,7 @@ class IPTVPlayerApp(QMainWindow):
             )
 
         listener = Listener(address=address, family=family, authkey=auth_key)
-        environment = os.environ.copy()
+        environment = internal_player_environment()
         environment['IPTV_PLAYER_IPC_ADDRESS'] = address
         environment['IPTV_PLAYER_IPC_FAMILY'] = family
         environment['IPTV_PLAYER_IPC_AUTH'] = auth_key.hex()

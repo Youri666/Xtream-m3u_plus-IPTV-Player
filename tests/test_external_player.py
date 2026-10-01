@@ -207,6 +207,19 @@ class ExternalPlayerCommandTests(unittest.TestCase):
         self.assertEqual(environment["LD_LIBRARY_PATH"], "system-libraries")
         self.assertNotIn("LD_LIBRARY_PATH_ORIG", environment)
 
+    def test_frozen_linux_without_original_path_uses_system_libraries(self):
+        environment = external_player_environment(
+            {'LD_LIBRARY_PATH': '/tmp/bundled', 'PATH': '/usr/bin'},
+            platform='linux', frozen=True,
+        )
+        self.assertEqual(environment, {'PATH': '/usr/bin'})
+
+    def test_source_launch_preserves_user_library_path(self):
+        environment = external_player_environment(
+            {'LD_LIBRARY_PATH': '/custom/libraries'}, platform='linux', frozen=False,
+        )
+        self.assertEqual(environment['LD_LIBRARY_PATH'], '/custom/libraries')
+
 
 if __name__ == "__main__":
     unittest.main()

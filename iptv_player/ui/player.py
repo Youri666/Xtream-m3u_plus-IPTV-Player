@@ -3,6 +3,7 @@
 import configparser
 import ctypes
 import ctypes.util
+import logging
 from os import path
 import sys
 import time
@@ -773,12 +774,17 @@ class EmbeddedPlayerWindow(QMainWindow):
         """Return whether libVLC loads and a meaningful failure explanation."""
         try:
             import vlc
+            logging.debug("Internal VLC runtime: version=%r; library=%r; frozen=%s",
+                          vlc.libvlc_get_version(), getattr(vlc.dll, '_name', None),
+                          getattr(sys, 'frozen', False))
             instance = vlc.Instance()
             if instance is None:
                 raise RuntimeError("libVLC did not create an instance")
             instance.release()
             return True, ""
         except (Exception, SystemExit) as error:
+            logging.exception("Internal VLC initialization failed (frozen=%s)",
+                              getattr(sys, 'frozen', False))
             return False, describe_vlc_load_failure(error)
 
     @staticmethod
