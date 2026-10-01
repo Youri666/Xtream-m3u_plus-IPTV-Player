@@ -37,6 +37,7 @@ from PyQt5.QtWidgets import (
 )
 
 from iptv_player.ui.info_panels import LiveInfoBox, MovieInfoBox, SeriesInfoBox
+from iptv_player.ui.history import GROUP_ROLE, populate_history_tree, selected_history_entries
 from iptv_player.ui.player import EmbeddedPlayerWindow
 from iptv_player.bootstrap import (
     configure_qt_high_dpi,
@@ -1227,7 +1228,8 @@ class IPTVPlayerApp(QMainWindow):
             history_list = QTreeWidget()
             history_list.setColumnCount(2)
             history_list.setHeaderLabels(("Last viewed", "Title"))
-            history_list.setRootIsDecorated(False)
+            history_list.setRootIsDecorated(stream_type == 'Series')
+            history_list.setExpandsOnDoubleClick(False)
             history_list.setAlternatingRowColors(True)
             history_list.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
             history_list.setSelectionMode(
@@ -1257,16 +1259,14 @@ class IPTVPlayerApp(QMainWindow):
         if not hasattr(self, "history_widgets"):
             return
         entries = load_history(self.history_file) if self.history_file else []
-        for history_list in self.history_widgets.values():
-            history_list.clear()
-        for entry in entries:
-            history_list = self.history_widgets.get(entry.get("type"))
-            if history_list is None:
-                continue
-            timestamp = self._history_display_time(entry.get("last_viewed", ""))
-            item = QTreeWidgetItem((timestamp, entry.get("title", "")))
-            item.setData(0, Qt.UserRole, entry)
-            history_list.addTopLevelItem(item)
+        preserve_state = getattr(self, '_history_display_file', None) == self.history_file
+        for stream_type, history_list in self.history_widgets.items():
+            populate_history_tree(
+                history_list, [entry for entry in entries if entry.get('type') == stream_type],
+                self._history_display_time, group_series=stream_type == 'Series',
+                preserve_state=preserve_state,
+            )
+        self._history_display_file = self.history_file
 
     def _show_history_context_menu(self, history_list, position):
         """Offer removal for the clicked history row or current selection."""
@@ -1278,19 +1278,18 @@ class IPTVPlayerApp(QMainWindow):
             clicked_item.setSelected(True)
             history_list.setCurrentItem(clicked_item)
 
-        entries = []
-        keys = set()
-        for item in history_list.selectedItems():
-            entry = item.data(0, Qt.UserRole)
-            key = entry.get("key") if isinstance(entry, dict) else None
-            if key and key not in keys:
-                keys.add(key)
-                entries.append(entry)
+        selected_items = history_list.selectedItems()
+        entries = selected_history_entries(selected_items)
+        series_title = (selected_items[0].text(1)
+                        if len(selected_items) == 1
+                        and selected_items[0].data(0, GROUP_ROLE) is not None else None)
         if not entries:
             return
 
         menu = QMenu(history_list)
-        if len(entries) == 1:
+        if series_title is not None:
+            remove_action = menu.addAction("Remove series from History")
+        elif len(entries) == 1:
             remove_action = menu.addAction("Remove from History")
         else:
             remove_action = menu.addAction(
@@ -1300,9 +1299,9 @@ class IPTVPlayerApp(QMainWindow):
             history_list.viewport().mapToGlobal(position)
         )
         if selected_action is remove_action:
-            self._remove_selected_history_entries(entries)
+            self._remove_selected_history_entries(entries, series_title=series_title)
 
-    def _remove_selected_history_entries(self, entries):
+    def _remove_selected_history_entries(self, entries, series_title=None):
         """Confirm and remove selected rows from the active account history."""
         keys = {
             entry.get("key") for entry in entries
@@ -1315,7 +1314,9 @@ class IPTVPlayerApp(QMainWindow):
         dialog = QMessageBox(self)
         dialog.setIcon(QMessageBox.Question)
         dialog.setWindowTitle("Remove from History")
-        if count == 1:
+        if series_title is not None:
+            dialog.setText(f'Remove all {count} retained episodes of "{series_title}" from History?')
+        elif count == 1:
             dialog.setText("Remove this item from History?")
         else:
             dialog.setText(f"Remove these {count} items from History?")
