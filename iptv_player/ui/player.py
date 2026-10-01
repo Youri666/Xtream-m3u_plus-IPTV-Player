@@ -51,6 +51,7 @@ from iptv_player.ui.theme import (
     apply_windows_title_bar_theme,
 )
 from iptv_player.vlc_diagnostics import describe_vlc_load_failure
+from iptv_player.linux_vlc_runtime import configure_linux_vlc_plugins
 from iptv_player.ui.player_theme import (
     DARK_BUTTON_STYLE,
     DARK_OVERLAY_STYLE,
@@ -184,6 +185,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.setWindowIcon(self._player_window_icon())
         self.resize(1080, 640)
 
+        configure_linux_vlc_plugins()
         import vlc
         self._vlc = vlc
 
@@ -773,6 +775,7 @@ class EmbeddedPlayerWindow(QMainWindow):
     def availability():
         """Return whether libVLC loads and a meaningful failure explanation."""
         try:
+            configure_linux_vlc_plugins()
             import vlc
             logging.debug("Internal VLC runtime: version=%r; library=%r; frozen=%s",
                           vlc.libvlc_get_version(), getattr(vlc.dll, '_name', None),
