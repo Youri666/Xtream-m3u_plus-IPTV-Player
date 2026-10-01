@@ -71,6 +71,8 @@ The **Live**, **Movies**, and **Series** tabs all use the same three-column layo
 - **Middle column:** items available in the selected category
 - **Right column:** information about the currently selected item
 
+Double-click an item in the **middle column** to play a channel, movie, or episode. You can also select it and click the **Play button beside the title in the right column**. In Series, this button appears only at the episode level; double-click a series and then a season to browse their episodes.
+
 You can navigate through the first two columns with the **Up/Down arrow keys** and use **Enter** to open or select an item.
 
 Both the category and content lists include a **search bar**, a **clear search** button, and a **filter** button.  
@@ -126,11 +128,15 @@ The **History** tab keeps track of recently viewed content and separates it into
 
 Each section shows the **last viewed date/time** and the corresponding **title**, making it easy to find content that was previously opened.
 
-The maximum number of history entries is configurable in **Advanced Settings**. The default value is **50 items per content type**.
+**Series episodes are grouped under one expandable row per series**, showing the series title and its latest viewing date/time. Click the arrow to see the episodes retained in History. **Double-click the series row**, or press **Enter**, to return to its latest episode. **Double-click an episode row**, or press **Enter**, to return to that specific episode. This selects the episode without starting playback.
 
-History is stored independently for each IPTV account. Activating an entry opens its original tab and category, then selects the corresponding channel, movie, or episode so it can be found quickly. The Internal Player can resume partially watched content from its saved position. If an item is no longer present in the provider catalog, its obsolete entry is automatically removed from History.
+The maximum number of history entries is configurable in **Advanced Settings**. The default value is **50 items per content type**. For Series, this limit counts individual episodes, not groups.
+
+History is stored independently for each IPTV account. **A single click selects an entry; double-clicking it or pressing Enter opens its original tab and category**, then selects the corresponding channel, movie, or episode. To start playback, double-click the selected item in the middle column or click its Play button. The Internal Player can resume partially watched content from its saved position. If an item is no longer present in the provider catalog, its obsolete entry is automatically removed from History.
 
 ![History tab showing recently viewed Live, Movies and Series content](screenshots/history-tab.png)
+
+Right-click a series row and choose **Remove series from History** to remove all of its retained episodes. Expand the series and right-click an episode to remove only that episode. Confirmation is required.
 
 History entries can be removed individually or in groups. Use **Ctrl** on Windows and Linux or **Command (⌘)** on macOS to select individual entries, and **Shift** to select a range. Right-click the selection and choose **Remove from History**. A confirmation is required before the selected entries are deleted.
 

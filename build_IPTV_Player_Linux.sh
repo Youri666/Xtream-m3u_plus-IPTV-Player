@@ -85,6 +85,7 @@ PYINSTALLER_ARGS=(
   --add-data "images/sorting_icon.png:images"
   --add-data "images/clear_button_icon.png:images"
   --add-data "images/go_back_icon.png:images"
+  --add-data "images/play_icon.png:images"
   --add-data "images/account_manager_icon.png:images"
   --add-data "images/film_camera_icon.png:images"
   --add-data "images/primary_full-TMDB.svg:images"

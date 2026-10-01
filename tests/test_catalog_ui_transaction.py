@@ -72,6 +72,7 @@ class CatalogTransactionTests(unittest.TestCase):
         }
         harness.streaming_list_widgets = {'Movies': streams}
         harness.info_boxes = {'Movies': panel}
+        harness._update_content_play_button = Mock()
 
         harness._reset_info_panel('Movies')
 
@@ -79,6 +80,7 @@ class CatalogTransactionTests(unittest.TestCase):
         self.assertTrue(harness._is_current_info_request('Movies', 5))
         self.assertIsNone(streams.currentItem())
         panel.reset.assert_called_once_with()
+        harness._update_content_play_button.assert_called_once_with('Movies')
 
     def test_cached_row_uses_current_catalog_favorite_state(self):
         harness = type('CatalogHarness', (), catalog_methods())()
