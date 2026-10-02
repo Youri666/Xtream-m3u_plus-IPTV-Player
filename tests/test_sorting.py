@@ -1,9 +1,35 @@
 import unittest
 
-from iptv_player.utils.sorting import ordered_catalog_entries, ordered_season_keys
+from iptv_player.utils.sorting import ordered_catalog_entries, ordered_season_keys, provider_rating
 
 
 class CatalogSortingTests(unittest.TestCase):
+    def test_rating_orders_keep_unrated_last_and_ties_stable(self):
+        entries = [
+            {'name': 'Unrated'}, {'name': 'First tie', 'rating': '8'},
+            {'name': 'Low', 'rating': 3}, {'name': 'Second tie', 'rating': 8},
+            {'name': 'Invalid', 'rating': 'NaN'}, {'name': 'Zero', 'rating': 0},
+        ]
+        high = ordered_catalog_entries(entries, True, rating_order=2)
+        low = ordered_catalog_entries(entries, True, rating_order=3)
+        self.assertEqual([e['name'] for e in high],
+                         ['First tie', 'Second tie', 'Low', 'Unrated', 'Invalid', 'Zero'])
+        self.assertEqual([e['name'] for e in low],
+                         ['Low', 'First tie', 'Second tie', 'Unrated', 'Invalid', 'Zero'])
+        self.assertEqual(entries[0]['name'], 'Unrated')
+
+    def test_rating_parser_handles_provider_formats_and_rejects_invalid_values(self):
+        self.assertEqual(provider_rating({'rating': ' 8,5 '}), 8.5)
+        self.assertEqual(provider_rating({'rating': '', 'rating_5based': '4.5'}), 9)
+        self.assertEqual(provider_rating({'rating': 7, 'rating_5based': 5}), 7)
+        for value in (None, '', 'N/A', 'inf', '-inf', 'NaN', -1, 0, 11, True, []):
+            self.assertIsNone(provider_rating({'rating': value}))
+
+    def test_all_unrated_entries_retain_provider_order(self):
+        entries = [{'name': 'Zulu'}, {'name': 'Alpha', 'rating': 0}]
+        for order in (2, 3):
+            self.assertEqual(ordered_catalog_entries(entries, True, rating_order=order), entries)
+
     def test_catalog_sort_is_case_insensitive_and_does_not_mutate_input(self):
         entries = [{"name": "zulu"}, {"name": "Alpha"}, {"name": "beta"}]
 

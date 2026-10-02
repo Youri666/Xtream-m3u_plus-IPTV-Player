@@ -159,7 +159,7 @@ def load_sorting_preference(filename):
         return REMEMBER_LIST_SORTING
     if value == LEGACY_DISABLED_SORTING:
         return DEFAULT_ORDER_SORTING
-    return value or DEFAULT_ORDER_SORTING
+    return value or REMEMBER_LIST_SORTING
 
 
 def save_sorting_preference(filename, sorting_order):

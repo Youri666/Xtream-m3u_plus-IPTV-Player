@@ -431,7 +431,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.playlist_list = KeyboardNavigableListWidget()
         self.playlist_list.setObjectName("playlistList")
         self.playlist_list.setCursor(Qt.PointingHandCursor)
-        self.playlist_list.itemDoubleClicked.connect(self._playlist_item_activated)
+        self.playlist_list.itemClicked.connect(self._playlist_item_activated)
         self.playlist_list.keyboardActivated.connect(self._playlist_item_activated)
 
         sidebar_lay = QVBoxLayout(self.sidebar)
