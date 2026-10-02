@@ -121,10 +121,10 @@ class ApplicationPreferenceTests(unittest.TestCase):
                 {"LIVE": True, "Movies": False, "Series": False},
             )
 
-    def test_sorting_defaults_to_default_order_and_removes_legacy_section(self):
+    def test_sorting_defaults_to_remember_per_list_and_removes_legacy_section(self):
         with tempfile.TemporaryDirectory() as directory:
             filename = Path(directory) / "userdata.ini"
-            self.assertEqual(load_sorting_preference(filename), "Default order")
+            self.assertEqual(load_sorting_preference(filename), "Remember per list")
             filename.write_text(
                 "[Category sorting]\nfallback=z_a\n", encoding="utf-8"
             )

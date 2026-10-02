@@ -1255,13 +1255,11 @@ class IPTVPlayerApp(QMainWindow):
                 lambda position, widget=history_list:
                 self._show_history_context_menu(widget, position)
             )
-            history_list.header().setStretchLastSection(True)
-            history_list.header().setSectionResizeMode(
-                0, QtWidgets.QHeaderView.ResizeToContents
-            )
-            history_list.header().setSectionResizeMode(
-                1, QtWidgets.QHeaderView.Stretch
-            )
+            history_list.header().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+            history_list.header().setResizeContentsPrecision(-1)
+            history_list.header().setStretchLastSection(False)
+            history_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            history_list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             history_list.openRequested.connect(self._history_item_activated)
             layout.addWidget(history_list)
             self.history_groups[stream_type] = group
@@ -1668,6 +1666,22 @@ class IPTVPlayerApp(QMainWindow):
             'z_a': sort_z_a,
             'disabled': sort_disabled
         }
+        if list_content_type == 'streaming' and stream_type in ('Movies', 'Series'):
+            for preference, label, order in (
+                ('rating_desc', 'Rating: highest first', 2),
+                ('rating_asc', 'Rating: lowest first', 3),
+            ):
+                action = QAction(label, self)
+                action.setCheckable(True)
+                sorting_group.addAction(action)
+                sorting_menu.addAction(action)
+                search_bar.sort_actions[preference] = action
+                action.triggered.connect(
+                    lambda _checked=False, chosen_order=order: self.apply_sorting_choice(
+                        search_bar, list_content_type, stream_type, list_widgets,
+                        True, chosen_order
+                    )
+                )
         search_bar.current_sorting = (self.sorting_enabled, self.sorting_order)
         sorting_menu.aboutToShow.connect(
             lambda: self.update_sorting_menu(
@@ -2018,6 +2032,8 @@ class IPTVPlayerApp(QMainWindow):
         )
         for action_name, action in search_bar.sort_actions.items():
             action.setChecked(action_name == preference)
+            if action_name.startswith('rating_'):
+                action.setEnabled(stream_type != 'Series' or self.series_navigation_level == 0)
 
     def apply_sorting_choice(
         self, search_bar, list_content_type, stream_type, list_widgets,
@@ -2063,9 +2079,9 @@ class IPTVPlayerApp(QMainWindow):
             list_content_type == 'streaming'
             and (stream_type != 'Series' or self.series_navigation_level == 0)
         )
-        if is_top_level_stream_view and not sorting_enabled:
-            # Disabling sorting must restore provider order rather than preserve
-            # the order of the list that was previously sorted A-Z or Z-A.
+        if is_top_level_stream_view and (not sorting_enabled or sort_order in (2, 3)):
+            # Start from the original list so equal ratings never inherit a
+            # previous alphabetical order and disabling sorting restores it.
             category_name, category_id = self._selected_category(stream_type)
             self.currently_loaded_streams[stream_type] = list(
                 self._raw_entries_for_category(
@@ -2127,6 +2143,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.currently_loaded_streams[stream_type],
                 sorting_enabled,
                 descending=(sort_order == 1),
+                rating_order=sort_order,
             )
 
             self.currently_loaded_streams[stream_type] = ordered_entries
@@ -3225,7 +3242,7 @@ class IPTVPlayerApp(QMainWindow):
         if not isinstance(saved, dict):
             return
         # An account without a saved override must inherit the global setting.
-        # This preserves "Default order" on a fresh installation.
+        # Unsaved lists retain the provider's order.
         saved_fallback = saved.get('fallback', self.category_sort_fallback)
         if saved_fallback in ('a_z', 'z_a', 'disabled'):
             self.category_sort_fallback = saved_fallback
@@ -3233,10 +3250,13 @@ class IPTVPlayerApp(QMainWindow):
         for stream_type in self.category_sort_preferences:
             preferences = saved.get('preferences', {}).get(stream_type, {})
             if isinstance(preferences, dict):
+                allowed = ('a_z', 'z_a', 'disabled')
+                if stream_type in ('Movies', 'Series'):
+                    allowed += ('rating_desc', 'rating_asc')
                 self.category_sort_preferences[stream_type] = {
                     str(key): value
                     for key, value in preferences.items()
-                    if value in ('a_z', 'z_a', 'disabled')
+                    if value in allowed
                 }
 
             category_list_preference = saved.get(
@@ -3271,12 +3291,12 @@ class IPTVPlayerApp(QMainWindow):
     def _sorting_preference_value(self, sorting_enabled, sort_order):
         if not sorting_enabled:
             return 'disabled'
-        return 'z_a' if sort_order == 1 else 'a_z'
+        return {1: 'z_a', 2: 'rating_desc', 3: 'rating_asc'}.get(sort_order, 'a_z')
 
     def _sorting_tuple_from_preference(self, preference):
         if preference == 'disabled':
             return False, 0
-        return True, 1 if preference == 'z_a' else 0
+        return True, {'z_a': 1, 'rating_desc': 2, 'rating_asc': 3}.get(preference, 0)
 
     def _category_sort_preference_key(self, category_name, category_id=None):
         """Use stable provider ids, with dedicated keys for synthetic categories."""
@@ -3590,7 +3610,7 @@ class IPTVPlayerApp(QMainWindow):
         self.default_sorting_order_box.addItems([
             "A-Z", "Z-A", "Default order", REMEMBER_LIST_SORTING
         ])
-        self.default_sorting_order_box.setCurrentText("Default order")
+        self.default_sorting_order_box.setCurrentText(REMEMBER_LIST_SORTING)
         self.default_sorting_order_box.currentTextChanged.connect(lambda e: self.set_default_sorting_order(e, self.default_sorting_order_box))
 
         self.update_checker = QPushButton("Check for updates")
@@ -5249,6 +5269,7 @@ class IPTVPlayerApp(QMainWindow):
             prepared_entries,
             sorting_enabled,
             descending=(sort_order == 1),
+            rating_order=sort_order,
         )
 
         stream_cache[cache_key] = prepared_entries
@@ -6754,12 +6775,14 @@ class IPTVPlayerApp(QMainWindow):
                             matching_entries,
                             active_sorting_enabled,
                             descending=(active_sort_order == 1),
+                            rating_order=active_sort_order,
                         )
-                        matching_entries.sort(
-                            key=lambda entry: search_relevance_key(
-                                entry.get('name', ''), search_terms
+                        if active_sort_order not in (2, 3):
+                            matching_entries.sort(
+                                key=lambda entry: search_relevance_key(
+                                    entry.get('name', ''), search_terms
+                                )
                             )
-                        )
                         for entry in matching_entries:
                             item = QListWidgetItem(entry['name'])
                             item.setData(Qt.UserRole, entry)

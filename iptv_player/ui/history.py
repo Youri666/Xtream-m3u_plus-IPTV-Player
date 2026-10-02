@@ -1,10 +1,19 @@
 """Present episode history as series groups without changing saved entries."""
 
 from PyQt5.QtCore import Qt, QSignalBlocker, pyqtSignal
-from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem
+from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem, QStyledItemDelegate
 
 
 GROUP_ROLE = Qt.UserRole + 1
+
+
+class HistoryDateDelegate(QStyledItemDelegate):
+    """Leave logical-pixel spacing between dates and the title column."""
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        size.setWidth(size.width() + 8)
+        return size
 
 
 class HistoryTreeWidget(QTreeWidget):
@@ -15,7 +24,23 @@ class HistoryTreeWidget(QTreeWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setExpandsOnDoubleClick(False)
+        self.setItemDelegateForColumn(0, HistoryDateDelegate(self))
         self.itemDoubleClicked.connect(self.openRequested.emit)
+
+    def sizeHintForColumn(self, column):
+        """Fit titles to content while filling unused viewport space."""
+        content_width = super().sizeHintForColumn(column)
+        if column == 1:
+            date_width = max(super().sizeHintForColumn(0),
+                             self.header().sectionSizeHint(0),
+                             self.header().minimumSectionSize())
+            remaining_width = self.viewport().width() - date_width
+            return max(content_width, remaining_width)
+        return content_width
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.header().resizeSections()
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key_Return, Qt.Key_Enter) and self.currentItem() is not None:

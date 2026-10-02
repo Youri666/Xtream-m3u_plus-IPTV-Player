@@ -126,6 +126,13 @@ Selecting **All** takes priority over any other selected category. Complete `All
 
 The **History** tab keeps track of recently viewed content and separates it into **Live**, **Movies**, and **Series**.
 
+The **Last viewed** and **Title** columns automatically fit their displayed
+contents, including episode titles when a series is expanded. A small margin
+separates dates from titles. The Title column fills any remaining panel width
+when its contents are shorter. Horizontal and vertical scroll bars appear only when
+the contents exceed the available space. The three panels keep an equal share of
+the window width.
+
 Each section shows the **last viewed date/time** and the corresponding **title**, making it easy to find content that was previously opened.
 
 **Series episodes are grouped under one expandable row per series**, showing the series title and its latest viewing date/time. Click the arrow to see the episodes retained in History. **Double-click the series row**, or press **Enter**, to return to its latest episode. **Double-click an episode row**, or press **Enter**, to return to that specific episode. This selects the episode without starting playback.
@@ -212,6 +219,9 @@ The theme can be set to:
 
 The default sorting behavior can be configured under **Settings → Sorting**:
 
+New installations use **Remember per list**, with **Default order** for lists
+without a saved preference. Existing saved settings are preserved.
+
 - **Default order:** Regular categories follow the order provided by the IPTV provider. **Favorites** and custom categories use the user's custom order.
 - **A → Z:** Sort items alphabetically in ascending order.
 - **Z → A:** Sort items alphabetically in descending order.
@@ -222,6 +232,15 @@ When a Favorites or custom category list uses **Default order** and its search f
 Manual drag-and-drop ordering is available in Favorites and custom categories. It is disabled while the list is sorted alphabetically or filtered by a search, because the displayed order is then temporary.
 
 ![Sorting](screenshots/sorting.png)
+
+The middle-column sorting menu also offers **Rating: highest first** and
+**Rating: lowest first** for Movies and the top-level Series list. Only ratings
+already supplied in the provider catalogue are used; this makes no additional
+provider or TMDb requests. Missing, zero, or invalid ratings appear at the end in
+either direction. Equal-rated and unrated titles keep their original list order.
+Providers' `rating_5based` values are converted to the ten-point scale when the
+standard `rating` field is unavailable. These choices are saved per list when
+**Remember per list** is selected.
 
 
 ### Media player
@@ -280,6 +299,9 @@ When **Receive beta updates** is disabled, only stable releases are offered. It 
 The built-in **Internal Player** provides direct playback using the installed VLC engine.
 
 The button in the upper-left corner shows or hides the playlist panel. Its content follows where playback was started: for example, launching an episode from a Series season makes the other episodes from that season available for quick navigation. The panel also includes a filter field.
+
+Click a playlist item once, or press Enter on the selected item, to start playback.
+The panel then closes automatically unless it is pinned open.
 
 Playback controls provide previous/next navigation, play/pause, seeking, playback speed, volume, audio track selection, subtitles when available, and fullscreen mode.
 
@@ -399,31 +421,26 @@ Because the application is not currently code-signed, MacOS may require you to C
 <details>
 <summary><h3>Linux</h3></summary>
 
-#### 1. Install the required development packages
+#### Build
 
-Install Python 3, its development files, and pip using `dnf`.
-
-For example:
+Extract the source archive and open a terminal in the extracted folder. Run:
 
 ```bash
-sudo dnf install python3 python3-devel python3-pip
+bash build_IPTV_Player_Linux.sh
 ```
 
-If you build Python yourself, configure it with shared-library support:
+The script checks for Python 3, creates an isolated `.venv` environment, installs
+the application and build dependencies, and checks that the required modules can
+be imported. The generated executable is written to `dist/IPTV_Player`.
 
-```bash
-./configure --enable-shared
-```
+If Python 3, `venv`, or pip is missing, install it using your distribution's package
+manager and run the script again. Development packages are not required for every
+installation; install them only if a dependency needs to be compiled from source.
+If you compile Python yourself, enable shared-library support (`--enable-shared`).
 
-Install VLC/libVLC separately if you want to use the Internal Player.
-
-#### 2. Build
-
-```bash
-./build_IPTV_Player_Linux.sh
-```
-
-The generated executable is written to `dist/IPTV_Player`.
+Install VLC separately through your distribution's package manager to use the
+Internal Player. The script installs the Python bindings, which do not include
+VLC/libVLC itself.
 
 </details>
 
