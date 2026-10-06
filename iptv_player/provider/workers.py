@@ -171,9 +171,6 @@ class FetchDataWorker(QRunnable):
                 if not cached_data:
                     cached_data = {}
 
-                    # self.signals.show_error_msg.emit('Failed loading cache file', 
-                    #         "Failed loading cache file.\n"
-                    #         "Please check if it is empty or corrupted.")
                     print("Failed loading cache file. Please check if it is empty or corrupted.")
 
             metadata = cached_data.get('_metadata', {})
@@ -333,12 +330,13 @@ class MovieInfoFetcher(QRunnable):
         self.password   = password
         self.vod_id     = vod_id
         self.parent     = parent
+        self.user_agent = getattr(parent, "current_user_agent", "")
         self.signals    = MovieInfoFetcherSignals()
 
     @pyqtSlot()
     def run(self):
         try:
-            ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
+            ua = (self.user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
             with XtreamClient(
                 self.server,
                 self.username,
@@ -386,13 +384,14 @@ class SeriesInfoFetcher(QRunnable):
         self.series_id          = series_id
         self.is_show_request    = is_show_request
         self.parent             = parent
+        self.user_agent = getattr(parent, "current_user_agent", "")
         self.hide_error_details = hide_error_details
         self.signals            = SeriesInfoFetcherSignals()
 
     @pyqtSlot()
     def run(self):
         try:
-            ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
+            ua = (self.user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
             with XtreamClient(
                 self.server,
                 self.username,
@@ -468,11 +467,11 @@ class ImageFetcher(QRunnable):
         self.img_url        = img_url
         self.stream_type    = stream_type
         self.parent         = parent
+        self.user_agent = getattr(parent, "current_user_agent", "")
         self.signals        = ImageFetcherSignals()
 
     @pyqtSlot()
     def run(self):
-        client = None
         try:
             # Skip the network call entirely if the entry didn't have a logo/cover URL —
             # otherwise requests raises "No scheme supplied" and floods the log.
@@ -486,7 +485,7 @@ class ImageFetcher(QRunnable):
             # Fall back to the default UA when the user hasn't picked one — sending an
             # empty User-Agent makes some providers return 403 or empty category lists
             # (related to issues #69 and #10).
-            ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
+            ua = (self.user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
             headers = provider_headers(ua)
 
             #Request image
@@ -539,12 +538,13 @@ class EPGWorker(QRunnable):
         self.password   = password
         self.stream_id  = stream_id
         self.parent     = parent
+        self.user_agent = getattr(parent, "current_user_agent", "")
         self.signals    = EPGWorkerSignals()
 
     @pyqtSlot()
     def run(self):
         try:
-            ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
+            ua = (self.user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
             with XtreamClient(
                 self.server,
                 self.username,
@@ -586,6 +586,7 @@ class OnlineWorker(QRunnable):
         self.stream_id  = int(stream_id)
         self.url        = url
         self.parent     = parent
+        self.user_agent = getattr(parent, "current_user_agent", "")
         self.signals    = OnlineWorkerSignals()
 
     @pyqtSlot()
@@ -594,7 +595,7 @@ class OnlineWorker(QRunnable):
 
         # Fall back to the default UA when the user has not picked one. Sending an
         # empty User-Agent makes some providers return 403 or empty responses.
-        ua = (self.parent.current_user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
+        ua = (self.user_agent or "").strip() or DEFAULT_USER_AGENT_HEADER
         headers = provider_headers(ua)
 
         # Clamp the global value because userdata.ini can be edited manually and

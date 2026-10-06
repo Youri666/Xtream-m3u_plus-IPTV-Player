@@ -191,7 +191,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._vlc = vlc
 
         vlc_args = ["--quiet"]
-        ua = (user_agent or "").strip()
+        self._user_agent = (user_agent or "").strip()
+        ua = self._user_agent
         if ua:
             vlc_args.append(f"--http-user-agent={ua}")
 
@@ -796,6 +797,10 @@ class EmbeddedPlayerWindow(QMainWindow):
         available, _reason = EmbeddedPlayerWindow.availability()
         return available
 
+    def set_user_agent(self, user_agent):
+        """Apply the selected account header to subsequent media, including auto-next."""
+        self._user_agent = str(user_agent or "").strip()
+
     def play_url(
         self, url, title="", playlist=None, index=0, resume_ms=0,
         keep_above_main=False
@@ -821,6 +826,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.title_label.setText(title)
 
         media = self.instance.media_new(url)
+        if self._user_agent:
+            media.add_option(f":http-user-agent={self._user_agent}")
         self._current_stream_protocol = urlsplit(str(url)).scheme.upper()
         self.btn_info.setEnabled(True)
         media.add_option(f":network-caching={self._network_caching_ms}")
