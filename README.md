@@ -186,6 +186,8 @@ Stream URL formats are fully editable because IPTV providers do not always use t
 
 Each account can use its own **EPG time offset** to correct schedule times by up to 12 hours in either direction. Use **Test connection** to validate the credentials and account status before saving, without downloading the full provider catalog.
 
+- **Account User-Agent:** In **IPTV accounts**, add or edit an account and use the settings button to prefill **Default (recommended)** or **VLC**, or enter a custom value directly. The field always remains editable. Existing accounts retain their previously configured value. **Test connection** uses the selected value.
+
 The **Startup account** selects which account should be loaded when the application starts. The **Active account** can be used to switch immediately between configured IPTV accounts.
 
 **My Live TV doesn't work, but Movies and Series do. How can I fix this?**
@@ -276,7 +278,6 @@ When **Previously started media** is set to **Ask**, the player can offer to **R
 
 Advanced settings provide additional control over:
 
-- **Account User-Agent:** In **IPTV accounts**, add or edit an account and use the settings button to prefill **Default (recommended)** or **VLC**, or enter a custom value directly. The field always remains editable. Existing accounts retain their previously configured value. **Test connection** uses the selected value.
 - **General network:** Configure the connection and read timeouts used for provider requests.
 - **Provider:** Enable automatic account information refresh and choose its interval. Refreshes only run while the Info tab is visible.
 - **Provider catalog cache:** Reuse locally cached Live, Movie, and Series catalogs to reduce loading time and provider requests. The catalog can also be refreshed manually.
@@ -477,7 +478,7 @@ This value is deliberately separate from `CURRENT_VERSION`. The application vers
 When adding a configuration migration:
 
 1. Increment `CURRENT_CONFIG_SCHEMA_VERSION`.
-2. Add an ordered `if stored_schema_version < N` block to `updateUserDataFile()`.
+2. Add an ordered `if stored_schema_version < N` block to `migrate_user_data_file()` in `iptv_player/config/migrations.py`.
 3. Make the migration safe to run repeatedly and preserve existing user preferences.
 4. Update the stored schema marker only after the migration blocks have completed.
 

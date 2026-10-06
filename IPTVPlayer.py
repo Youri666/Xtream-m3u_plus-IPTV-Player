@@ -520,6 +520,11 @@ class IPTVPlayerApp(QMainWindow):
         self._reset_provider_view_state()
         self._catalog_loaded = False
         self._catalog_request_generation += 1
+        # Results from the previous account must not update the new account's UI.
+        self._account_info_generation = getattr(self, '_account_info_generation', 0) + 1
+        self.account_info_refresh_in_progress = False
+        self.account_info_worker = None
+        self.refresh_account_info_button.setEnabled(True)
         self.active_account_name = str(name or "").strip()
         self.current_user_agent = load_account_user_agent(
             self.user_data_file, self.active_account_name
@@ -4508,21 +4513,30 @@ class IPTVPlayerApp(QMainWindow):
             self.password,
             self.current_user_agent
         )
-        worker.signals.finished.connect(self._account_info_refresh_finished)
-        worker.signals.error.connect(self._account_info_refresh_failed)
+        generation = getattr(self, "_account_info_generation", 0)
+        worker.signals.finished.connect(
+            lambda data, token=generation: self._account_info_refresh_finished(data, token)
+        )
+        worker.signals.error.connect(
+            lambda error, token=generation: self._account_info_refresh_failed(error, token)
+        )
         # Keep the Python wrapper alive until the QRunnable has emitted its result.
         self.account_info_worker = worker
         self.account_info_threadpool.start(worker)
 
-    def _account_info_refresh_finished(self, iptv_info):
-        """Display the refreshed metadata and release the request guard."""
+    def _account_info_refresh_finished(self, iptv_info, generation=None):
+        """Display metadata only if its account activation is still current."""
+        if generation is not None and generation != getattr(self, "_account_info_generation", 0):
+            return
         self.account_info_refresh_in_progress = False
         self.account_info_worker = None
         self.refresh_account_info_button.setEnabled(True)
         self.update_account_info(iptv_info)
 
-    def _account_info_refresh_failed(self, error):
-        """Keep existing information visible when a lightweight refresh fails."""
+    def _account_info_refresh_failed(self, error, generation=None):
+        """Keep existing information visible when a current refresh fails."""
+        if generation is not None and generation != getattr(self, "_account_info_generation", 0):
+            return
         self.account_info_refresh_in_progress = False
         self.account_info_worker = None
         self.refresh_account_info_button.setEnabled(True)
@@ -6353,6 +6367,7 @@ class IPTVPlayerApp(QMainWindow):
                     pass
             self._embedded_player_command_queue.put({
                 'command': 'play',
+                'user_agent': self.current_user_agent,
                 'url': url,
                 'title': title,
                 'playlist': playlist,

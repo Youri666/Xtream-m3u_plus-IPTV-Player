@@ -118,6 +118,7 @@ def run_embedded_player_process():
         """Apply commands on the GUI thread; warmup needs only initialization."""
         command = payload.get("command")
         if command == "play":
+            player.set_user_agent(payload.get("user_agent", ""))
             player.play_url(
                 payload.get("url", ""),
                 payload.get("title", ""),
