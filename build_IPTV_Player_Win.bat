@@ -27,8 +27,14 @@ IF NOT EXIST "%VENV_PYTHON%" (
   )
 )
 
+REM Update pip only inside the local environment, then respect dependency bounds.
+echo Updating pip in %VENV_PATH%...
+"%VENV_PYTHON%" -m pip install --upgrade pip
+IF ERRORLEVEL 1 GOTO dependency_failed
 echo Installing build dependencies in %VENV_PATH%...
-"%VENV_PYTHON%" -m pip install -r requirements-build.txt
+"%VENV_PYTHON%" -m pip install --upgrade --upgrade-strategy only-if-needed -r requirements-build.txt
+IF ERRORLEVEL 1 GOTO dependency_failed
+"%VENV_PYTHON%" -m pip check
 IF ERRORLEVEL 1 GOTO dependency_failed
 
 echo.
@@ -74,6 +80,7 @@ IF EXIST %DIST_PATH% (
 REM PyInstaller writes specification files beside the script; remove stale variants.
 IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
 
+REM Modern PyQt5 uses PyQt5.sip; exclude only the obsolete top-level name.
 REM python-vlc is imported lazily, so PyInstaller cannot discover it automatically.
 REM Run PyInstaller directly with all necessary options and added data files
 "%VENV_PYTHON%" -m PyInstaller ^
@@ -81,6 +88,7 @@ REM Run PyInstaller directly with all necessary options and added data files
   --noconsole ^
   --noconfirm ^
   --hidden-import vlc ^
+  --exclude-module sip ^
   --icon "images/TV_icon.ico" ^
   --name "IPTV Player" ^
   --workpath %BUILD_PATH% ^

@@ -19,6 +19,9 @@ def load_provider_preferences(filename):
     hidden_categories = data.get("hidden_categories", {})
     category_sorting = data.get("category_sorting", {})
     content_enabled = data.get("content_enabled", {})
+    tab_visibility = data.get("tab_visibility", {})
+    if not isinstance(tab_visibility, dict):
+        tab_visibility = {}
     tab_order = data.get("tab_order", [])
     default_tab = data.get("default_tab", "History")
     last_selected_tab = data.get("last_selected_tab", "History")
@@ -32,6 +35,11 @@ def load_provider_preferences(filename):
         "content_enabled": (
             content_enabled if isinstance(content_enabled, dict) else {}
         ),
+        "tab_visibility": {
+            key: tab_visibility.get(key, True)
+            if isinstance(tab_visibility.get(key, True), bool) else True
+            for key in ("History", "Info")
+        },
         "tab_order": (
             [str(tab) for tab in tab_order]
             if isinstance(tab_order, list) else []
@@ -48,7 +56,7 @@ def load_provider_preferences(filename):
 
 def save_provider_preferences(
     filename, hidden_categories, category_sorting, content_enabled=None,
-    tab_order=None, default_tab=None, last_selected_tab=None
+    tab_order=None, default_tab=None, last_selected_tab=None, tab_visibility=None
 ):
     """Atomically persist all category preferences for one IPTV account."""
     existing = read_json_mapping(filename)
@@ -56,6 +64,10 @@ def save_provider_preferences(
         "hidden_categories": hidden_categories,
         "category_sorting": category_sorting,
         "content_enabled": content_enabled or {},
+        "tab_visibility": (
+            tab_visibility if tab_visibility is not None
+            else existing.get("tab_visibility", {})
+        ),
         "tab_order": (
             tab_order if tab_order is not None else existing.get("tab_order", [])
         ),

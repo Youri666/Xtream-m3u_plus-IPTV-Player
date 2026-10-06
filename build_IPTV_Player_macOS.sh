@@ -34,8 +34,12 @@ if [ ! -x "$VENV_PYTHON" ]; then
 fi
 
 PYTHON_BIN="$VENV_PYTHON"
+# Update pip only inside the local environment, then respect dependency bounds.
+echo "Updating pip in $VENV_PATH..."
+"$PYTHON_BIN" -m pip install --upgrade pip
 echo "Installing build dependencies in $VENV_PATH..."
-"$PYTHON_BIN" -m pip install -r requirements-build.txt
+"$PYTHON_BIN" -m pip install --upgrade --upgrade-strategy only-if-needed -r requirements-build.txt
+"$PYTHON_BIN" -m pip check
 
 if ! "$PYTHON_BIN" -c "import PyQt5, requests, lxml, dateutil, vlc" >/dev/null 2>&1; then
   echo "ERROR: Required Python modules are still unavailable. Build cancelled."
@@ -87,12 +91,14 @@ if [ -f "images/TV_icon.png" ]; then
   ICON_ARGS=(--icon "$ICNS_PATH")
 fi
 
+# Modern PyQt5 uses PyQt5.sip; exclude only the obsolete top-level name.
 # Package one desktop application; detailed diagnostics are enabled in the app.
 PYINSTALLER_ARGS=(
   --clean
   --onedir
   --noconfirm
   --hidden-import vlc
+  --exclude-module sip
   "${ICON_ARGS[@]}"
   --distpath "$DIST_PATH"
   --workpath "$BUILD_PATH"
