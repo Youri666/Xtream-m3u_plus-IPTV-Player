@@ -27,6 +27,7 @@ from iptv_player.provider.network import (
 class AdvancedPreferences:
     """Hold one complete, validated snapshot of advanced preferences."""
 
+    # Retain the legacy global value for accounts without their own setting.
     user_agent: str = DEFAULT_USER_AGENT_HEADER
     connection_timeout: int = DEFAULT_CONNECTION_TIMEOUT
     read_timeout: int = DEFAULT_READ_TIMEOUT

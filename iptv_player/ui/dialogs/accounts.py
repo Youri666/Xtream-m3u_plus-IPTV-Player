@@ -14,9 +14,11 @@ from iptv_player.config import (
     account_name_error,
     load_account,
     load_account_epg_offset,
+    load_account_user_agent,
     load_accounts,
     save_account,
 )
+from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER, VLC_USER_AGENT_HEADER
 from iptv_player.provider.credentials import parse_xtream_m3u_url
 from iptv_player.provider.workers import AccountInfoWorker
 from iptv_player.ui.theme import application_palette_is_dark, grayscale_icon
@@ -112,6 +114,7 @@ class AccountManager(QtWidgets.QDialog):
                             'name': updated_name,
                             'credentials': updated_credentials,
                             'epg_offset_minutes': dialog.epg_offset_minutes.value(),
+                            'user_agent': dialog.selected_user_agent(),
                         }
                         self.save_credentials(credentials_dict)
                         self.load_saved_accounts()
@@ -134,6 +137,7 @@ class AccountManager(QtWidgets.QDialog):
                     'name': name,
                     'credentials': credentials,
                     'epg_offset_minutes': dialog.epg_offset_minutes.value(),
+                    'user_agent': dialog.selected_user_agent(),
                 }
                 self.save_credentials(credentials_dict)
                 self.load_saved_accounts()
@@ -149,6 +153,7 @@ class AccountManager(QtWidgets.QDialog):
             credentials,
             old_name=credentials_dict.get('old_name'),
             epg_offset_minutes=credentials_dict.get('epg_offset_minutes', 0),
+            user_agent=credentials_dict.get('user_agent', DEFAULT_USER_AGENT_HEADER),
         )
 
     def delete_account(self):
@@ -271,19 +276,37 @@ class AccountDialog(QtWidgets.QDialog):
             "Shift this account's EPG times from -12 to +12 hours"
         )
         self.epg_offset_minutes.setFixedWidth(150)
-        epg_layout = QtWidgets.QHBoxLayout()
-        epg_layout.setContentsMargins(9, 0, 9, 0)
-        epg_layout.setSpacing(6)
-        epg_label = QLabel("EPG time offset")
-        label_column_width = max(
-            manual_live_format_label.sizeHint().width(),
-            m3u_live_format_label.sizeHint().width(),
+        account_options = QFormLayout()
+        account_options.setContentsMargins(9, 0, 9, 0)
+        account_options.addRow("EPG time offset", self.epg_offset_minutes)
+        self.user_agent_entry = QLineEdit()
+        user_agent_tooltip = (
+            "Choose Default or VLC using the settings button, or enter the "
+            "User-Agent required by this provider."
         )
-        epg_label.setFixedWidth(label_column_width)
-        epg_layout.addWidget(epg_label)
-        epg_layout.addWidget(self.epg_offset_minutes)
-        epg_layout.addStretch()
-        layout.addLayout(epg_layout)
+        self.user_agent_entry.setToolTip(user_agent_tooltip)
+        user_agent_label = self._preset_field_label(
+            "User-Agent", self.user_agent_entry, user_agent_tooltip,
+            (("Default (recommended)", DEFAULT_USER_AGENT_HEADER),
+             ("VLC", VLC_USER_AGENT_HEADER)),
+        )
+        account_options.addRow(user_agent_label, self.user_agent_entry)
+        layout.addLayout(account_options)
+        # Align labels using the current font metrics and Qt logical pixels.
+        label_width = max(
+            manual_layout.itemAt(row, QFormLayout.LabelRole).widget().sizeHint().width()
+            for row in range(manual_layout.rowCount())
+        )
+        label_width = max(label_width, self.fontMetrics().horizontalAdvance("Xtream get.php URL"))
+        for form in (manual_layout, m3u_layout, account_options):
+            form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+            for row in range(form.rowCount()):
+                form.itemAt(row, QFormLayout.LabelRole).widget().setFixedWidth(label_width)
+        initial_agent = (
+            load_account_user_agent(self.parent.parent.user_data_file, self.account[1])
+            if self.account else DEFAULT_USER_AGENT_HEADER
+        )
+        self.user_agent_entry.setText(initial_agent)
 
         self.method_selector.currentIndexChanged.connect(self._method_changed)
 
@@ -333,13 +356,24 @@ class AccountDialog(QtWidgets.QDialog):
 
         self._resize_for_url_fields()
 
+    def selected_user_agent(self):
+        """Return the account's chosen header without surrounding whitespace."""
+        return self.user_agent_entry.text().strip() or DEFAULT_USER_AGENT_HEADER
+
     def _live_format_label(self, target, tooltip):
         """Build an aligned label with a menu of common Live URL formats."""
+        return self._preset_field_label(
+            "Live URL format", target, tooltip,
+            tuple((value, value) for value in LIVE_URL_FORMAT_PRESETS),
+        )
+
+    def _preset_field_label(self, text, target, tooltip, presets):
+        """Share the same settings button for editable fields with presets."""
         container = QtWidgets.QWidget()
         label_layout = QtWidgets.QHBoxLayout(container)
         label_layout.setContentsMargins(0, 0, 0, 0)
         label_layout.setSpacing(4)
-        label_layout.addWidget(QLabel("Live URL format"))
+        label_layout.addWidget(QLabel(text))
 
         button = QToolButton(container)
         main_window = getattr(getattr(self, "parent", None), "parent", None)
@@ -352,13 +386,13 @@ class AccountDialog(QtWidgets.QDialog):
         button.setIconSize(QSize(16, 16))
         button.setFixedSize(30, 24)
         button.setToolTip(tooltip)
-        button.setAccessibleName("Choose a common Live URL format")
+        button.setAccessibleName(f"Choose a {text} preset")
         button.setPopupMode(QToolButton.InstantPopup)
         menu = QtWidgets.QMenu(button)
-        for url_format in LIVE_URL_FORMAT_PRESETS:
-            action = menu.addAction(url_format)
+        for title, value in presets:
+            action = menu.addAction(title)
             action.triggered.connect(
-                lambda _checked=False, value=url_format: target.setText(value)
+                lambda _checked=False, value=value: target.setText(value)
             )
         button.setMenu(menu)
         label_layout.addWidget(button)
@@ -431,7 +465,7 @@ class AccountDialog(QtWidgets.QDialog):
             server,
             username,
             password,
-            main_window.current_user_agent,
+            self.selected_user_agent(),
         )
         worker.signals.finished.connect(self._connection_test_finished)
         worker.signals.error.connect(self._connection_test_failed)
@@ -490,6 +524,9 @@ class AccountDialog(QtWidgets.QDialog):
         dialog.exec_()
     
     def validate_and_accept(self):
+        if not self.user_agent_entry.text().strip():
+            QtWidgets.QMessageBox.warning(self, "Input Error", "Please enter a User-Agent.")
+            return
         method = self.method_selector.currentText()
 
         if method == self.manual_entry_name:

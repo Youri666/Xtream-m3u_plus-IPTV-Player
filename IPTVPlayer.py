@@ -74,6 +74,7 @@ from iptv_player.config import (
     delete_account,
     load_account,
     load_account_epg_offset,
+    load_account_user_agent,
     load_account_id,
     load_accounts,
     load_auto_update_preference,
@@ -244,22 +245,6 @@ class IPTVPlayerApp(QMainWindow):
         self.setWindowTitle(f"IPTV Player {CURRENT_VERSION}")
         self.resize(1300, 900)
 
-        self.user_agents = [
-            "VLC/3.0.16 LibVLC/3.0.16",  # VLC
-            "Kodi/20.2 (Linux; Android 13; SM-G998B) Android/13 Sys_CPU/armv8a App_Bitness/64 Version/20.2-(20.2.0)-Git:20230626-abc123",  # Kodi
-            "Dalvik/2.1.0 (Linux; U; Android 13; Pixel 6 Pro Build/TQ2A.230505.002)",  # MX Player
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",  # Windows Chrome
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0",  # Windows Firefox
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15",  # MacOS Safari
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.3351.83",  # Windows Edge
-            "Mozilla/5.0 (Linux; Android 14; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",  # Android Chrome
-            "Mozilla/5.0 (Android 14; Mobile; rv:126.0) Gecko/126.0 Firefox/126.0",  # Android Firefox
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",  # iOS 17 Safari
-            "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0",  # Linux (Ubuntu + Chrome)
-            "Mozilla/5.0 (X11; Fedora; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0",  # Linux (Fedora + Firefox)
-            "Mozilla/5.0 (X11; CrOS x86_64 15633.64.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",  # ChromeOS
-            "Mozilla/5.0 (Linux; Android 13; SAMSUNG SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/24.0 Chrome/124.0.0.0 Mobile Safari/537.36",  # Samsung Internet
-        ]
         self.current_user_agent = ""
 
         self.data_directory = writable_data_directory()
@@ -380,6 +365,7 @@ class IPTVPlayerApp(QMainWindow):
             stream_type: True for stream_type in CONTENT_TYPES
         }
         self.default_tab_key = "History"
+        self.tab_visibility = {"History": True, "Info": True}
         self.last_selected_tab_key = "History"
         self._applying_tab_order = False
         self._restoring_tab_preferences = False
@@ -535,6 +521,9 @@ class IPTVPlayerApp(QMainWindow):
         self._catalog_loaded = False
         self._catalog_request_generation += 1
         self.active_account_name = str(name or "").strip()
+        self.current_user_agent = load_account_user_agent(
+            self.user_data_file, self.active_account_name
+        )
         self.active_account_id = (
             load_account_id(self.user_data_file, self.active_account_name) or ""
         )
@@ -3590,6 +3579,19 @@ class IPTVPlayerApp(QMainWindow):
             )
             self.content_checkboxes[stream_type] = checkbox
             self.content_group_layout.addWidget(checkbox)
+        self.tab_visibility_checkboxes = {}
+        for tab_key in ('History', 'Info'):
+            checkbox = QCheckBox(tab_key)
+            checkbox.setToolTip(
+                'Show History without changing recording or playback resume'
+                if tab_key == 'History' else 'Show account information'
+            )
+            checkbox.stateChanged.connect(
+                lambda state, selected_tab=tab_key:
+                self.toggle_tab_visibility(selected_tab, state)
+            )
+            self.tab_visibility_checkboxes[tab_key] = checkbox
+            self.content_group_layout.addWidget(checkbox)
         self.content_group_layout.addSpacing(20)
         self.content_group_layout.addWidget(QLabel("Default tab:"))
         self.default_tab_selector = QComboBox()
@@ -3628,7 +3630,7 @@ class IPTVPlayerApp(QMainWindow):
 
         self.advanced_network_button = QPushButton("Advanced settings…")
         self.advanced_network_button.setToolTip(
-            "Configure request timeouts, Info refresh, LIVE status checks, retries, and User-Agent"
+            "Configure request timeouts, Info refresh, LIVE status checks, and retries"
         )
         self.advanced_network_button.clicked.connect(self.open_network_settings)
 
@@ -3677,6 +3679,7 @@ class IPTVPlayerApp(QMainWindow):
         self.content_enabled = {
             stream_type: True for stream_type in CONTENT_TYPES
         }
+        self.tab_visibility = {'History': True, 'Info': True}
 
         self._apply_content_visibility()
 
@@ -3685,6 +3688,7 @@ class IPTVPlayerApp(QMainWindow):
             checkbox.blockSignals(True)
             checkbox.setChecked(self.content_enabled[stream_type])
             checkbox.blockSignals(False)
+        self._sync_tab_visibility_checkboxes()
         self._refresh_default_tab_options()
 
     def _load_account_content_preferences(self):
@@ -3692,6 +3696,7 @@ class IPTVPlayerApp(QMainWindow):
         if not self.provider_preferences_file:
             return
         current = load_provider_preferences(self.provider_preferences_file)
+        self.tab_visibility = current['tab_visibility']
         saved = current.get('content_enabled', {})
         if not saved:
             # Import the former global choice once for the first account opened
@@ -3711,14 +3716,29 @@ class IPTVPlayerApp(QMainWindow):
             stream_type: bool(saved.get(stream_type, True))
             for stream_type in CONTENT_TYPES
         }
-        self._apply_content_visibility()
+        was_restoring = self._restoring_tab_preferences
+        self._restoring_tab_preferences = True
+        try:
+            # Qt may switch the active tab while hiding it. Do not save this
+            # transitional selection as the new account's last selected tab.
+            self._apply_content_visibility()
+        finally:
+            self._restoring_tab_preferences = was_restoring
         for stream_type, checkbox in getattr(self, 'content_checkboxes', {}).items():
             checkbox.blockSignals(True)
             checkbox.setChecked(self.content_enabled[stream_type])
             checkbox.blockSignals(False)
+        self._sync_tab_visibility_checkboxes()
+
+    def _sync_tab_visibility_checkboxes(self):
+        """Reflect restored visibility without triggering writes or reloads."""
+        for tab_key, checkbox in self.tab_visibility_checkboxes.items():
+            checkbox.blockSignals(True)
+            checkbox.setChecked(self.tab_visibility[tab_key])
+            checkbox.blockSignals(False)
 
     def _apply_content_visibility(self):
-        """Show only enabled content tabs while keeping Info and Settings available."""
+        """Apply content and auxiliary visibility while always retaining Settings."""
         for stream_type, tab in self.content_tabs.items():
             self.tab_widget.setTabVisible(
                 self.tab_widget.indexOf(tab),
@@ -3729,8 +3749,30 @@ class IPTVPlayerApp(QMainWindow):
                 history_group.setVisible(self.content_enabled[stream_type])
         history_index = self.tab_widget.indexOf(self.history_tab)
         self.tab_widget.setTabVisible(
-            history_index, any(self.content_enabled.values())
+            history_index, self.tab_visibility['History'] and any(self.content_enabled.values())
         )
+        self.tab_widget.setTabVisible(
+            self.tab_widget.indexOf(self.info_tab), self.tab_visibility['Info']
+        )
+
+    def toggle_tab_visibility(self, tab_key, state):
+        """Hide an auxiliary tab without affecting catalogue loads or History data."""
+        self.tab_visibility[tab_key] = bool(state)
+        self._apply_content_visibility()
+        if self.provider_preferences_file:
+            current = load_provider_preferences(self.provider_preferences_file)
+            try:
+                save_provider_preferences(
+                    self.provider_preferences_file,
+                    current.get('hidden_categories', {}),
+                    current.get('category_sorting', {}),
+                    current.get('content_enabled', {}),
+                    tab_visibility=self.tab_visibility,
+                )
+            except OSError as error:
+                logging.warning('Could not save tab visibility: %s', error)
+        self._refresh_default_tab_options(persist_if_changed=True)
+        self._update_account_info_timer()
 
     def clear_active_history(self):
         """Clear playback history for the active account after confirmation."""
@@ -3818,7 +3860,7 @@ class IPTVPlayerApp(QMainWindow):
         self.internal_auto_advance_seconds = preferences.auto_advance_seconds
         self.internal_network_caching_ms = preferences.network_caching_ms
 
-    def apply_network_settings(self, user_agent, connection_timeout, read_timeout,
+    def apply_network_settings(self, connection_timeout, read_timeout,
                              live_status_timeout, live_status_retries,
                              stream_status_enabled, account_refresh_interval,
                              account_auto_refresh_enabled, catalog_cache_enabled,
@@ -3828,7 +3870,7 @@ class IPTVPlayerApp(QMainWindow):
                              tmdb_language):
         """Apply and persist all advanced provider settings in one operation."""
         preferences = AdvancedPreferences(
-            user_agent=user_agent or DEFAULT_USER_AGENT_HEADER,
+            user_agent=load_advanced_preferences(self.user_data_file).user_agent,
             connection_timeout=connection_timeout,
             read_timeout=read_timeout,
             live_status_timeout=live_status_timeout,
@@ -3866,7 +3908,9 @@ class IPTVPlayerApp(QMainWindow):
 
     def _apply_advanced_preferences(self, preferences):
         """Apply advanced preferences to the UI and shared network runtime."""
-        self.current_user_agent = preferences.user_agent
+        self.current_user_agent = load_account_user_agent(
+            self.user_data_file, getattr(self, "active_account_name", "")
+        )
         NETWORK_SETTINGS.connection_timeout = preferences.connection_timeout
         NETWORK_SETTINGS.read_timeout = preferences.read_timeout
         NETWORK_SETTINGS.live_status_timeout = preferences.live_status_timeout
@@ -4345,7 +4389,10 @@ class IPTVPlayerApp(QMainWindow):
 
     def _is_info_tab_visible(self):
         """Return whether Info is the currently selected visible tab."""
-        return self.tab_widget.currentWidget() is self.info_tab
+        return (
+            self.tab_widget.currentWidget() is self.info_tab
+            and self.tab_widget.isTabVisible(self.tab_widget.indexOf(self.info_tab))
+        )
 
     def _update_account_info_timer(self):
         """Run automatic refreshes only while Info is selected and enabled."""

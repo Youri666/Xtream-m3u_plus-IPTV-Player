@@ -1,5 +1,7 @@
 """HTTP client for the Xtream Codes provider API."""
 
+VLC_USER_AGENT_HEADER = "VLC/3.0.16 LibVLC/3.0.16"
+
 CONNECTION_HEADER = "Keep-Alive"
 CONTENT_HEADER = "gzip, deflate"
 DEFAULT_USER_AGENT_HEADER = (

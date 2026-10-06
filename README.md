@@ -199,7 +199,16 @@ If none of these formats work, please open an issue on the v3 repository: [Issue
 
 The **LIVE**, **Movies**, and **Series** options control which content sections are displayed. Disabled content types are also hidden from related parts of the application, such as History.
 
+The **History** and **Info** options hide or show their tabs independently, without
+reloading the provider catalogue. Hiding History does not stop recording viewed
+items or playback positions, and does not disable playback resume. These choices
+are saved per IPTV account, alongside the content options. All five options appear
+in this order: **LIVE**, **Movies**, **Series**, **History**, **Info**.
+
 The **Default tab** setting selects the tab opened for each IPTV account. Choose **Last selected tab** to restore the most recently used tab for that account.
+
+Only visible tabs can be selected as the default. If the chosen tab is hidden,
+the application falls back to a visible tab. **Settings** always remains available.
 
 ### Window behavior
 
@@ -267,7 +276,8 @@ When **Previously started media** is set to **Ask**, the player can offer to **R
 
 Advanced settings provide additional control over:
 
-- **General network:** Configure the User-Agent and the connection and read timeouts used for provider requests.
+- **Account User-Agent:** In **IPTV accounts**, add or edit an account and use the settings button to prefill **Default (recommended)** or **VLC**, or enter a custom value directly. The field always remains editable. Existing accounts retain their previously configured value. **Test connection** uses the selected value.
+- **General network:** Configure the connection and read timeouts used for provider requests.
 - **Provider:** Enable automatic account information refresh and choose its interval. Refreshes only run while the Info tab is visible.
 - **Provider catalog cache:** Reuse locally cached Live, Movie, and Series catalogs to reduce loading time and provider requests. The catalog can also be refreshed manually.
 - **LIVE stream status:** Enable availability checks for the selected Live channel and configure their timeout and retry count.
@@ -349,8 +359,11 @@ Version 3 reorganizes the application into clearer, reusable components and adds
 
 # How to compile the source code
 
-All build scripts create a local `.venv`, install PyInstaller and the application
-dependencies from `requirements-build.txt`, and use that isolated environment.
+All build scripts create a local `.venv`, update pip, and install or update
+PyInstaller and the application dependencies within the version bounds in
+`requirements-build.txt`. Already compatible indirect dependencies are retained.
+The scripts check dependency compatibility before building and use only that
+isolated environment.
 An Internet connection is required the first time. Delete `.venv` to recreate it
 after changing the installed Python version. No Python packages need to be
 installed globally.

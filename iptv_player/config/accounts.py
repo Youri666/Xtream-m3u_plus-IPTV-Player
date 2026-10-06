@@ -4,6 +4,7 @@ import configparser
 import uuid
 
 from iptv_player.config.ini import write_config_file
+from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 
 
 ACCOUNT_SECTION_PREFIX = "Account:"
@@ -59,6 +60,17 @@ def load_account_epg_offset(file_path, name):
     return max(-720, min(value, 720))
 
 
+def load_account_user_agent(file_path, name):
+    """Preserve the former global value until an account saves its own value."""
+    config = _read_config(file_path)
+    _account_id, section = _find_account(config, name)
+    if section is not None and "user_agent" in section:
+        return section.get("user_agent", "").strip() or DEFAULT_USER_AGENT_HEADER
+    return config.get(
+        "User-Agent", "user-agent", fallback=DEFAULT_USER_AGENT_HEADER
+    ).strip() or DEFAULT_USER_AGENT_HEADER
+
+
 def load_startup_account(file_path):
     """Return the display name of the account selected for automatic startup."""
     config = _read_config(file_path)
@@ -86,7 +98,7 @@ def save_startup_account(file_path, name):
 
 
 def save_account(
-    file_path, method, name, credentials, old_name=None, epg_offset_minutes=0
+    file_path, method, name, credentials, old_name=None, epg_offset_minutes=0, user_agent=None
 ):
     """Create or replace an account while retaining its internal identifier."""
     validation_error = account_name_error(name)
@@ -106,6 +118,8 @@ def save_account(
     ).strip()
     legacy_startup_name = _legacy_startup_name(config)
 
+    if user_agent is not None:
+        section["user_agent"] = str(user_agent).strip() or DEFAULT_USER_AGENT_HEADER
     section["name"] = name
     section["credentials"] = serialize_account(method, credentials)
     section["epg_offset_minutes"] = str(

@@ -22,8 +22,12 @@ if [ ! -x "$VENV_PYTHON" ]; then
 fi
 
 PYTHON_BIN="$VENV_PYTHON"
+# Update pip only inside the local environment, then respect dependency bounds.
+echo "Updating pip in $VENV_PATH..."
+"$PYTHON_BIN" -m pip install --upgrade pip
 echo "Installing build dependencies in $VENV_PATH..."
-"$PYTHON_BIN" -m pip install -r requirements-build.txt
+"$PYTHON_BIN" -m pip install --upgrade --upgrade-strategy only-if-needed -r requirements-build.txt
+"$PYTHON_BIN" -m pip check
 
 # Confirm all modules can be collected before deleting previous builds.
 if ! "$PYTHON_BIN" -c "import PyQt5, requests, lxml, dateutil, vlc" &> /dev/null; then
@@ -60,12 +64,14 @@ fi
 # PyInstaller writes specification files beside the script; remove stale variants.
 rm -f "IPTV_Player.spec"
 
+# Modern PyQt5 uses PyQt5.sip; exclude only the obsolete top-level name.
 # Package one desktop application; detailed diagnostics are enabled in the app.
 PYINSTALLER_ARGS=(
   --clean
   --onefile
   --noconfirm
   --hidden-import vlc
+  --exclude-module sip
   --distpath "$DIST_PATH"
   --workpath "$BUILD_PATH"
   --add-data "images/TV_icon.ico:images"

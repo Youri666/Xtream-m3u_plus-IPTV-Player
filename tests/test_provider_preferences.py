@@ -45,6 +45,7 @@ class ProviderPreferencesTests(unittest.TestCase):
                     "content_enabled": {
                         "LIVE": False, "Movies": True, "Series": True,
                     },
+                    "tab_visibility": {"History": True, "Info": True},
                     "tab_order": [
                         "History", "Movies", "LIVE", "Series", "Info", "Settings",
                     ],
@@ -84,11 +85,30 @@ class ProviderPreferencesTests(unittest.TestCase):
                     "hidden_categories": {},
                     "category_sorting": {},
                     "content_enabled": {},
+                    "tab_visibility": {"History": True, "Info": True},
                     "tab_order": [],
                     "default_tab": "History",
                     "last_selected_tab": "History",
                 },
             )
+
+    def test_visibility_survives_unrelated_preference_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            filename = Path(directory) / 'provider.json'
+            save_provider_preferences(filename, {}, {}, {'LIVE': True},
+                                      tab_visibility={'History': False, 'Info': False})
+            save_provider_preferences(filename, {'LIVE': ['1']}, {'fallback': 'disabled'},
+                                      {'LIVE': True})
+            self.assertEqual(load_provider_preferences(filename)['tab_visibility'],
+                             {'History': False, 'Info': False})
+
+    def test_invalid_visibility_values_default_to_visible(self):
+        with tempfile.TemporaryDirectory() as directory:
+            filename = Path(directory) / 'provider.json'
+            for value in (None, [], {'History': 'False', 'Info': 0}):
+                filename.write_text(json.dumps({'tab_visibility': value}), encoding='utf-8')
+                self.assertEqual(load_provider_preferences(filename)['tab_visibility'],
+                                 {'History': True, 'Info': True})
 
 
 if __name__ == "__main__":

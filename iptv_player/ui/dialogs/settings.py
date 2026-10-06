@@ -34,7 +34,6 @@ from iptv_player.constants import (
     DEFAULT_TMDB_LANGUAGE,
     MEDIA_LANGUAGE_OPTIONS,
 )
-from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 from iptv_player.provider.workers import TmdbFetcher
 from iptv_player.provider.network import (
     DEFAULT_ACCOUNT_INFO_REFRESH_INTERVAL,
@@ -138,17 +137,6 @@ class NetworkSettingsDialog(QDialog):
         general_group = QGroupBox("General network")
         general_form = QFormLayout(general_group)
 
-        self.user_agent_box = QComboBox()
-        self.user_agent_box.addItems(parent.user_agents)
-        self.user_agent_box.setCurrentText(parent.current_user_agent)
-        # A full User-Agent can be very long. Give the combo box a practical size
-        # hint so adjustSize() fits the form without making the dialog excessively wide.
-        self.user_agent_box.setSizeAdjustPolicy(
-            QComboBox.AdjustToMinimumContentsLengthWithIcon
-        )
-        self.user_agent_box.setMinimumContentsLength(12)
-        self.user_agent_box.setToolTip("User-Agent sent with IPTV provider requests")
-
         self.connection_timeout_spin = self._create_seconds_spinbox(
             NETWORK_SETTINGS.connection_timeout,
             "Maximum time allowed to establish a connection"
@@ -158,7 +146,6 @@ class NetworkSettingsDialog(QDialog):
             "Maximum time allowed while waiting for regular response data"
         )
 
-        general_form.addRow("User-Agent:", self.user_agent_box)
         general_form.addRow("Connection timeout:", self.connection_timeout_spin)
         general_form.addRow("Read timeout:", self.read_timeout_spin)
 
@@ -367,7 +354,6 @@ class NetworkSettingsDialog(QDialog):
 
     def restore_defaults(self):
         """Restore the documented defaults without closing or saving the dialog."""
-        self.user_agent_box.setCurrentText(DEFAULT_USER_AGENT_HEADER)
         self.connection_timeout_spin.setValue(DEFAULT_CONNECTION_TIMEOUT)
         self.read_timeout_spin.setValue(DEFAULT_READ_TIMEOUT)
         self.live_status_checkbox.setChecked(True)
@@ -455,7 +441,6 @@ class NetworkSettingsDialog(QDialog):
     def save_settings(self, force_catalog_refresh=False):
         """Apply the complete dialog state as one coherent configuration update."""
         self.parent_app.apply_network_settings(
-            self.user_agent_box.currentText(),
             self.connection_timeout_spin.value(),
             self.read_timeout_spin.value(),
             self.live_timeout_spin.value(),
