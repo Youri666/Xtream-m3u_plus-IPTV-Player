@@ -1090,6 +1090,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         )
         self.player.set_rate(self._playback_rate)
         self.rate_label.setText(f"{self._playback_rate:.2f}x")
+        self._show_track_osd(f"Speed: {self._playback_rate:.2f}×")
         self._save_playback_rate_pref()
         self._wake_controls()
 
@@ -1944,7 +1945,9 @@ class EmbeddedPlayerWindow(QMainWindow):
                 elif delta < 0:
                     self._adjust_rate(-self._speed_step)
                 return True
-            if (over_player_controls and not over_audio_controls) or over_video:
+            # Fullscreen controls overlap the video rectangle. Audio controls
+            # must win over the underlying video, just like the speed controls.
+            if not over_audio_controls and (over_player_controls or over_video):
                 if self.seek_slider.isEnabled():
                     if delta > 0:
                         self.preview_wheel_seek(self._seek_step_ms)

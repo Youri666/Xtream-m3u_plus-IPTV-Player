@@ -17,6 +17,8 @@ from PyQt5.QtWidgets import (
 )
 
 
+from iptv_player.ui.image_labels import ArtworkLabel
+
 def _set_link_available(widget, available):
     """Keep a link icon's enabled state and cursor consistent."""
     widget.setEnabled(available)
@@ -156,10 +158,10 @@ class LiveInfoBox(QWidget):
         self.maxCoverHeight = 200
 
         #Create cover image
-        self.cover          = QLabel()
+        self.cover          = ArtworkLabel()
         self.cover_img      = QPixmap(self.parent.path_to_no_img)
         self.cover.setAlignment(Qt.AlignTop)
-        self.cover.setPixmap(self.cover_img.scaledToHeight(self.maxCoverHeight))
+        self.cover.set_artwork(self.cover_img, width=self.maxCoverHeight)
         self.cover.setMaximumHeight(self.maxCoverHeight)
 
         #Create entry info window
@@ -176,7 +178,7 @@ class LiveInfoBox(QWidget):
         self.live_EPG_info.setColumnWidth(2, 50)
 
         #Create stream status indicator
-        self.stream_status = QLabel()
+        self.stream_status = ArtworkLabel()
         self.stream_status_img = self.parent.status_pixmap(
             self.parent.path_to_unknown_status_icon, 24
         )
@@ -234,7 +236,7 @@ class LiveInfoBox(QWidget):
     def reset(self):
         """Clear stale channel details until another channel is selected."""
         self.EPG_box_label.setText("Select channel to view Live TV info")
-        self.cover.setPixmap(self.cover_img.scaledToHeight(self.maxCoverHeight))
+        self.cover.set_artwork(self.cover_img, width=self.maxCoverHeight)
         self.live_EPG_info.clear()
         self.stream_status.setPixmap(
             self.parent.status_pixmap(self.parent.path_to_unknown_status_icon, 24)
@@ -265,10 +267,10 @@ class MovieInfoBox(QScrollArea):
         self.maxCoverWidth = 200
 
         #Create cover image
-        self.cover          = QLabel()
+        self.cover          = ArtworkLabel()
         self.cover_img      = QPixmap(self.parent.path_to_no_img)
         self.cover.setAlignment(Qt.AlignTop)
-        self.cover.setPixmap(self.cover_img.scaledToWidth(self.maxCoverWidth))
+        self.cover.set_artwork(self.cover_img, width=self.maxCoverWidth)
         self.cover.setFixedWidth(self.maxCoverWidth)
 
         #Create favorites button — wider + larger icon (issue #17).
@@ -294,23 +296,23 @@ class MovieInfoBox(QScrollArea):
         self.description_title = QLabel("Description:")
         self.description    = _DescriptionView("—")
 
-        self.trailer = QLabel()
+        self.trailer = ArtworkLabel()
         self.trailer.setAlignment(Qt.AlignLeft)
         self.trailer.setFixedWidth(50)
         _set_link_available(self.trailer, False)
 
-        self.tmdb = QLabel()
+        self.tmdb = ArtworkLabel()
         self.tmdb.setAlignment(Qt.AlignLeft)
         self.tmdb.setFixedWidth(50)
         _set_link_available(self.tmdb, False)
 
         #Set YouTube icon
         self.yt_img = QPixmap(self.parent.path_to_yt_img)
-        self.trailer.setPixmap(self.yt_img.scaledToHeight(30))
+        self.trailer.set_artwork(self.yt_img, height=30)
 
         #Set TMDB icon
         self.tmdb_img = QPixmap(self.parent.path_to_tmdb_img)
-        self.tmdb.setPixmap(self.tmdb_img.scaledToHeight(30))
+        self.tmdb.set_artwork_file(self.parent.path_to_tmdb_img, height=30)
 
         self.trailer.mousePressEvent = self.open_trailer
         self.tmdb.mousePressEvent = self.open_tmdb_page
@@ -397,7 +399,7 @@ class MovieInfoBox(QScrollArea):
         self.director.setText("Director: —")
         self.cast.setText("Cast: —")
         self.description.setText("—")
-        self.cover.setPixmap(self.cover_img.scaledToWidth(self.maxCoverWidth))
+        self.cover.set_artwork(self.cover_img, width=self.maxCoverWidth)
         self.yt_code = None
         self.tmdb_code = None
         self.set_trailer_available(False)
@@ -428,10 +430,10 @@ class SeriesInfoBox(QScrollArea):
         self.maxCoverWidth = 200
 
         #Create cover image
-        self.cover          = QLabel()
+        self.cover          = ArtworkLabel()
         self.cover_img      = QPixmap(self.parent.path_to_no_img)
         self.cover.setAlignment(Qt.AlignTop)
-        self.cover.setPixmap(self.cover_img.scaledToWidth(self.maxCoverWidth))
+        self.cover.set_artwork(self.cover_img, width=self.maxCoverWidth)
         self.cover.setFixedWidth(self.maxCoverWidth)
 
         #Create favorites button — wider + larger icon (issue #17).
@@ -457,23 +459,23 @@ class SeriesInfoBox(QScrollArea):
         self.description_title = QLabel("Description:")
         self.description    = _DescriptionView("—")
 
-        self.trailer = QLabel()
+        self.trailer = ArtworkLabel()
         self.trailer.setAlignment(Qt.AlignLeft)
         self.trailer.setFixedWidth(50)
         _set_link_available(self.trailer, False)
 
-        self.tmdb = QLabel()
+        self.tmdb = ArtworkLabel()
         self.tmdb.setAlignment(Qt.AlignLeft)
         self.tmdb.setFixedWidth(50)
         _set_link_available(self.tmdb, False)
 
         #Set YouTube icon
         self.yt_img = QPixmap(self.parent.path_to_yt_img)
-        self.trailer.setPixmap(self.yt_img.scaledToHeight(30))
+        self.trailer.set_artwork(self.yt_img, height=30)
 
         #Set TMDB icon
         self.tmdb_img = QPixmap(self.parent.path_to_tmdb_img)
-        self.tmdb.setPixmap(self.tmdb_img.scaledToHeight(30))
+        self.tmdb.set_artwork_file(self.parent.path_to_tmdb_img, height=30)
 
         self.trailer.mousePressEvent = self.open_trailer
         self.tmdb.mousePressEvent = self.open_tmdb_page
@@ -562,7 +564,7 @@ class SeriesInfoBox(QScrollArea):
         self.director.setText("Director: —")
         self.cast.setText("Cast: —")
         self.description.setText("—")
-        self.cover.setPixmap(self.cover_img.scaledToWidth(self.maxCoverWidth))
+        self.cover.set_artwork(self.cover_img, width=self.maxCoverWidth)
         self.yt_code = None
         self.tmdb_code = None
         self.set_trailer_available(False)

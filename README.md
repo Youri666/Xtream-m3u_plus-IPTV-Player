@@ -104,6 +104,8 @@ When **Default order** is selected and the content search is empty, items inside
 
 When two or more IPTV accounts are configured, an account selector appears above the tabs for quick switching. It remains hidden when only one account exists.
 
+Open the account selector and hover over an account to see its last known host, timezone, status, expiry, connection limit, active connections and refresh time. Opening the selector refreshes metadata for all accounts in the background, without loading their catalogues. Cached information stays visible while loading. Repeated openings are limited to one request per account every 30 seconds; hovering does not send requests. Active connections are the last recorded value, not a live count. Accounts without cached information show a loading message until their metadata arrives.
+
 Under **Settings**, use **IPTV accounts** to add, edit, or remove accounts, **Startup account** to choose which one is loaded when the application starts, and **Active account** to switch the account currently in use.
 
 ![Account selection and startup account settings](screenshots/account-selection.png)
