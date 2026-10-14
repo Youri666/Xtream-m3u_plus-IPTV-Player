@@ -1,6 +1,8 @@
 """Persistence helpers for IPTV account entries."""
 
 import configparser
+import json
+from datetime import datetime, timezone
 import uuid
 
 from iptv_player.config.ini import write_config_file
@@ -69,6 +71,36 @@ def load_account_user_agent(file_path, name):
     return config.get(
         "User-Agent", "user-agent", fallback=DEFAULT_USER_AGENT_HEADER
     ).strip() or DEFAULT_USER_AGENT_HEADER
+
+
+def load_account_metadata(file_path, name):
+    """Read the last known public account summary without making network calls."""
+    config = _read_config(file_path)
+    _account_id, section = _find_account(config, name)
+    if section is None:
+        return {}
+    try:
+        data = json.loads(section.get("metadata", "{}"))
+    except (ValueError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_account_metadata(file_path, name, user_info, server_info=None):
+    """Persist only tooltip fields; never store passwords or tokens in the summary."""
+    config = _read_config(file_path)
+    _account_id, section = _find_account(config, name)
+    if section is None or not isinstance(user_info, dict):
+        return {}
+    summary = {field: str(user_info.get(field)) if user_info.get(field) not in (None, "") else "Unknown"
+               for field in ("status", "exp_date", "max_connections", "active_cons")}
+    server_info = server_info if isinstance(server_info, dict) else {}
+    summary.update({field: str(server_info.get(field)) if server_info.get(field) not in (None, "") else "Unknown"
+                    for field in ("url", "port", "timezone")})
+    summary["refreshed_at"] = datetime.now(timezone.utc).isoformat()
+    section["metadata"] = json.dumps(summary)
+    write_config_file(file_path, config)
+    return summary
 
 
 def load_startup_account(file_path):

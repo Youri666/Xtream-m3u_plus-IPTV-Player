@@ -235,6 +235,11 @@ LAST_SELECTED_TAB = "Last selected tab"
 
 
 
+from iptv_player.config.accounts import load_account_metadata, save_account_metadata
+from iptv_player.ui.account_tooltips import account_tooltip, AccountSelector
+from iptv_player.provider.account_metadata import AccountMetadataLoader
+
+
 class IPTVPlayerApp(QMainWindow):
     """Own the active account's views and dispatch work to providers and players."""
     def __init__(self):
@@ -525,6 +530,8 @@ class IPTVPlayerApp(QMainWindow):
         self.account_info_refresh_in_progress = False
         self.account_info_worker = None
         self.refresh_account_info_button.setEnabled(True)
+        self.iptv_info_text.clear()
+        self.account_info_last_refresh_label.setText("Not refreshed yet")
         self.active_account_name = str(name or "").strip()
         self.current_user_agent = load_account_user_agent(
             self.user_data_file, self.active_account_name
@@ -557,6 +564,11 @@ class IPTVPlayerApp(QMainWindow):
         self._load_account_content_preferences()
         self._load_account_tab_preferences(previous_tab_key)
         self.refresh_history_tab()
+        # Staying on Info emits no tab-change signal. Refresh independently of
+        # catalogue cache hits and the optional periodic refresh setting.
+        self._update_account_info_timer()
+        if self._is_info_tab_visible():
+            self.refresh_account_info()
 
     def activate_saved_account(self, name):
         """Load one saved account and refresh its provider catalog."""
@@ -637,6 +649,9 @@ class IPTVPlayerApp(QMainWindow):
             for selector in active_selectors:
                 for account_name in account_names:
                     selector.addItem(self.account_manager_icon, account_name)
+                    selector.setItemData(selector.count() - 1,
+                                         self._account_tooltip(account_name),
+                                         Qt.ToolTipRole)
             startup_selector.addItems(account_names)
             selected_name = preferred_active_name or self.active_account_name
             active_indexes = [
@@ -660,6 +675,31 @@ class IPTVPlayerApp(QMainWindow):
         for selector in active_selectors:
             selector.blockSignals(False)
         startup_selector.blockSignals(False)
+
+    def _refresh_account_tooltip_metadata(self):
+        """Refresh lightweight metadata when opening either account selector."""
+        if not hasattr(self, '_account_metadata_loader'):
+            self._account_metadata_loader = AccountMetadataLoader(self.user_data_file, self)
+            self._account_metadata_loader.changed.connect(self._update_account_tooltips)
+        self._account_metadata_loader.refresh()
+
+    def _account_tooltip(self, name):
+        """Prefer cached details while missing information is fetched in the background."""
+        metadata = load_account_metadata(self.user_data_file, name)
+        if metadata:
+            return account_tooltip(metadata)
+        loader = getattr(self, '_account_metadata_loader', None)
+        return loader.states.get(name, "Open the account list to load information") if loader else "Open the account list to load information"
+
+    def _update_account_tooltips(self):
+        """Update popup rows from saved metadata without changing the selection."""
+        for selector in (getattr(self, 'account_selector', None),
+                         getattr(self, 'header_account_selector', None)):
+            if selector is None:
+                continue
+            for index in range(selector.count()):
+                text = self._account_tooltip(selector.itemText(index))
+                selector.setItemData(index, text, Qt.ToolTipRole)
 
     def _startup_account_changed(self, name):
         """Persist the account chosen for automatic loading at startup."""
@@ -1014,9 +1054,28 @@ class IPTVPlayerApp(QMainWindow):
 
     def status_pixmap(self, icon_path, width=24):
         """Load a colored status circle without its legacy opaque white corners."""
-        pixmap = QPixmap(icon_path)
-        pixmap.setMask(pixmap.createMaskFromColor(QColor(Qt.white), Qt.MaskInColor))
-        return pixmap.scaledToWidth(width, Qt.SmoothTransformation)
+        from PyQt5.QtGui import QPainter
+        from PyQt5.QtCore import QRectF
+
+        source = QPixmap(icon_path)
+        if source.isNull():
+            return source
+        # Preserve the asset's color, but replace its hard bitmap edge with a
+        # smooth circle. Keep enough source pixels for later monitor changes.
+        color = source.toImage().pixelColor(source.width() // 2, source.height() // 2)
+        physical_width = max(128, round(width * self.devicePixelRatioF()))
+        pixmap = QPixmap(physical_width, physical_width)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(color)
+        margin = physical_width / 32
+        painter.drawEllipse(QRectF(margin, margin, physical_width - 2 * margin,
+                                  physical_width - 2 * margin))
+        painter.end()
+        pixmap.setDevicePixelRatio(physical_width / width)
+        return pixmap
 
     def init_tab_widget(self):
         self.tab_widget = QTabWidget()
@@ -3441,7 +3500,8 @@ class IPTVPlayerApp(QMainWindow):
         self.address_book_button.setToolTip("Manage IPTV accounts")
         self.address_book_button.clicked.connect(self.open_address_book)
 
-        self.account_selector = QtWidgets.QComboBox()
+        self.account_selector = AccountSelector()
+        self.account_selector.opening.connect(self._refresh_account_tooltip_metadata)
         self.account_selector.setPlaceholderText("Select an IPTV account…")
         self.account_selector.setToolTip("Switch to another IPTV account")
         self.account_selector.setMinimumContentsLength(18)
@@ -3454,7 +3514,8 @@ class IPTVPlayerApp(QMainWindow):
             self._quick_account_changed
         )
 
-        self.header_account_selector = QtWidgets.QComboBox()
+        self.header_account_selector = AccountSelector()
+        self.header_account_selector.opening.connect(self._refresh_account_tooltip_metadata)
         self.header_account_selector.setToolTip("Switch to another IPTV account")
         self.header_account_selector.setMinimumContentsLength(18)
         self.header_account_selector.setSizeAdjustPolicy(
@@ -4548,6 +4609,12 @@ class IPTVPlayerApp(QMainWindow):
     def update_account_info(self, iptv_info):
         """Render account and server metadata returned by player_api.php."""
         user_info = iptv_info.get("user_info", {})
+        if isinstance(user_info, dict) and user_info:
+            try:
+                save_account_metadata(self.user_data_file, self.active_account_name, user_info, iptv_info.get("server_info"))
+                self._update_account_tooltips()
+            except OSError:
+                logging.warning("Could not save account tooltip metadata")
         server_info = iptv_info.get("server_info", {})
 
         hostname = server_info.get("url", "Unknown")
@@ -5087,11 +5154,11 @@ class IPTVPlayerApp(QMainWindow):
                 image = QPixmap(self.path_to_no_img)
 
             if stream_type == 'Series':
-                self.series_info_box.cover.setPixmap(image.scaledToWidth(self.series_info_box.maxCoverWidth))
+                self.series_info_box.cover.set_artwork(image, width=self.series_info_box.maxCoverWidth)
             elif stream_type == 'Movies':
-                self.movies_info_box.cover.setPixmap(image.scaledToWidth(self.movies_info_box.maxCoverWidth))
+                self.movies_info_box.cover.set_artwork(image, width=self.movies_info_box.maxCoverWidth)
             elif stream_type == 'LIVE':
-                self.live_info_box.cover.setPixmap(image.scaledToWidth(self.live_info_box.maxCoverHeight))
+                self.live_info_box.cover.set_artwork(image, width=self.live_info_box.maxCoverHeight)
         except Exception as e:
             print(f"Failed processing image: {e}")
 
@@ -5681,7 +5748,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.movies_info_box.fav_button.setEnabled(True)
                 self.movies_info_box.set_favorite(is_fav)
 
-                self.movies_info_box.cover.setPixmap(QPixmap(self.path_to_loading_img).scaledToWidth(self.series_info_box.maxCoverWidth))
+                self.movies_info_box.cover.set_artwork(QPixmap(self.path_to_loading_img), width=self.movies_info_box.maxCoverWidth)
 
                 self.movies_info_box.name.setText(f"{clicked_item_data['name']}")
                 self.movies_info_box.release_date.setText(f"Release date: ...")
@@ -5714,7 +5781,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.series_info_box.fav_button.setEnabled(True)
                 self.series_info_box.set_favorite(is_fav)
 
-                self.series_info_box.cover.setPixmap(QPixmap(self.path_to_loading_img).scaledToWidth(self.series_info_box.maxCoverWidth))
+                self.series_info_box.cover.set_artwork(QPixmap(self.path_to_loading_img), width=self.series_info_box.maxCoverWidth)
 
                 self.series_info_box.name.setText(f"{clicked_item_data['name']}")
                 self.series_info_box.release_date.setText(f"Release date: ...")
