@@ -44,7 +44,9 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from iptv_player.config.internal_player import VIDEO_ASPECT_RATIOS, load_video_format, save_video_format
+from iptv_player.config.internal_player import VIDEO_ASPECT_RATIOS, load_video_format, save_video_format, load_window_aspect_lock, save_window_aspect_lock
+from iptv_player.video_aspect import display_aspect_ratio
+from iptv_player.ui.window_aspect import WindowAspectController
 from iptv_player.config import write_config_file
 from iptv_player.constants import DEFAULT_RESUME_BEHAVIOR, RESUME_BEHAVIORS
 from iptv_player.storage.history import resume_position
@@ -291,6 +293,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._volume = self._load_volume_pref()
         self._playback_rate = self._load_playback_rate_pref()
         self._video_format = load_video_format(self._settings_path())
+        self._window_aspect_locked = load_window_aspect_lock(self._settings_path())
         self._volume_before_mute = self._volume if self._volume > 0 else 80
         self.player.audio_set_volume(self._volume)
         self.player.audio_set_mute(False)
@@ -370,6 +373,12 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.pl_pos.setToolTip("Show/hide playlist (L)")
         self.pl_pos.setAccessibleName("Playlist position; show or hide playlist")
         self.pl_pos.clicked.connect(self.toggle_sidebar)
+        self.btn_aspect_lock = QPushButton()
+        self.btn_aspect_lock.setCheckable(True)
+        self.btn_aspect_lock.setChecked(self._window_aspect_locked)
+        self.btn_aspect_lock.setAccessibleName("Lock window proportions")
+        self.btn_aspect_lock.setToolTip("Keep video proportions when resizing the window")
+        self.btn_aspect_lock.toggled.connect(self._toggle_window_aspect_lock)
         self.btn_format = QPushButton("Ratio")
         self.btn_format.setAccessibleName("Video aspect ratio")
         self.format_menu = QMenu(self.btn_format)
@@ -389,7 +398,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         for b in (self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
                   self.btn_next, self.btn_slow, self.btn_fast, self.btn_info,
                   self.btn_mute, self.btn_audio, self.btn_subs, self.btn_fs,
-                  self.btn_sidebar, self.btn_format, self.pl_pos):
+                  self.btn_sidebar, self.btn_format, self.btn_aspect_lock, self.pl_pos):
             b.setFixedHeight(26)
             b.setIconSize(QSize(16, 16))
             b.setCursor(Qt.PointingHandCursor)
@@ -398,7 +407,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         # Give icon-only buttons identical geometry regardless of native icon hints.
         for button in (self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
                        self.btn_next, self.btn_slow, self.btn_fast, self.btn_info,
-                       self.btn_mute, self.btn_fs, self.btn_sidebar):
+                       self.btn_mute, self.btn_fs, self.btn_sidebar, self.btn_aspect_lock):
             button.setFixedSize(34, 26)
 
         self.btn_prev.setToolTip("Previous (Page Up)")
@@ -468,6 +477,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         btn_row.addWidget(self.audio_controls)
         btn_row.addWidget(self.btn_subs)
         btn_row.addWidget(self.btn_format)
+        btn_row.addWidget(self.btn_aspect_lock)
         btn_row.addWidget(self.btn_fs)
 
         overlay_lay = QVBoxLayout(self.overlay)
@@ -630,6 +640,9 @@ class EmbeddedPlayerWindow(QMainWindow):
         )
         self.set_track_preferences(audio_language, subtitle_language)
         self._restore_window_geometry()
+        self._aspect_controller = WindowAspectController(
+            self, lambda: display_aspect_ratio(self._vlc, self.player, self._video_format),
+            self._window_aspect_locked)
         self.apply_theme()
         self._wake_controls()
 
@@ -754,6 +767,46 @@ class EmbeddedPlayerWindow(QMainWindow):
     def _set_standard_icon(self, button, standard_pixmap):
         button.setIcon(self._tinted_standard_icon(standard_pixmap))
 
+    @staticmethod
+    def _aspect_lock_icon(color, locked):
+        """Draw a scalable lock, matching the information icon's visual weight."""
+        pixmap = QPixmap(96, 96)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QPen(color, 7, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(24, 43, 48, 39, 4, 4)
+        painter.drawArc(QRect(33 if locked else 49, 12, 32, 48), 0, 180 * 16)
+        painter.drawLine(33 if locked else 49, 36, 33 if locked else 49, 43)
+        if locked:
+            painter.drawLine(65, 36, 65, 43)
+        painter.drawLine(48, 58, 48, 68)
+        painter.end()
+        return QIcon(pixmap)
+
+    def _update_window_aspect_lock_button(self):
+        self.btn_aspect_lock.setIcon(self._tinted_icon(
+            self._aspect_lock_icon(self._icon_color, self._window_aspect_locked)))
+        inactive = self._is_fullscreen or self.isMaximized()
+        self.btn_aspect_lock.setEnabled(not inactive)
+        self.btn_aspect_lock.setToolTip(
+            "Window proportions lock is inactive in fullscreen or maximized mode" if inactive
+            else "Unlock window proportions" if self._window_aspect_locked
+            else "Lock window proportions to the video format")
+
+    def _toggle_window_aspect_lock(self, enabled):
+        self._window_aspect_locked = bool(enabled)
+        self._update_window_aspect_lock_button()
+        controller = getattr(self, '_aspect_controller', None)
+        if controller is not None:
+            controller.set_enabled(enabled)
+        try:
+            save_window_aspect_lock(self._settings_path(), enabled)
+        except (OSError, configparser.Error, UnicodeDecodeError):
+            logging.warning("Could not save window aspect lock")
+        self._wake_controls()
+
     def _spin_indicator_icon(self, primitive):
         """Use Qt's native plus/minus primitives rather than font-dependent glyphs."""
         pixmap = QPixmap(96, 96)
@@ -783,6 +836,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         volume_icon = QStyle.SP_MediaVolumeMuted if muted else QStyle.SP_MediaVolume
         self._set_standard_icon(self.btn_mute, volume_icon)
         self.btn_info.setIcon(self._tinted_icon(self._information_icon(self._icon_color)))
+        self._update_window_aspect_lock_button()
         fullscreen_icon = (
             QStyle.SP_TitleBarNormalButton
             if self._is_fullscreen else QStyle.SP_TitleBarMaxButton
@@ -810,7 +864,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
             self.btn_next, self.btn_slow, self.btn_fast, self.btn_info,
             self.btn_mute, self.btn_audio, self.btn_subs, self.btn_fs,
-            self.btn_sidebar, self.btn_format
+            self.btn_sidebar, self.btn_format, self.btn_aspect_lock
         ):
             button.setStyleSheet(button_style)
         self.overlay.setStyleSheet(overlay_style)
@@ -908,6 +962,9 @@ class EmbeddedPlayerWindow(QMainWindow):
     ):
         was_visible = self.isVisible()
         self._current_url = url
+        controller = getattr(self, "_aspect_controller", None)
+        if controller is not None:
+            controller.reset_media()
         self._pause_started_at = None
         self._paused_by_minimize = False
         self._recovering_after_pause = False
@@ -1413,6 +1470,9 @@ class EmbeddedPlayerWindow(QMainWindow):
             save_video_format(self._settings_path(), value)
         except (OSError, configparser.Error, UnicodeDecodeError):
             logging.warning("Could not save video format preference")
+        controller = getattr(self, '_aspect_controller', None)
+        if controller is not None:
+            controller.refresh_ratio()
         self._show_track_osd(f"Video format: {value}")
         self._wake_controls()
 
@@ -1619,6 +1679,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._refresh_standard_icons()
         self._wake_controls()
         self._reposition_overlays()
+        if not self._is_fullscreen:
+            QTimer.singleShot(0, self._aspect_controller.apply)
 
     def _use_fullscreen_overlays(self):
         """Float player chrome over the video only while in fullscreen mode."""
@@ -1657,6 +1719,7 @@ class EmbeddedPlayerWindow(QMainWindow):
     # ---------- sidebar ----------
     def toggle_sidebar(self):
         self._sidebar_visible = not self._sidebar_visible
+        self._aspect_controller.sidebar_changed()
         if self._sidebar_visible:
             self._refresh_sidebar()
             self.sidebar.show()
@@ -1717,6 +1780,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         if not self._pinned_sidebar:
             QTimer.singleShot(800, lambda: self.sidebar.hide())
             self._sidebar_visible = False
+            self._aspect_controller.sidebar_changed()
 
     # ---------- show / hide the player controls ----------
     def _wake_controls(self):
@@ -2250,11 +2314,30 @@ class EmbeddedPlayerWindow(QMainWindow):
         if hasattr(self, "_video_resize_timer"):
             self._video_resize_timer.start(80)
 
+    def nativeEvent(self, event_type, message):
+        # Windows uses a native modal loop for window-border resizing. Qt mouse
+        # release events alone cannot reliably identify the end of that loop.
+        if sys.platform == 'win32':
+            from ctypes.wintypes import MSG
+            native = MSG.from_address(int(message))
+            controller = getattr(self, '_aspect_controller', None)
+            if controller is not None:
+                if native.message == 0x0231:  # WM_ENTERSIZEMOVE
+                    controller.native_size_move(True)
+                elif native.message == 0x0232:  # WM_EXITSIZEMOVE
+                    controller.native_size_move(False)
+        return super().nativeEvent(event_type, message)
+
     def changeEvent(self, event):
         """Pause only for minimization and resume only when that pause was automatic."""
         super().changeEvent(event)
         if event.type() != QEvent.WindowStateChange:
             return
+        if hasattr(self, 'btn_aspect_lock') and hasattr(self, '_icon_color'):
+            self._update_window_aspect_lock_button()
+        controller = getattr(self, '_aspect_controller', None)
+        if controller is not None and not self.isMaximized() and not self.isMinimized() and not self._is_fullscreen:
+            QTimer.singleShot(0, controller.apply)
         if self.isMinimized():
             if self.player.is_playing():
                 self._pause_playback()

@@ -44,6 +44,20 @@ def save_video_format(filename, value):
     write_config_file(filename, config)
 
 
+def load_window_aspect_lock(filename):
+    """Default to a locked window without adding an Advanced-settings option."""
+    return _boolean(_load_config(filename), "window_aspect_locked", True)
+
+
+def save_window_aspect_lock(filename, enabled):
+    """Persist the toolbar lock while retaining all other preferences."""
+    config = _load_config(filename)
+    if not config.has_section("InternalPlayer"):
+        config.add_section("InternalPlayer")
+    config.set("InternalPlayer", "window_aspect_locked", str(bool(enabled)))
+    write_config_file(filename, config)
+
+
 @dataclass(frozen=True)
 class InternalPlayerPreferences:
     """Hold the user-adjustable controls passed to the player process."""
@@ -134,6 +148,7 @@ def save_internal_player_preferences(filename, preferences):
         "volume": saved_volume,
         "playback_rate": saved_rate,
         "video_format": saved_format,
+        "window_aspect_locked": str(load_window_aspect_lock(filename)),
     }
     write_config_file(filename, config)
 
