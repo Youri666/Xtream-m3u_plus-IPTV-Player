@@ -127,6 +127,8 @@ def run_embedded_player_process():
                 payload.get("resume_ms", 0),
                 payload.get("keep_above_main", False),
             )
+        elif command == "programme_info":
+            player.receive_programme_information(payload)
         elif command == "quit":
             player.close()
             app.quit()
