@@ -41,7 +41,7 @@ QListWidget#playlistList {
     outline: 0;
     font-size: 13px;
 }
-QListWidget#playlistList::item { padding: 8px 10px; border-left: 3px solid transparent; }
+QListWidget#playlistList::item { padding: 1px 10px; border-left: 3px solid transparent; }
 QListWidget#playlistList::item:hover { background: rgba(91,141,239,40); }
 QListWidget#playlistList::item:selected {
     background: rgba(91,141,239,80);
@@ -99,7 +99,7 @@ QListWidget#playlistList {
     outline: 0;
     font-size: 13px;
 }
-QListWidget#playlistList::item { padding: 8px 10px; border-left: 3px solid transparent; }
+QListWidget#playlistList::item { padding: 1px 10px; border-left: 3px solid transparent; }
 QListWidget#playlistList::item:hover { background: rgba(91,141,239,40); }
 QListWidget#playlistList::item:selected {
     background: rgba(91,141,239,110);

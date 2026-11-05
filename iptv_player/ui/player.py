@@ -116,6 +116,30 @@ def _pause_blocks_navigation(window):
             or getattr(window, '_pause_recovery_failed', False))
 
 
+class _PlaylistSidebar(QWidget):
+    """Prefer a content-based width without imposing it on the player window."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._preferred_width = 0
+
+    def sizeHint(self):
+        size = super().sizeHint()
+        size.setWidth(self._preferred_width)
+        return size
+
+    def minimumSizeHint(self):
+        size = super().minimumSizeHint()
+        size.setWidth(0)
+        return size
+
+    def set_preferred_width(self, width):
+        if self._preferred_width != width:
+            self._preferred_width = width
+            self.updateGeometry()
+        self.setMaximumWidth(width)
+
+
 class _ClickableSlider(QSlider):
     """Seek slider that previews a dragged position and applies it on release."""
 
@@ -434,9 +458,9 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.vol_slider.setCursor(Qt.PointingHandCursor)
 
         # ---------- Sidebar (playlist) ----------
-        self.sidebar = QWidget(self)
+        self.sidebar = _PlaylistSidebar(self)
         self.sidebar.setObjectName("sidebarRoot")
-        self.sidebar.setFixedWidth(320)
+        self._playlist_width_hint = 0
         self.sidebar.setCursor(Qt.ArrowCursor)
         self.sidebar.hide()
 
@@ -516,7 +540,7 @@ class EmbeddedPlayerWindow(QMainWindow):
 
         self._wheel_seek_timer = QTimer(self)
         self._wheel_seek_timer.setSingleShot(True)
-        self._wheel_seek_timer.setInterval(600)
+        self._wheel_seek_timer.setInterval(1000)
         self._wheel_seek_timer.timeout.connect(self._commit_wheel_seek)
 
         # ---------- Auto-hide timer ----------
@@ -1560,6 +1584,30 @@ class EmbeddedPlayerWindow(QMainWindow):
             self.playlist_list.addItem(item)
             if i == self._current_idx:
                 self.playlist_list.setCurrentItem(item)
+        # The delegate includes font metrics and theme padding in logical pixels.
+        self._playlist_width_hint = self.playlist_list.sizeHintForColumn(0)
+        self._update_sidebar_width()
+
+    def _update_sidebar_width(self):
+        """Fit playlist titles while reserving at least 40% of the window for video."""
+        if not self.centralWidget():
+            return
+        margins = self.sidebar.layout().contentsMargins()
+        chrome_width = (margins.left() + margins.right()
+                        + 2 * self.playlist_list.frameWidth()
+                        + self.playlist_list.verticalScrollBar().sizeHint().width())
+        desired_width = max(1, self._playlist_width_hint + chrome_width)
+        available_width = max(1, int(self.centralWidget().width() * 0.6))
+        if not self._is_fullscreen:
+            # The video has its own minimum width. A fixed sidebar wider than
+            # the remaining space makes Qt grow the entire top-level window.
+            margins = self._content_layout.contentsMargins()
+            remaining_width = (self._content_widget.width() - self.video_frame.minimumWidth()
+                               - margins.left() - margins.right()
+                               - max(0, self._content_layout.spacing()))
+            available_width = max(1, min(available_width, remaining_width))
+        width = min(desired_width, available_width)
+        self.sidebar.set_preferred_width(width)
 
     def _playlist_item_activated(self, item):
         idx = item.data(Qt.UserRole)
@@ -1627,6 +1675,7 @@ class EmbeddedPlayerWindow(QMainWindow):
     def _reposition_overlays(self):
         if not self.centralWidget():
             return
+        self._update_sidebar_width()
         self._reposition_track_osd()
         self._reposition_stream_info_panel()
         if not self._is_fullscreen:
