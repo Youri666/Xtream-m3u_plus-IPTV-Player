@@ -190,11 +190,8 @@ class NetworkSettingsDialog(QDialog):
         self.catalog_cache_hours_spin.setEnabled(
             self.catalog_cache_checkbox.isChecked()
         )
-        self.refresh_catalog_button = QPushButton("Refresh provider catalog now")
-        self.refresh_catalog_button.clicked.connect(self.refresh_catalog_now)
         cache_form.addRow(self.catalog_cache_checkbox)
         cache_form.addRow("Refresh after:", self.catalog_cache_hours_spin)
-        cache_form.addRow(self.refresh_catalog_button)
 
         live_group = QGroupBox("LIVE stream status")
         live_layout = QVBoxLayout(live_group)
@@ -438,7 +435,7 @@ class NetworkSettingsDialog(QDialog):
         self.parent_app._prepare_dialog_theme(dialog)
         dialog.exec_()
 
-    def save_settings(self, force_catalog_refresh=False):
+    def save_settings(self):
         """Apply the complete dialog state as one coherent configuration update."""
         self.parent_app.apply_network_settings(
             self.connection_timeout_spin.value(),
@@ -457,13 +454,8 @@ class NetworkSettingsDialog(QDialog):
             self.tmdb_token_entry.text().strip(),
             self.tmdb_language_box.currentData() or DEFAULT_TMDB_LANGUAGE,
         )
-        if force_catalog_refresh:
-            self.parent_app.refresh_provider_catalog()
         self.accept()
 
-    def refresh_catalog_now(self):
-        """Save current settings and explicitly bypass the catalog cache once."""
-        self.save_settings(force_catalog_refresh=True)
 
 
 class CategoryVisibilityDialog(QDialog):

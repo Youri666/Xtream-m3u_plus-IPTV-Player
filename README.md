@@ -282,7 +282,7 @@ Advanced settings provide additional control over:
 
 - **General network:** Configure the connection and read timeouts used for provider requests.
 - **Provider:** Enable automatic account information refresh and choose its interval. Refreshes only run while the Info tab is visible.
-- **Provider catalog cache:** Reuse locally cached Live, Movie, and Series catalogs to reduce loading time and provider requests. The catalog can also be refreshed manually.
+- **Provider catalog cache:** Reuse locally cached Live, Movie, and Series catalogs to reduce loading time and provider requests. The active account catalogue refreshes automatically when its configured cache lifetime expires, including while the application remains open. Failed automatic refreshes wait five minutes before retrying. Use the refresh button beside **Active account** in Settings to refresh manually; it is disabled without an active account or while a load is running. Manual retries remain available after an error.
 - **LIVE stream status:** Enable availability checks for the selected Live channel and configure their timeout and retry count.
 - **Diagnostics:** Enable detailed logging when troubleshooting the application.
 - **History:** Choose how many recent entries are retained for each content type or clear the active account's history.
