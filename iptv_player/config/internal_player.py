@@ -17,6 +17,33 @@ from iptv_player.constants import (
 )
 
 
+VIDEO_ASPECT_RATIOS = {
+    "Auto": "", "16:9": "16:9", "4:3": "4:3", "1:1": "1:1",
+    "16:10": "16:10", "2.21:1": "221:100", "2.35:1": "235:100",
+    "2.39:1": "239:100", "5:4": "5:4",
+}
+
+
+def load_video_format(filename):
+    """Read the player toolbar's persistent aspect-ratio selection."""
+    try:
+        value = _load_config(filename).get("InternalPlayer", "video_format", fallback="Auto")
+    except configparser.Error:
+        value = "Auto"
+    return value if value in VIDEO_ASPECT_RATIOS else "Auto"
+
+
+def save_video_format(filename, value):
+    """Preserve other settings when the isolated player changes video format."""
+    if value not in VIDEO_ASPECT_RATIOS:
+        raise ValueError("Unsupported video format")
+    config = _load_config(filename)
+    if not config.has_section("InternalPlayer"):
+        config.add_section("InternalPlayer")
+    config.set("InternalPlayer", "video_format", value)
+    write_config_file(filename, config)
+
+
 @dataclass(frozen=True)
 class InternalPlayerPreferences:
     """Hold the user-adjustable controls passed to the player process."""
@@ -93,6 +120,7 @@ def save_internal_player_preferences(filename, preferences):
     config = _load_config(filename)
     saved_volume = config.get("InternalPlayer", "volume", fallback="80")
     saved_rate = config.get("InternalPlayer", "playback_rate", fallback="1.0")
+    saved_format = load_video_format(filename)
     config["InternalPlayer"] = {
         "seek_step_seconds": str(preferences.seek_step_seconds),
         "volume_step_percent": str(preferences.volume_step_percent),
@@ -105,6 +133,7 @@ def save_internal_player_preferences(filename, preferences):
         "network_caching_ms": str(preferences.network_caching_ms),
         "volume": saved_volume,
         "playback_rate": saved_rate,
+        "video_format": saved_format,
     }
     write_config_file(filename, config)
 

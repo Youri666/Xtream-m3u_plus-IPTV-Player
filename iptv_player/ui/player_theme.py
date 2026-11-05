@@ -6,8 +6,8 @@ QPushButton {
     color: white;
     border: none;
     border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 16px;
+    padding: 4px 6px;
+    font-size: 13px;
 }
 QPushButton:hover { background: rgba(91, 141, 239, 200); }
 QPushButton:checked { background: rgba(124, 58, 237, 220); }
@@ -64,8 +64,8 @@ QPushButton {
     color: #202020;
     border: 1px solid rgba(80, 80, 80, 90);
     border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 14px;
+    padding: 4px 6px;
+    font-size: 13px;
 }
 QPushButton:hover { background: rgba(91, 141, 239, 210); color: white; }
 QPushButton:checked { background: #5b8def; color: white; }
