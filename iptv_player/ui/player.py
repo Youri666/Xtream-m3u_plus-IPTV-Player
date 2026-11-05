@@ -106,6 +106,16 @@ def set_macos_activation_policy(visible):
         pass
 
 
+VOD_PAUSE_RECONNECT_SECONDS = 30.0
+
+
+def _pause_blocks_navigation(window):
+    """Share the pause/recovery guard between end events and credits skipping."""
+    return (getattr(window, '_pause_started_at', None) is not None
+            or getattr(window, '_recovering_after_pause', False)
+            or getattr(window, '_pause_recovery_failed', False))
+
+
 class _ClickableSlider(QSlider):
     """Seek slider that previews a dragged position and applies it on release."""
 
@@ -214,6 +224,12 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._muted = False
         self._last_wheel_event_id = None
         self._paused_by_minimize = False
+        self._pause_started_at = None
+        self._pause_position_ms = 0
+        self._recovering_after_pause = False
+        self._pause_recovery_failed = False
+        self._pause_recovery_deadline = 0.0
+        self._current_url = ""
         self._seek_osd_total_ms = 0
         self._seek_target_ms = 0
         self._seek_sequence_origin_ms = 0
@@ -806,6 +822,11 @@ class EmbeddedPlayerWindow(QMainWindow):
         keep_above_main=False
     ):
         was_visible = self.isVisible()
+        self._current_url = url
+        self._pause_started_at = None
+        self._paused_by_minimize = False
+        self._recovering_after_pause = False
+        self._pause_recovery_failed = False
         self._wheel_seek_timer.stop()
         self._track_osd_timer.stop()
         self._hide_track_osd()
@@ -966,16 +987,89 @@ class EmbeddedPlayerWindow(QMainWindow):
             pass
 
     # ---------- transport ----------
+    def _pause_playback(self):
+        """Remember a VOD pause before VLC can lose the connection or timestamp."""
+        self._recovering_after_pause = False
+        if not self._is_live_playback():
+            self._pause_started_at = time.monotonic()
+            self._pause_position_ms = max(0, int(self.player.get_time()))
+            self._store_current_playlist_progress()
+        self.player.pause()
+        self._set_standard_icon(self.btn_play, QStyle.SP_MediaPlay)
+
+    def _resume_playback(self):
+        """Reopen VOD after a prolonged pause without asking the resume question."""
+        if self._recovering_after_pause:
+            return
+        started = self._pause_started_at
+        pause_seconds = max(0.0, time.monotonic() - started) if started is not None else 0.0
+        recover = (
+            not self._is_live_playback()
+            and started is not None
+            and pause_seconds >= VOD_PAUSE_RECONNECT_SECONDS
+            and bool(self._current_url)
+        )
+        if started is not None:
+            logging.debug("VOD resume after %.1f seconds paused; reconnect=%s", pause_seconds, recover)
+        if recover:
+            position = self._pause_position_ms
+            url = self._current_url
+            # Block both end-event navigation and credits skipping while replacing
+            # the input. play_url bypasses the interactive playlist resume prompt.
+            self._recovering_after_pause = True
+            self.player.stop()
+            try:
+                self.play_url(url, self.title_label.text(), resume_ms=position,
+                              keep_above_main=self._deferred_keep_topmost)
+            except Exception:
+                self._recovering_after_pause = True
+                self._fail_pause_recovery()
+                return
+            self._recovering_after_pause = True
+            self._pause_recovery_target_ms = position
+            self._pause_recovery_deadline = time.monotonic() + 30.0
+            logging.debug("Reopening paused VOD at %d ms", position)
+        else:
+            self._pause_started_at = None
+            self.player.play()
+        self._set_standard_icon(self.btn_play, QStyle.SP_MediaPause)
+
+    def _check_pause_recovery(self, position_ms):
+        """Unblock navigation only after playback reaches the saved position."""
+        if not self._recovering_after_pause:
+            return
+        target = self._pause_recovery_target_ms
+        if self.player.is_playing() and abs(position_ms - target) <= 500:
+            self._recovering_after_pause = False
+            self._pending_resume_ms = 0
+            self._pending_resume_attempts = 0
+            logging.debug("Paused VOD successfully resumed")
+        elif time.monotonic() >= self._pause_recovery_deadline:
+            self._fail_pause_recovery()
+
+    def _fail_pause_recovery(self):
+        """Keep the current episode selected after a bounded, unsuccessful retry."""
+        self._pause_recovery_failed = True
+        self._recovering_after_pause = False
+        self._pending_resume_ms = 0
+        self._pending_resume_attempts = 0
+        self._pause_started_at = time.monotonic() - VOD_PAUSE_RECONNECT_SECONDS
+        self.player.stop()
+        self._set_standard_icon(self.btn_play, QStyle.SP_MediaPlay)
+        self._show_track_osd("Could not resume playback. Press Play to retry.")
+        logging.warning("Could not restore paused VOD playback position")
+
     def toggle_play_pause(self):
         if self.player.is_playing():
-            self.player.pause()
-            self._set_standard_icon(self.btn_play, QStyle.SP_MediaPlay)
+            self._pause_playback()
         else:
-            self.player.play()
-            self._set_standard_icon(self.btn_play, QStyle.SP_MediaPause)
+            self._resume_playback()
         self._wake_controls()
 
     def stop(self):
+        self._pause_started_at = None
+        self._recovering_after_pause = False
+        self._pause_recovery_failed = False
         self.player.stop()
         self._set_standard_icon(self.btn_play, QStyle.SP_MediaPlay)
 
@@ -1116,6 +1210,8 @@ class EmbeddedPlayerWindow(QMainWindow):
     def _advance_after_media_end(self, media_generation):
         """Start the next item after on-demand playback finishes naturally."""
         if media_generation != self._media_generation:
+            return
+        if _pause_blocks_navigation(self):
             return
         if not self._auto_play_next or self._auto_advance_triggered:
             return
@@ -1604,6 +1700,10 @@ class EmbeddedPlayerWindow(QMainWindow):
                     self._pending_resume_ms = 0
                     resume_completed = True
                 cur = self.player.get_time()
+            if self._recovering_after_pause:
+                self._check_pause_recovery(cur)
+                if self._pause_recovery_failed:
+                    return
             if self._deferred_present:
                 self._deferred_present_polls -= 1
                 if resume_completed or self._deferred_present_polls <= 0:
@@ -1636,6 +1736,8 @@ class EmbeddedPlayerWindow(QMainWindow):
 
     def _maybe_auto_advance(self, position_ms, duration_ms):
         """Advance once playback enters the configured credits-skip window."""
+        if _pause_blocks_navigation(self):
+            return False
         if (
             not self._auto_play_next
             or self._auto_advance_triggered
@@ -1653,6 +1755,8 @@ class EmbeddedPlayerWindow(QMainWindow):
 
     def _report_progress(self, force=False):
         """Send playback progress to the main process at ten-second intervals."""
+        if getattr(self, '_recovering_after_pause', False) or getattr(self, '_pause_recovery_failed', False):
+            return
         if not self._current_history or self._progress_callback is None:
             return
         now = time.monotonic()
@@ -2006,15 +2110,16 @@ class EmbeddedPlayerWindow(QMainWindow):
             return
         if self.isMinimized():
             if self.player.is_playing():
-                self.player.pause()
+                self._pause_playback()
                 self._paused_by_minimize = True
-                self._set_standard_icon(self.btn_play, QStyle.SP_MediaPlay)
         elif self._paused_by_minimize:
-            self.player.play()
             self._paused_by_minimize = False
-            self._set_standard_icon(self.btn_play, QStyle.SP_MediaPause)
+            self._resume_playback()
 
     def closeEvent(self, event):
+        self._pause_started_at = None
+        self._recovering_after_pause = False
+        self._pause_recovery_failed = False
         try:
             self._wheel_seek_timer.stop()
             self._track_osd_timer.stop()

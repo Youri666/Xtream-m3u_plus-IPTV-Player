@@ -326,6 +326,7 @@ The **Information** button displays technical details reported by VLC for the cu
 - Use the mouse wheel over the playback-speed controls (`−  1.00x  +`) to decrease or increase the speed by the configured step.
 - During Live TV playback, **LIVE** is displayed instead of a playback position.
 - Minimizing the player automatically pauses playback; restoring the window resumes it.
+- For movies and episodes, resuming after a pause of at least **30 seconds** reopens the same stream and restores the paused position automatically, without a Resume/Restart dialog. This also applies to pauses caused by minimizing the player. LIVE playback is unchanged. If reconnection or position restoration fails, the player stays on the current item and displays a retry message instead of advancing to the next episode.
 
 ### Keyboard shortcuts
 
