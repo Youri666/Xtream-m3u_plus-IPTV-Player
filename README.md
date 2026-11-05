@@ -318,6 +318,10 @@ The panel then closes automatically unless it is pinned open.
 
 Playback controls provide previous/next navigation, play/pause, seeking, playback speed, volume, audio track selection, subtitles when available, and fullscreen mode.
 
+Mouse-wheel seeking accumulates steps and applies the target **one second after the last wheel movement**. The temporary feedback popup remains visible for **1.8 seconds after the last action**.
+
+The internal playlist adjusts its width to the displayed titles, up to 60% of the player width. Longer titles remain accessible with horizontal scrolling. In windowed mode, opening the playlist temporarily reduces the space available for video without resizing the player window.
+
 The **Information** button displays technical details reported by VLC for the current stream, including its protocol, input bitrate, video resolution and frame rate, and the available audio and subtitle tracks. Select the button again to hide the panel.
 
 - Drag the progress bar with the left mouse button to move backward or forward.

@@ -436,7 +436,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         # ---------- Sidebar (playlist) ----------
         self.sidebar = QWidget(self)
         self.sidebar.setObjectName("sidebarRoot")
-        self.sidebar.setFixedWidth(320)
+        self.sidebar.setFixedWidth(240)
+        self._playlist_width_hint = 0
         self.sidebar.setCursor(Qt.ArrowCursor)
         self.sidebar.hide()
 
@@ -516,7 +517,7 @@ class EmbeddedPlayerWindow(QMainWindow):
 
         self._wheel_seek_timer = QTimer(self)
         self._wheel_seek_timer.setSingleShot(True)
-        self._wheel_seek_timer.setInterval(600)
+        self._wheel_seek_timer.setInterval(1000)
         self._wheel_seek_timer.timeout.connect(self._commit_wheel_seek)
 
         # ---------- Auto-hide timer ----------
@@ -1560,6 +1561,23 @@ class EmbeddedPlayerWindow(QMainWindow):
             self.playlist_list.addItem(item)
             if i == self._current_idx:
                 self.playlist_list.setCurrentItem(item)
+        # The delegate includes font metrics and theme padding in logical pixels.
+        self._playlist_width_hint = self.playlist_list.sizeHintForColumn(0)
+        self._update_sidebar_width()
+
+    def _update_sidebar_width(self):
+        """Fit playlist titles while reserving at least 40% of the window for video."""
+        if not self.centralWidget():
+            return
+        margins = self.sidebar.layout().contentsMargins()
+        chrome_width = (margins.left() + margins.right()
+                        + 2 * self.playlist_list.frameWidth()
+                        + self.playlist_list.verticalScrollBar().sizeHint().width())
+        desired_width = max(240, self._playlist_width_hint + chrome_width)
+        available_width = max(1, int(self.centralWidget().width() * 0.6))
+        width = min(desired_width, available_width)
+        if self.sidebar.width() != width:
+            self.sidebar.setFixedWidth(width)
 
     def _playlist_item_activated(self, item):
         idx = item.data(Qt.UserRole)
@@ -1627,6 +1645,7 @@ class EmbeddedPlayerWindow(QMainWindow):
     def _reposition_overlays(self):
         if not self.centralWidget():
             return
+        self._update_sidebar_width()
         self._reposition_track_osd()
         self._reposition_stream_info_panel()
         if not self._is_fullscreen:
