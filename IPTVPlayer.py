@@ -534,6 +534,8 @@ class IPTVPlayerApp(QMainWindow):
             )
         self._reset_provider_view_state()
         self._catalog_loaded = False
+        self._last_synced_playback_selection = None
+        self._pending_history_series = None
         self._catalog_request_generation += 1
         # Results from the previous account must not update the new account's UI.
         self._account_info_generation = getattr(self, '_account_info_generation', 0) + 1
@@ -1554,7 +1556,7 @@ class IPTVPlayerApp(QMainWindow):
                 return candidate
         return fallback_item or all_item
 
-    def _open_history_series(self, history_entry):
+    def _open_history_series(self, history_entry, *, switch_tab=True):
         """Restore the category and season where a history episode was launched."""
         series_id = str(history_entry.get("series_id", ""))
         series_entry = next(
@@ -1567,8 +1569,12 @@ class IPTVPlayerApp(QMainWindow):
         if series_entry is None:
             return False
 
-        self.tab_widget.setCurrentWidget(self.series_tab)
+        if switch_tab:
+            self.tab_widget.setCurrentWidget(self.series_tab)
         category_list = self.category_list_widgets["Series"]
+        if not switch_tab:
+            self.category_search_bars['Series'].clear()
+            self.streaming_search_bars['Series'].clear()
         category_item = self._history_category_item(
             "Series", history_entry, series_entry
         )
@@ -1605,6 +1611,75 @@ class IPTVPlayerApp(QMainWindow):
         self._pending_history_series = dict(history_entry)
         self.show_seasons(series_entry)
         return True
+
+    def _select_series_episode(self, entry, seasons):
+        """Share episode selection between History navigation and playback following."""
+        episode_id = str(entry.get('stream_id', ''))
+        requested_season = str(entry.get('season', ''))
+        ordered = sorted(seasons.items(), key=lambda pair: str(pair[0]) != requested_season)
+        for season, episodes in ordered:
+            if not any(str(episode.get('id', '')) == episode_id for episode in episodes):
+                continue
+            season = str(season)
+            if self.series_navigation_level != 2 or str(self.current_series_season) != season:
+                self.current_series_season = season
+                self.series_navigation_level = 2
+                self.show_episodes(episodes)
+            episode_list = self.streaming_list_widgets['Series']
+            def find_episode():
+                for row in range(episode_list.count()):
+                    item = episode_list.item(row)
+                    data = item.data(Qt.UserRole)
+                    if isinstance(data, dict) and str(data.get('id', '')) == episode_id:
+                        return item
+                return None
+            item = find_episode()
+            if item is None:
+                # A filter can hide the new episode. Rebuild only this season.
+                self.show_episodes(episodes)
+                item = find_episode()
+            if item is not None:
+                episode_list.setCurrentItem(item)
+                self._scroll_to_catalog_item(episode_list, item)
+                self.prev_clicked_streaming_item = None
+                self.streaming_item_clicked(item)
+                return True
+        return False
+
+    def _sync_series_playback(self, entry):
+        """Follow an episode in the originating account without playing or switching tabs."""
+        if (not isinstance(entry, dict) or entry.get('type') != 'Series'
+                or not entry.get('series_id') or not entry.get('stream_id')
+                or entry.get('account_id') != self.active_account_id):
+            return
+        self._pending_playback_selection = dict(entry)
+        if not self._catalog_loaded or getattr(self, '_catalog_installing', False):
+            return
+        if not self.content_enabled.get('Series', True):
+            return
+        identity = (entry['account_id'], str(entry['series_id']), str(entry['stream_id']))
+        if identity == getattr(self, '_last_synced_playback_selection', None):
+            return
+        pending = self._pending_history_series
+        if (isinstance(pending, dict) and pending.get('_playback_sync')
+                and str(pending.get('series_id')) == identity[1]
+                and str(pending.get('stream_id')) == identity[2]):
+            return
+        if isinstance(pending, dict) and pending.get('_playback_sync'):
+            self._pending_history_series = None
+            self._next_info_request_generation('Series')
+        current = self.current_series_entry or {}
+        category_name, category_id = self._selected_category('Series')
+        same_origin = (str(category_name or '') == str(entry.get('source_category_name') or '')
+                       and str(category_id or '') == str(entry.get('source_category_id') or ''))
+        seasons = self.currently_loaded_streams.get('Seasons') or {}
+        if (str(current.get('series_id', '')) == str(entry['series_id'])
+                and same_origin and isinstance(seasons, dict)
+                and self._select_series_episode(entry, seasons)):
+            self._last_synced_playback_selection = identity
+            return
+        pending = dict(entry, _playback_sync=True)
+        self._open_history_series(pending, switch_tab=False)
 
     def _history_entry_url(self, entry):
         """Rebuild a private stream URL without persisting credentials in history."""
@@ -4484,6 +4559,9 @@ class IPTVPlayerApp(QMainWindow):
         """Release an account even when its result no longer belongs to the active view."""
         self._catalog_refresh_policy.finish(account, successful, fetched_at)
         self._update_catalog_refresh_button()
+        pending = getattr(self, '_pending_playback_selection', None)
+        if account == self.active_account_id and pending:
+            self._sync_series_playback(pending)
         if account in self._catalog_reload_pending:
             self._catalog_reload_pending.discard(account)
             if account == self.active_account_id:
@@ -4957,8 +5035,19 @@ class IPTVPlayerApp(QMainWindow):
             lambda series_info, show_request, token=generation:
             self.process_series_info(series_info, show_request, token)
         )
-        series_info_fetcher.signals.error.connect(self.on_fetch_data_error)
+        series_info_fetcher.signals.error.connect(
+            lambda error, token=generation: self._series_info_fetch_failed(error, token)
+        )
         self.threadpool.start(series_info_fetcher)
+
+    def _series_info_fetch_failed(self, error, generation):
+        """Release pending playback following only for the current Series request."""
+        if not self._is_current_info_request('Series', generation):
+            return
+        pending = self._pending_history_series
+        if isinstance(pending, dict) and pending.get('_playback_sync'):
+            self._pending_history_series = None
+        self.on_fetch_data_error(error)
 
     def process_series_info(
         self, series_info_data, is_show_request, generation=None
@@ -5023,32 +5112,11 @@ class IPTVPlayerApp(QMainWindow):
             pending = self._pending_history_series
             if isinstance(pending, dict):
                 self._pending_history_series = None
-                episode_found = False
-                season_key = str(pending.get("season", ""))
-                episodes = series_info_data['episodes'].get(season_key)
-                if episodes is None:
-                    try:
-                        episodes = series_info_data['episodes'].get(int(season_key))
-                    except (TypeError, ValueError):
-                        episodes = None
-                if episodes is not None:
-                    self.current_series_season = season_key
-                    self.series_navigation_level = 2
-                    self.show_episodes(episodes)
-                    episode_id = str(pending.get("stream_id", ""))
-                    episode_list = self.streaming_list_widgets['Series']
-                    for row in range(episode_list.count()):
-                        episode_item = episode_list.item(row)
-                        episode_data = episode_item.data(Qt.UserRole)
-                        if (
-                            isinstance(episode_data, dict)
-                            and str(episode_data.get("id", "")) == episode_id
-                        ):
-                            episode_list.setCurrentItem(episode_item)
-                            self._scroll_to_catalog_item(episode_list, episode_item)
-                            episode_found = True
-                            break
-                if not episode_found:
+                episode_found = self._select_series_episode(pending, series_info_data['episodes'])
+                if episode_found and pending.get('_playback_sync'):
+                    self._last_synced_playback_selection = (
+                        pending['account_id'], str(pending['series_id']), str(pending['stream_id']))
+                if not episode_found and not pending.get('_playback_sync'):
                     self._remove_unavailable_history_entry(pending)
 
             self.animate_progress(0, 100, "Loading finished")
@@ -6660,6 +6728,7 @@ class IPTVPlayerApp(QMainWindow):
     def _process_embedded_player_events(self):
         """Persist player progress events on the main application's GUI thread."""
         history_changed = False
+        playback_selection = None
         while True:
             try:
                 event = self._embedded_player_event_queue.get_nowait()
@@ -6672,12 +6741,16 @@ class IPTVPlayerApp(QMainWindow):
                     event.get("keep_topmost", False),
                 )
                 continue
-            if event_type != "history_progress":
+            if event_type not in ("history_progress", "playback_started"):
                 continue
             entry = event.get("history")
             if not isinstance(entry, dict):
                 continue
             account_id = entry.get("account_id") or self.active_account_id
+            if account_id == self.active_account_id and entry.get('type') == 'Series':
+                playback_selection = dict(entry, account_id=account_id)
+            if event_type == 'playback_started':
+                continue
             # Playback can outlive an account switch. Persist to the originating
             # account and refresh History only if that account is still selected.
             if not account_id:
@@ -6692,6 +6765,8 @@ class IPTVPlayerApp(QMainWindow):
                 logging.warning("Could not save playback progress: %s", error)
         if history_changed:
             self.refresh_history_tab()
+        if playback_selection is not None:
+            self._sync_series_playback(playback_selection)
 
     def _activate_embedded_player_window(self, window_id, keep_topmost=False):
         """Activate the independent player from the foreground main process."""

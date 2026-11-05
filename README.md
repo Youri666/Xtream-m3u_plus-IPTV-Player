@@ -318,6 +318,8 @@ The panel then closes automatically unless it is pinned open.
 
 Playback controls provide previous/next navigation, play/pause, seeking, playback speed, volume, audio track selection, subtitles when available, and fullscreen mode.
 
+During series playback, the main Series list follows the current episode and season, preserving the originating category (including Favorites) when available. This also applies to Next/Previous and automatic episode advancement. Synchronization does not change the visible tab, start another stream or display a resume prompt. When returning to Series after closing the player, the last played episode is selected and scrolled into view.
+
 Mouse-wheel seeking accumulates steps and applies the target **one second after the last wheel movement**. The temporary feedback popup remains visible for **1.8 seconds after the last action**.
 
 The internal playlist adjusts its width to the displayed titles, up to 60% of the player width. Longer titles remain accessible with horizontal scrolling. In windowed mode, opening the playlist temporarily reduces the space available for video without resizing the player window.

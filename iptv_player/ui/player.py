@@ -918,6 +918,12 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._set_standard_icon(self.btn_play, QStyle.SP_MediaPause)
         self._update_pl_pos()
         self._wake_controls()
+        if self._current_history and self._progress_callback is not None:
+            try:
+                self._progress_callback({'event': 'playback_started',
+                                         'history': dict(self._current_history)})
+            except (EOFError, OSError):
+                pass
 
     # ---------- video output binding ----------
     def _bind_video_output(self):
