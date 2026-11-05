@@ -318,6 +318,10 @@ The panel then closes automatically unless it is pinned open.
 
 Playback controls provide previous/next navigation, play/pause, seeking, playback speed, volume, audio track selection, subtitles when available, and fullscreen mode.
 
+Use **Ratio** to select **Auto**, **16:9**, **4:3**, **1:1**, **16:10**, **2.21:1**, **2.35:1**, **2.39:1** or **5:4**. Auto uses the stream’s original display proportions; forced formats can correct incorrectly signalled videos. The choice is remembered across streams and application restarts, and applies in both windowed and fullscreen modes. It changes the video proportions without resizing the window.
+
+Click the playlist position counter (for example **13 / 34**) to show or hide the existing playlist, just like the top-left playlist button.
+
 During series playback, the main Series list follows the current episode and season, preserving the originating category (including Favorites) when available. This also applies to Next/Previous and automatic episode advancement. Synchronization does not change the visible tab, start another stream or display a resume prompt. When returning to Series after closing the player, the last played episode is selected and scrolled into view.
 
 Mouse-wheel seeking accumulates steps and applies the target **one second after the last wheel movement**. The temporary feedback popup remains visible for **1.8 seconds after the last action**.

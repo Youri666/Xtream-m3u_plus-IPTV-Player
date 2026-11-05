@@ -9,7 +9,7 @@ import sys
 import time
 from urllib.parse import urlsplit
 
-from PyQt5.QtCore import QByteArray, QEvent, QPoint, QSize, Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import QByteArray, QEvent, QPoint, QRect, QSize, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import (
     QColor,
     QCursor,
@@ -22,6 +22,7 @@ from PyQt5.QtGui import (
 )
 from PyQt5.QtWidgets import (
     QAction,
+    QActionGroup,
     QApplication,
     QFrame,
     QHBoxLayout,
@@ -35,6 +36,7 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QSlider,
     QStyle,
+    QStyleOption,
     QToolTip,
     QTreeWidget,
     QTreeWidgetItem,
@@ -42,6 +44,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from iptv_player.config.internal_player import VIDEO_ASPECT_RATIOS, load_video_format, save_video_format
 from iptv_player.config import write_config_file
 from iptv_player.constants import DEFAULT_RESUME_BEHAVIOR, RESUME_BEHAVIORS
 from iptv_player.storage.history import resume_position
@@ -287,6 +290,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._explicit_settings_path = settings_path
         self._volume = self._load_volume_pref()
         self._playback_rate = self._load_playback_rate_pref()
+        self._video_format = load_video_format(self._settings_path())
         self._volume_before_mute = self._volume if self._volume > 0 else 80
         self.player.audio_set_volume(self._volume)
         self.player.audio_set_mute(False)
@@ -341,8 +345,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_play   = QPushButton()
         self.btn_ffwd   = QPushButton()
         self.btn_next   = QPushButton()
-        self.btn_slow   = QPushButton("−")
-        self.btn_fast   = QPushButton("+")
+        self.btn_slow   = QPushButton()
+        self.btn_fast   = QPushButton()
         self.rate_label = QLabel(f"{self._playback_rate:.2f}x")
         self.rate_controls = QWidget()
         self.rate_controls.setObjectName("rateControls")
@@ -361,20 +365,41 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_subs   = QPushButton("CC")
         self.btn_subs.setEnabled(False)
         self.btn_fs     = QPushButton()
-        self.pl_pos     = QLabel("")
+        self.pl_pos     = QPushButton("")
+        self.pl_pos.setFlat(True)
+        self.pl_pos.setToolTip("Show/hide playlist (L)")
+        self.pl_pos.setAccessibleName("Playlist position; show or hide playlist")
+        self.pl_pos.clicked.connect(self.toggle_sidebar)
+        self.btn_format = QPushButton("Ratio")
+        self.btn_format.setAccessibleName("Video aspect ratio")
+        self.format_menu = QMenu(self.btn_format)
+        self.format_actions = {}
+        format_group = QActionGroup(self.format_menu)
+        format_group.setExclusive(True)
+        for label in VIDEO_ASPECT_RATIOS:
+            action = self.format_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(label == self._video_format)
+            format_group.addAction(action)
+            action.triggered.connect(lambda _checked=False, value=label: self._select_video_format(value))
+            self.format_actions[label] = action
+        self.btn_format.setMenu(self.format_menu)
+        self.btn_format.setToolTip(f"Video format: {self._video_format}")
 
         for b in (self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
                   self.btn_next, self.btn_slow, self.btn_fast, self.btn_info,
                   self.btn_mute, self.btn_audio, self.btn_subs, self.btn_fs,
-                  self.btn_sidebar):
-            b.setFixedHeight(30)
-            b.setIconSize(QSize(18, 18))
+                  self.btn_sidebar, self.btn_format, self.pl_pos):
+            b.setFixedHeight(26)
+            b.setIconSize(QSize(16, 16))
             b.setCursor(Qt.PointingHandCursor)
             b.setFocusPolicy(Qt.NoFocus)
 
-        # Play and pause use glyphs with different natural widths. A fixed button
-        # width keeps every neighbouring control stationary when the icon changes.
-        self.btn_play.setFixedWidth(40)
+        # Give icon-only buttons identical geometry regardless of native icon hints.
+        for button in (self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
+                       self.btn_next, self.btn_slow, self.btn_fast, self.btn_info,
+                       self.btn_mute, self.btn_fs, self.btn_sidebar):
+            button.setFixedSize(34, 26)
 
         self.btn_prev.setToolTip("Previous (Page Up)")
         self.btn_rewind.setToolTip("Rewind (Left arrow)")
@@ -442,6 +467,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         audio_layout.addWidget(self.btn_audio)
         btn_row.addWidget(self.audio_controls)
         btn_row.addWidget(self.btn_subs)
+        btn_row.addWidget(self.btn_format)
         btn_row.addWidget(self.btn_fs)
 
         overlay_lay = QVBoxLayout(self.overlay)
@@ -638,9 +664,27 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._audio_language = str(audio_language or "").strip().lower()
         self._subtitle_language = str(subtitle_language or "").strip().lower()
 
-    def _tinted_icon(self, source_icon):
+    def _tinted_icon(self, source_icon, extent=72):
         """Tint an icon so it remains visible on the active theme."""
         source = source_icon.pixmap(96, 96)
+        # Native icons have different transparent margins. Normalize their visible
+        # bounds before tinting so mute, transport and fullscreen look consistent.
+        image = source.toImage()
+        pixels = [(x, y) for y in range(image.height()) for x in range(image.width())
+                  if image.pixelColor(x, y).alpha()]
+        if pixels:
+            left = min(x for x, y in pixels)
+            top = min(y for x, y in pixels)
+            width = max(x for x, y in pixels) - left + 1
+            height = max(y for x, y in pixels) - top + 1
+            glyph = source.copy(left, top, width, height).scaled(
+                extent, extent, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            glyph.setDevicePixelRatio(1)
+            source = QPixmap(96, 96)
+            source.fill(Qt.transparent)
+            painter = QPainter(source)
+            painter.drawPixmap((96 - glyph.width()) // 2, (96 - glyph.height()) // 2, glyph)
+            painter.end()
 
         def tinted_pixmap(color):
             pixmap = QPixmap(source.size())
@@ -710,6 +754,21 @@ class EmbeddedPlayerWindow(QMainWindow):
     def _set_standard_icon(self, button, standard_pixmap):
         button.setIcon(self._tinted_standard_icon(standard_pixmap))
 
+    def _spin_indicator_icon(self, primitive):
+        """Use Qt's native plus/minus primitives rather than font-dependent glyphs."""
+        pixmap = QPixmap(96, 96)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.scale(6, 6)
+        option = QStyleOption()
+        option.initFrom(self)
+        option.rect = QRect(0, 0, 16, 16)
+        option.state |= QStyle.State_Enabled
+        self.style().drawPrimitive(primitive, option, painter, self)
+        painter.end()
+        # Use a slightly smaller symbol to match the transport icons' visual weight.
+        return self._tinted_icon(QIcon(pixmap), extent=60)
+
     def _refresh_standard_icons(self):
         """Reload native icons after a palette or playback-state change."""
         self._set_standard_icon(self.btn_prev, QStyle.SP_MediaSkipBackward)
@@ -718,10 +777,12 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._set_standard_icon(self.btn_play, play_icon)
         self._set_standard_icon(self.btn_ffwd, QStyle.SP_MediaSeekForward)
         self._set_standard_icon(self.btn_next, QStyle.SP_MediaSkipForward)
+        self.btn_slow.setIcon(self._spin_indicator_icon(QStyle.PE_IndicatorSpinMinus))
+        self.btn_fast.setIcon(self._spin_indicator_icon(QStyle.PE_IndicatorSpinPlus))
         muted = self._muted or self._volume == 0
         volume_icon = QStyle.SP_MediaVolumeMuted if muted else QStyle.SP_MediaVolume
         self._set_standard_icon(self.btn_mute, volume_icon)
-        self.btn_info.setIcon(self._information_icon(self._icon_color))
+        self.btn_info.setIcon(self._tinted_icon(self._information_icon(self._icon_color)))
         fullscreen_icon = (
             QStyle.SP_TitleBarNormalButton
             if self._is_fullscreen else QStyle.SP_TitleBarMaxButton
@@ -749,14 +810,14 @@ class EmbeddedPlayerWindow(QMainWindow):
             self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
             self.btn_next, self.btn_slow, self.btn_fast, self.btn_info,
             self.btn_mute, self.btn_audio, self.btn_subs, self.btn_fs,
-            self.btn_sidebar
+            self.btn_sidebar, self.btn_format
         ):
             button.setStyleSheet(button_style)
         self.overlay.setStyleSheet(overlay_style)
         self.top_bar.setStyleSheet(overlay_style)
         self.sidebar.setStyleSheet(sidebar_style)
         self.rate_label.setStyleSheet(f"color: {label_color}; padding: 0 8px;")
-        self.pl_pos.setStyleSheet(f"color: {label_color}; padding: 0 8px;")
+        self.pl_pos.setStyleSheet(f"QPushButton {{ color: {label_color}; padding: 2px 6px; border: none; background: transparent; }} QPushButton:hover {{ background: palette(midlight); border-radius: 4px; }}")
         osd_background = "rgba(20,20,22,220)" if dark else "rgba(248,248,248,235)"
         self.track_osd.setStyleSheet(
             f"background: {osd_background}; color: {label_color}; "
@@ -889,6 +950,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             # visible frame. The polling seek below remains a precision fallback.
             media.add_option(f":start-time={max(0, int(resume_ms)) / 1000:.3f}")
         self.player.set_media(media)
+        self._apply_video_format()
         self._media_generation += 1
         self._current_history = (
             dict(self._playlist[self._current_idx].get("history") or {})
@@ -1325,8 +1387,38 @@ class EmbeddedPlayerWindow(QMainWindow):
             return None
         return position_ms if answer == QMessageBox.Yes else 0
 
+    def _apply_video_format(self):
+        """Use VLC's display-ratio override; an empty value restores stream defaults."""
+        try:
+            self.player.video_set_aspect_ratio(VIDEO_ASPECT_RATIOS[self._video_format])
+            return True
+        except (AttributeError, OSError, ValueError):
+            logging.warning("Could not apply video aspect ratio")
+            return False
+
+    def _select_video_format(self, value):
+        """Apply and remember a toolbar choice without reopening the current media."""
+        if value not in VIDEO_ASPECT_RATIOS:
+            return
+        previous = self._video_format
+        self._video_format = value
+        if not self._apply_video_format():
+            self._video_format = previous
+            self.format_actions[previous].setChecked(True)
+            self._show_track_osd("Could not change video format")
+            return
+        self.format_actions[value].setChecked(True)
+        self.btn_format.setToolTip(f"Video format: {value}")
+        try:
+            save_video_format(self._settings_path(), value)
+        except (OSError, configparser.Error, UnicodeDecodeError):
+            logging.warning("Could not save video format preference")
+        self._show_track_osd(f"Video format: {value}")
+        self._wake_controls()
+
     def _update_pl_pos(self):
         n = len(self._playlist)
+        self.pl_pos.setVisible(n > 1)
         if n <= 1:
             self.pl_pos.setText("")
         else:
