@@ -163,6 +163,7 @@ from iptv_player.storage import (
 from iptv_player.provider.cache import account_cache_key
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 from iptv_player.provider.credentials import parse_xtream_m3u_url
+from iptv_player.programme_info import ProgrammeInfoService, episode_summary
 from iptv_player.provider.epg import apply_epg_offset
 from iptv_player.player_process import run_embedded_player_process
 from iptv_player.external_player import (
@@ -4964,6 +4965,10 @@ class IPTVPlayerApp(QMainWindow):
             lambda vod_info, vod_data, token=generation:
             self.process_vod_info(vod_info, vod_data, token)
         )
+        movie_info_fetcher.signals.finished.connect(
+            lambda info, _data, aid=self.active_account_id, item_id=vod_id:
+            self._get_programme_service().seed(aid, "Movies", item_id, info)
+        )
         movie_info_fetcher.signals.error.connect(self.on_fetch_data_error)
         self.threadpool.start(movie_info_fetcher)
 
@@ -5030,10 +5035,18 @@ class IPTVPlayerApp(QMainWindow):
             self.set_progress_bar(100, "Loaded Movie info")
 
     def fetch_series_info(self, series_id, is_show_request, generation=None):
+        synopsis_id = (self.active_account_id, str(series_id))
+        if getattr(self.series_info_box, '_series_synopsis_id', None) != synopsis_id:
+            self.series_info_box._series_synopsis = "—"
+            self.series_info_box._series_synopsis_id = synopsis_id
         series_info_fetcher = SeriesInfoFetcher(self.server, self.username, self.password, series_id, is_show_request, self)
         series_info_fetcher.signals.finished.connect(
             lambda series_info, show_request, token=generation:
             self.process_series_info(series_info, show_request, token)
+        )
+        series_info_fetcher.signals.finished.connect(
+            lambda data, _show, aid=self.active_account_id, item_id=series_id:
+            self._get_programme_service().seed(aid, "Series", item_id, data)
         )
         series_info_fetcher.signals.error.connect(
             lambda error, token=generation: self._series_info_fetch_failed(error, token)
@@ -5080,6 +5093,11 @@ class IPTVPlayerApp(QMainWindow):
             self.go_back_to_level(0)
             self.animate_progress(0, 100, "No episodes available", "error")
             return
+
+        provider_info = series_info_data.get('info') or {}
+        if isinstance(provider_info, dict) and provider_info.get('plot'):
+            self.series_info_box._series_synopsis = provider_info['plot']
+        self._update_series_description()
 
         if is_show_request:
             self.streaming_list_widgets['Series'].clear()
@@ -5145,7 +5163,6 @@ class IPTVPlayerApp(QMainWindow):
             rating          = series_info.get('rating')
             director        = series_info.get('director')      or "—"
             cast            = series_info.get('cast')          or "—"
-            plot            = series_info.get('plot')          or "—"
 
             self.series_info_box.name.setText(f"{series_name}")
             self.series_info_box.release_date.setText(f"Release date: {release_date}")
@@ -5159,7 +5176,7 @@ class IPTVPlayerApp(QMainWindow):
             )
             self.series_info_box.director.setText(f"Director: {director}")
             self.series_info_box.cast.setText(f"Cast: {cast}")
-            self.series_info_box.description.setText(plot)
+            self._update_series_description()
 
             yt_code = series_info.get('youtube_trailer', 0)
             if yt_code:
@@ -5278,7 +5295,11 @@ class IPTVPlayerApp(QMainWindow):
             if self._metadata_is_missing(provider_info.get(provider_key)) and not self._metadata_is_missing(value):
                 if tmdb_key == "duration" and isinstance(value, (int, float)):
                     value = f"{value:g} min"
-                label.setText(f"{prefix}{value}")
+                if media_type == "tv" and tmdb_key == "description":
+                    info_box._series_synopsis = str(value)
+                    self._update_series_description()
+                else:
+                    label.setText(f"{prefix}{value}")
 
         if image_missing and metadata.get("poster_url"):
             self.fetch_image(metadata["poster_url"], stream_type, generation)
@@ -5751,6 +5772,10 @@ class IPTVPlayerApp(QMainWindow):
             lambda epg_data, token=generation:
             self.process_epg_data(epg_data, token)
         )
+        epg_worker.signals.finished.connect(
+            lambda data, aid=self.active_account_id, item_id=stream_id:
+            self._get_programme_service().seed(aid, "LIVE", item_id, data)
+        )
         epg_worker.signals.error.connect(
             lambda error_msg, token=generation:
             self.on_epg_fetch_error(error_msg, token)
@@ -5821,6 +5846,15 @@ class IPTVPlayerApp(QMainWindow):
             print(f"Failed processing EPG: {e}")
             self.set_progress_bar(100, "Failed processing EPG data", "error")
 
+    def _update_series_description(self, episode=None):
+        """Show the selected episode plot, restoring the series plot on return."""
+        if episode is None and self.series_navigation_level == 2:
+            item = self.streaming_list_widgets['Series'].currentItem()
+            episode = item.data(Qt.UserRole) if item is not None else None
+        synopsis = episode_summary(episode) if self.series_navigation_level == 2 else ""
+        self.series_info_box.description.setText(
+            synopsis or getattr(self.series_info_box, '_series_synopsis', "—"))
+
     def streaming_item_clicked(self, clicked_item):
         """Refresh the selected title's information panel without starting playback."""
         if getattr(self, '_catalog_installing', False):
@@ -5855,6 +5889,12 @@ class IPTVPlayerApp(QMainWindow):
             # They have no top-level metadata to display on a single click.
             if not isinstance(clicked_item_data, dict):
                 return
+
+            if self.series_navigation_level == 2 and clicked_item_data.get('url'):
+                current_tab = self.tab_widget.tabText(self.tab_widget.currentIndex())
+                if current_tab == 'Series':
+                    self._update_series_description(clicked_item_data)
+                    return
 
             stream_type = clicked_item_data.get('stream_type', '')
 
@@ -5948,6 +5988,7 @@ class IPTVPlayerApp(QMainWindow):
                 self.series_info_box.director.setText(f"Director: ...")
                 self.series_info_box.cast.setText(f"Cast: ...")
                 self.series_info_box.description.setText("...")
+                self.series_info_box._series_synopsis = "—"
 
                 self.series_info_box.yt_code = None
                 self.series_info_box.tmdb_code = None
@@ -6145,6 +6186,7 @@ class IPTVPlayerApp(QMainWindow):
     def go_back_to_level(self, series_navigation_level):
         """Rebuild the parent Series view from the retained root or season data."""
         self.set_progress_bar(0, "Loading items")
+        self._update_series_description()
 
         self.streaming_list_widgets['Series'].clear()
 
@@ -6561,8 +6603,20 @@ class IPTVPlayerApp(QMainWindow):
             self.internal_player_radio.isChecked()
         )
 
+    def _get_programme_service(self):
+        """Keep provider requests in the main process, independent of UI selection."""
+        if not hasattr(self, '_programme_info_service'):
+            def deliver(payload):
+                if self._embedded_player_command_queue is not None:
+                    self._embedded_player_command_queue.put(payload)
+            self._programme_info_service = ProgrammeInfoService(self.threadpool, deliver, self)
+        return self._programme_info_service
+
     def _play_embedded(self, url, history_entry=None, resume_ms=0):
         try:
+            self._get_programme_service().register(
+                self.active_account_id, self.server, self.username, self.password,
+                self.current_user_agent, self.epg_offset_minutes)
             playlist, current_idx, title = self._collect_visible_playlist(
                 url, history_entry
             )
@@ -6735,6 +6789,9 @@ class IPTVPlayerApp(QMainWindow):
             except queue.Empty:
                 break
             event_type = event.get("event")
+            if event_type == "programme_request":
+                self._get_programme_service().request(event)
+                continue
             if event_type == "player_window_ready":
                 self._activate_embedded_player_window(
                     event.get("window_id"),

@@ -7,6 +7,7 @@ import logging
 from os import path
 import sys
 import time
+import uuid
 from urllib.parse import urlsplit
 
 from PyQt5.QtCore import QByteArray, QEvent, QPoint, QRect, QSize, Qt, QTimer, pyqtSignal
@@ -34,6 +35,7 @@ from PyQt5.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QTextBrowser,
     QSlider,
     QStyle,
     QStyleOption,
@@ -50,6 +52,8 @@ from iptv_player.ui.window_aspect import WindowAspectController
 from iptv_player.config import write_config_file
 from iptv_player.constants import DEFAULT_RESUME_BEHAVIOR, RESUME_BEHAVIORS
 from iptv_player.storage.history import resume_position
+from iptv_player.ui.info_panel_layout import information_panel_size
+from iptv_player.programme_info import programme_html
 from iptv_player.stream_info import collect_stream_information
 from iptv_player.ui.theme import (
     application_palette_is_dark,
@@ -353,6 +357,20 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.rate_label = QLabel(f"{self._playback_rate:.2f}x")
         self.rate_controls = QWidget()
         self.rate_controls.setObjectName("rateControls")
+        self.btn_programme = QPushButton()
+        self.btn_programme.setCheckable(True)
+        self.btn_programme.setEnabled(False)
+        self.btn_programme.setAccessibleName("Programme information")
+        self.btn_programme.setToolTip("Programme / movie / episode summary")
+        self.btn_programme.clicked.connect(self._toggle_programme_information)
+        self._programme_payload = None
+        self._programme_request_id = 0
+        self._programme_request_pending = False
+        self._programme_last_request = 0
+        self._programme_last_html = None
+        self._programme_timer = QTimer(self)
+        self._programme_timer.setInterval(1000)
+        self._programme_timer.timeout.connect(self._refresh_programme_information)
         self.btn_info   = QPushButton()
         self.btn_info.setEnabled(False)
         self.btn_info.setCheckable(True)
@@ -396,7 +414,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_format.setToolTip(f"Video format: {self._video_format}")
 
         for b in (self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
-                  self.btn_next, self.btn_slow, self.btn_fast, self.btn_info,
+                  self.btn_next, self.btn_slow, self.btn_fast, self.btn_info, self.btn_programme,
                   self.btn_mute, self.btn_audio, self.btn_subs, self.btn_fs,
                   self.btn_sidebar, self.btn_format, self.btn_aspect_lock, self.pl_pos):
             b.setFixedHeight(26)
@@ -406,7 +424,7 @@ class EmbeddedPlayerWindow(QMainWindow):
 
         # Give icon-only buttons identical geometry regardless of native icon hints.
         for button in (self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
-                       self.btn_next, self.btn_slow, self.btn_fast, self.btn_info,
+                       self.btn_next, self.btn_slow, self.btn_fast, self.btn_info, self.btn_programme,
                        self.btn_mute, self.btn_fs, self.btn_sidebar, self.btn_aspect_lock):
             button.setFixedSize(34, 26)
 
@@ -464,6 +482,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         btn_row.addStretch(1)
         btn_row.addWidget(self.pl_pos)
         btn_row.addStretch(1)
+        btn_row.addWidget(self.btn_programme)
         btn_row.addWidget(self.btn_info)
         btn_row.addSpacing(20)
 
@@ -552,7 +571,6 @@ class EmbeddedPlayerWindow(QMainWindow):
         # volume, and track messages and is anchored to the video's top-right.
         self.stream_info_panel = QFrame(central)
         self.stream_info_panel.setObjectName("streamInfoPanel")
-        self.stream_info_panel.setFixedSize(430, 340)
         stream_info_layout = QVBoxLayout(self.stream_info_panel)
         stream_info_layout.setContentsMargins(12, 10, 12, 10)
         stream_info_layout.setSpacing(6)
@@ -567,12 +585,24 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.stream_info_tree.setHeaderLabels(("Property", "Value"))
         self.stream_info_tree.setRootIsDecorated(True)
         self.stream_info_tree.setAlternatingRowColors(True)
-        self.stream_info_tree.header().setStretchLastSection(True)
+        self.stream_info_tree.header().setStretchLastSection(False)
         self.stream_info_tree.header().setSectionResizeMode(
             0, self.stream_info_tree.header().ResizeToContents
         )
+        self.stream_info_tree.expanded.connect(self._reposition_stream_info_panel)
+        self.stream_info_tree.collapsed.connect(self._reposition_stream_info_panel)
         stream_info_layout.addWidget(self.stream_info_tree, 1)
+        self.programme_text = QTextBrowser(self.stream_info_panel)
+        self.programme_text.setOpenExternalLinks(False)
+        self.programme_text.setOpenLinks(False)
+        self.programme_text.hide()
+        stream_info_layout.addWidget(self.programme_text, 1)
         self.stream_info_panel.hide()
+        self._info_layout_timer = QTimer(self)
+        self._info_layout_timer.setSingleShot(True)
+        self._info_layout_timer.timeout.connect(self._reposition_stream_info_panel)
+        self.programme_text.document().documentLayout().documentSizeChanged.connect(
+            self._information_content_resized)
 
         self._wheel_seek_timer = QTimer(self)
         self._wheel_seek_timer.setSingleShot(True)
@@ -764,6 +794,24 @@ class EmbeddedPlayerWindow(QMainWindow):
         painter.end()
         return QIcon(pixmap)
 
+    @staticmethod
+    def _programme_icon(color):
+        """Draw an outlined synopsis page with the same weight as the Info icon."""
+        pixmap = QPixmap(96, 96)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QPen(color, 6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawPolygon(QPolygon([QPoint(22, 12), QPoint(58, 12), QPoint(74, 28),
+                                      QPoint(74, 84), QPoint(22, 84)]))
+        painter.drawLine(58, 12, 58, 28)
+        painter.drawLine(58, 28, 74, 28)
+        for y in (43, 56, 69):
+            painter.drawLine(34, y, 62, y)
+        painter.end()
+        return QIcon(pixmap)
+
     def _set_standard_icon(self, button, standard_pixmap):
         button.setIcon(self._tinted_standard_icon(standard_pixmap))
 
@@ -836,6 +884,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         volume_icon = QStyle.SP_MediaVolumeMuted if muted else QStyle.SP_MediaVolume
         self._set_standard_icon(self.btn_mute, volume_icon)
         self.btn_info.setIcon(self._tinted_icon(self._information_icon(self._icon_color)))
+        self.btn_programme.setIcon(self._tinted_icon(
+            self._programme_icon(self._icon_color)))
         self._update_window_aspect_lock_button()
         fullscreen_icon = (
             QStyle.SP_TitleBarNormalButton
@@ -862,7 +912,7 @@ class EmbeddedPlayerWindow(QMainWindow):
 
         for button in (
             self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
-            self.btn_next, self.btn_slow, self.btn_fast, self.btn_info,
+            self.btn_next, self.btn_slow, self.btn_fast, self.btn_info, self.btn_programme,
             self.btn_mute, self.btn_audio, self.btn_subs, self.btn_fs,
             self.btn_sidebar, self.btn_format, self.btn_aspect_lock
         ):
@@ -888,12 +938,13 @@ class EmbeddedPlayerWindow(QMainWindow):
             "border-radius: 0; }"
             "QLabel#streamInfoTitle { border: none; font-weight: bold; "
             "font-size: 14px; }"
-            "QTreeWidget { background: transparent; border: none; }"
+            "QTreeWidget, QTextBrowser { background: transparent; border: none; }"
             "QHeaderView::section { background: transparent; border: none; "
             "padding: 4px; font-weight: bold; }"
         )
         self._apply_native_title_bar_theme(dark)
         self._refresh_standard_icons()
+        self._info_layout_timer.start(0)
 
     def _apply_native_title_bar_theme(self, dark):
         """Ask Windows to draw this native title bar using the active theme."""
@@ -972,7 +1023,11 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._wheel_seek_timer.stop()
         self._track_osd_timer.stop()
         self._hide_track_osd()
+        programme_open = self.btn_programme.isChecked()
         self._hide_stream_information()
+        self._programme_payload = None
+        self._programme_request_pending = False
+        self._programme_last_html = None
         self._report_progress(force=True)
         if playlist is not None:
             self._playlist = list(playlist)
@@ -993,6 +1048,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             media.add_option(f":http-user-agent={self._user_agent}")
         self._current_stream_protocol = urlsplit(str(url)).scheme.upper()
         self.btn_info.setEnabled(True)
+        self.btn_programme.setEnabled(True)
         media.add_option(f":network-caching={self._network_caching_ms}")
         # VLC accepts ISO 639 language codes as per-media options. Leaving a
         # preference empty preserves VLC's own default track-selection policy.
@@ -1043,6 +1099,9 @@ class EmbeddedPlayerWindow(QMainWindow):
                                          'history': dict(self._current_history)})
             except (EOFError, OSError):
                 pass
+
+        if programme_open:
+            self._toggle_programme_information(True)
 
     # ---------- video output binding ----------
     def _bind_video_output(self):
@@ -1641,6 +1700,11 @@ class EmbeddedPlayerWindow(QMainWindow):
 
     def _show_stream_information(self):
         """Show technical details reported locally by libVLC."""
+        self._programme_timer.stop()
+        self.btn_programme.setChecked(False)
+        self.programme_text.hide()
+        self.stream_info_tree.show()
+        self.stream_info_title.setText("Stream information")
         sections = collect_stream_information(
             self._vlc, self.player, self._current_stream_protocol
         )
@@ -1659,12 +1723,80 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.stream_info_panel.show()
         self.stream_info_panel.raise_()
         self.btn_info.setChecked(True)
+        self._info_layout_timer.start(0)
         self._wake_controls()
 
     def _hide_stream_information(self):
         """Hide the technical-information OSD."""
         self.stream_info_panel.hide()
         self.btn_info.setChecked(False)
+        self.btn_programme.setChecked(False)
+        self._programme_timer.stop()
+
+    def _toggle_programme_information(self, checked):
+        """Reuse the Info panel for provider descriptions, without touching playback."""
+        if not checked:
+            self._hide_stream_information()
+            return
+        self.btn_info.setChecked(False)
+        self.btn_programme.setChecked(True)
+        self.stream_info_tree.hide()
+        self.programme_text.show()
+        self.stream_info_title.setText("Programme information")
+        self._reposition_stream_info_panel()
+        self.stream_info_panel.show()
+        self.stream_info_panel.raise_()
+        self._programme_timer.start()
+        self._info_layout_timer.start(0)
+        if self._programme_payload is None or self._programme_payload.get("message"):
+            self.programme_text.setPlainText("Loading programme information…")
+            self._reposition_stream_info_panel()
+            self._request_programme_information()
+        else:
+            self._refresh_programme_information()
+        self._wake_controls()
+
+    def _request_programme_information(self):
+        if self._programme_request_pending:
+            return
+        self._programme_last_request = time.monotonic()
+        if not self._current_history or self._progress_callback is None:
+            self._programme_payload = {"message": "Programme information unavailable."}
+            self._refresh_programme_information()
+            return
+        self._programme_request_id = uuid.uuid4().hex
+        self._programme_last_request = time.monotonic()
+        self._programme_request_pending = True
+        try:
+            self._progress_callback({"event": "programme_request",
+                "generation": self._media_generation, "request_id": self._programme_request_id,
+                "history": dict(self._current_history)})
+        except (EOFError, OSError):
+            self._programme_request_pending = False
+            self._programme_payload = {"message": "Unable to load programme information."}
+
+    def receive_programme_information(self, response):
+        """Discard replies for an earlier stream or superseded request."""
+        if (response.get("generation") != self._media_generation
+                or response.get("request_id") != self._programme_request_id):
+            return
+        self._programme_request_pending = False
+        self._programme_payload = response.get("payload") or {}
+        self._refresh_programme_information()
+
+    def _refresh_programme_information(self):
+        if not self.btn_programme.isChecked():
+            return
+        if self._programme_payload is not None:
+            markup = programme_html(self._programme_payload)
+            if markup != self._programme_last_html:
+                self.programme_text.setHtml(markup)
+                self._programme_last_html = markup
+                self._reposition_stream_info_panel()
+                self._info_layout_timer.start(0)
+        if (self._is_live_playback() and not self._programme_request_pending
+                and time.monotonic() - self._programme_last_request >= 60):
+            self._request_programme_information()
 
     # ---------- fullscreen ----------
     def toggle_fullscreen(self):
@@ -1860,15 +1992,33 @@ class EmbeddedPlayerWindow(QMainWindow):
         y = origin.y() + 20
         self.track_osd.move(x, y)
 
-    def _reposition_stream_info_panel(self):
-        """Anchor stream information inside the video's top-right corner."""
-        if not hasattr(self, "stream_info_panel") or not self.centralWidget():
+    def _information_content_resized(self, *_args):
+        """Recalculate after Qt settles text layout or per-screen font metrics."""
+        if not getattr(self, '_measuring_info_panel', False):
+            self._info_layout_timer.start(0)
+
+    def _reposition_stream_info_panel(self, *_args):
+        """Fit the visible information content inside the video's top-right corner."""
+        if (not hasattr(self, "stream_info_panel") or not self.centralWidget()
+                or getattr(self, '_measuring_info_panel', False)):
             return
-        origin = self.video_frame.mapTo(self.centralWidget(), QPoint(0, 0))
-        x = origin.x() + max(
-            8, self.video_frame.width() - self.stream_info_panel.width() - 16
-        )
-        self.stream_info_panel.move(x, origin.y() + 16)
+        self._measuring_info_panel = True
+        try:
+            body = self.programme_text if self.btn_programme.isChecked() else self.stream_info_tree
+            available = QSize(self.video_frame.width() - 32, self.video_frame.height() - 32)
+            # Measure without a stale scrollbar narrowing the text viewport.
+            if body is self.programme_text:
+                body.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self.stream_info_panel.setFixedSize(information_panel_size(
+                self.stream_info_panel, self.stream_info_title, body, available))
+            self.stream_info_panel.layout().activate()
+            if body is self.programme_text:
+                body.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            origin = self.video_frame.mapTo(self.centralWidget(), QPoint(0, 0))
+            x = origin.x() + max(8, self.video_frame.width() - self.stream_info_panel.width() - 16)
+            self.stream_info_panel.move(x, origin.y() + 16)
+        finally:
+            self._measuring_info_panel = False
 
     # ---------- VLC poll ----------
     def _poll_state(self):
@@ -2195,7 +2345,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         # True when `obj` is the overlay, top bar, sidebar, or any of their
         # descendants. We use this to suppress double-click-fullscreen and
         # play/pause when the click was on a control button or playlist row.
-        for root in (self.overlay, self.top_bar, self.sidebar):
+        for root in (self.overlay, self.top_bar, self.sidebar, getattr(self, "stream_info_panel", None)):
             w = obj
             while w is not None:
                 if w is root:
@@ -2208,6 +2358,11 @@ class EmbeddedPlayerWindow(QMainWindow):
 
     def eventFilter(self, obj, event):
         et = event.type()
+
+        # Scrolling a description or the technical tree must not seek the video.
+        if (et == QEvent.Wheel and hasattr(self, "stream_info_panel")
+                and self.stream_info_panel.isAncestorOf(obj)):
+            return False
 
         # An eventFilter installed on QApplication is invoked with the RECEIVING
         # widget as `obj` — not QApplication itself. So the only reliable way
@@ -2233,7 +2388,8 @@ class EmbeddedPlayerWindow(QMainWindow):
             # a short list, or a list already at an edge, cannot scroll further.
             # Use the pointer position so that propagation never turns the same
             # wheel movement into a volume command.
-            if self._event_is_over_widget(event, self.sidebar):
+            if (self._event_is_over_widget(event, self.sidebar)
+                    or self._event_is_over_widget(event, self.stream_info_panel)):
                 return False
             # This filter is installed both globally and on player widgets. Ignore
             # duplicate delivery of the same event so one wheel notch is one step.
@@ -2347,6 +2503,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             self._resume_playback()
 
     def closeEvent(self, event):
+        self._programme_timer.stop()
         self._pause_started_at = None
         self._recovering_after_pause = False
         self._pause_recovery_failed = False
