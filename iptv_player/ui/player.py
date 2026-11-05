@@ -116,6 +116,30 @@ def _pause_blocks_navigation(window):
             or getattr(window, '_pause_recovery_failed', False))
 
 
+class _PlaylistSidebar(QWidget):
+    """Prefer a content-based width without imposing it on the player window."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._preferred_width = 0
+
+    def sizeHint(self):
+        size = super().sizeHint()
+        size.setWidth(self._preferred_width)
+        return size
+
+    def minimumSizeHint(self):
+        size = super().minimumSizeHint()
+        size.setWidth(0)
+        return size
+
+    def set_preferred_width(self, width):
+        if self._preferred_width != width:
+            self._preferred_width = width
+            self.updateGeometry()
+        self.setMaximumWidth(width)
+
+
 class _ClickableSlider(QSlider):
     """Seek slider that previews a dragged position and applies it on release."""
 
@@ -434,9 +458,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.vol_slider.setCursor(Qt.PointingHandCursor)
 
         # ---------- Sidebar (playlist) ----------
-        self.sidebar = QWidget(self)
+        self.sidebar = _PlaylistSidebar(self)
         self.sidebar.setObjectName("sidebarRoot")
-        self.sidebar.setFixedWidth(240)
         self._playlist_width_hint = 0
         self.sidebar.setCursor(Qt.ArrowCursor)
         self.sidebar.hide()
@@ -1573,11 +1596,18 @@ class EmbeddedPlayerWindow(QMainWindow):
         chrome_width = (margins.left() + margins.right()
                         + 2 * self.playlist_list.frameWidth()
                         + self.playlist_list.verticalScrollBar().sizeHint().width())
-        desired_width = max(240, self._playlist_width_hint + chrome_width)
+        desired_width = max(1, self._playlist_width_hint + chrome_width)
         available_width = max(1, int(self.centralWidget().width() * 0.6))
+        if not self._is_fullscreen:
+            # The video has its own minimum width. A fixed sidebar wider than
+            # the remaining space makes Qt grow the entire top-level window.
+            margins = self._content_layout.contentsMargins()
+            remaining_width = (self._content_widget.width() - self.video_frame.minimumWidth()
+                               - margins.left() - margins.right()
+                               - max(0, self._content_layout.spacing()))
+            available_width = max(1, min(available_width, remaining_width))
         width = min(desired_width, available_width)
-        if self.sidebar.width() != width:
-            self.sidebar.setFixedWidth(width)
+        self.sidebar.set_preferred_width(width)
 
     def _playlist_item_activated(self, item):
         idx = item.data(Qt.UserRole)
