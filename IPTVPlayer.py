@@ -240,6 +240,10 @@ from iptv_player.ui.account_tooltips import account_tooltip, AccountSelector
 from iptv_player.provider.account_metadata import AccountMetadataLoader
 
 
+from iptv_player.provider.catalog_refresh import CatalogRefreshPolicy
+from iptv_player.ui.catalog_state import capture_catalog_view, restore_catalog_view
+
+
 class IPTVPlayerApp(QMainWindow):
     """Own the active account's views and dispatch work to providers and players."""
     def __init__(self):
@@ -407,6 +411,12 @@ class IPTVPlayerApp(QMainWindow):
         self.active_account_id = ""
         self._catalog_loaded = False
         self._catalog_request_generation = 0
+        self._catalog_refresh_policy = CatalogRefreshPolicy()
+        self._catalog_reload_pending = set()
+        self._catalog_refresh_timer = QTimer(self)
+        self._catalog_refresh_timer.setInterval(60000)
+        self._catalog_refresh_timer.timeout.connect(self._check_catalog_expiry)
+        self._catalog_refresh_timer.start()
 
         # Keep data, EPG, and image fetching ordered and gentle on the provider.
         self.threadpool = QThreadPool()
@@ -564,6 +574,7 @@ class IPTVPlayerApp(QMainWindow):
         self._load_account_content_preferences()
         self._load_account_tab_preferences(previous_tab_key)
         self.refresh_history_tab()
+        self._update_catalog_refresh_button()
         # Staying on Info emits no tab-change signal. Refresh independently of
         # catalogue cache hits and the optional periodic refresh setting.
         self._update_account_info_timer()
@@ -3562,6 +3573,13 @@ class IPTVPlayerApp(QMainWindow):
         account_controls_layout.addWidget(self.startup_account_selector)
         account_controls_layout.addWidget(QLabel("Active account:"))
         account_controls_layout.addWidget(self.account_selector)
+        self.refresh_catalog_button = QPushButton()
+        self.refresh_catalog_button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_BrowserReload))
+        self.refresh_catalog_button.setToolTip("Refresh active account catalog")
+        self.refresh_catalog_button.setAccessibleName("Refresh active account catalog")
+        self.refresh_catalog_button.clicked.connect(lambda: self.refresh_provider_catalog())
+        account_controls_layout.addWidget(self.refresh_catalog_button)
+        self._update_catalog_refresh_button()
 
         # Keep both player choices in one compact group. The radio buttons make the
         # active mode explicit, while the read-only field exposes the external path
@@ -4397,6 +4415,10 @@ class IPTVPlayerApp(QMainWindow):
         self.set_progress_bar(0, "Going to fetch data...")
 
     def fetch_data_thread(self, force_refresh=False):
+        if not self._catalog_refresh_policy.begin(self.active_account_id):
+            self._catalog_reload_pending.add(self.active_account_id)
+            return
+        self._update_catalog_refresh_button()
         logging.debug(
             "Catalog load requested: account_id=%s; force_refresh=%s; cache=%s",
             self.active_account_id or "none",
@@ -4423,6 +4445,13 @@ class IPTVPlayerApp(QMainWindow):
         dataWorker.signals.progress_bar.connect(self._catalog_progress)
         dataWorker.signals.show_error_msg.connect(self._catalog_error_message)
         dataWorker.signals.show_info_msg.connect(self._catalog_info_message)
+        dataWorker.signals.finished.connect(
+            lambda *_args, account=self.active_account_id, signals=dataWorker.signals:
+            self._finish_catalog_refresh(account, signals.catalog_fetch_complete, signals.catalog_fetched_at)
+        )
+        dataWorker.signals.error.connect(
+            lambda _error, account=self.active_account_id: self._finish_catalog_refresh(account, False)
+        )
         self.threadpool.start(dataWorker)
 
     def _current_catalog_signal(self):
@@ -4445,10 +4474,33 @@ class IPTVPlayerApp(QMainWindow):
         if self._current_catalog_signal():
             self.show_info_msg(title, message)
 
+    def _update_catalog_refresh_button(self):
+        """Expose the same busy state for all catalogue entry points."""
+        button = getattr(self, 'refresh_catalog_button', None)
+        if button is not None:
+            button.setEnabled(bool(self.active_account_id) and self.active_account_id not in self._catalog_refresh_policy.busy)
+
+    def _finish_catalog_refresh(self, account, successful, fetched_at=None):
+        """Release an account even when its result no longer belongs to the active view."""
+        self._catalog_refresh_policy.finish(account, successful, fetched_at)
+        self._update_catalog_refresh_button()
+        if account in self._catalog_reload_pending:
+            self._catalog_reload_pending.discard(account)
+            if account == self.active_account_id:
+                QTimer.singleShot(0, lambda account=account: self.fetch_data_thread(force_refresh=True) if self.active_account_id == account else None)
+
+    def _check_catalog_expiry(self):
+        """Recheck wall-clock age after sleep and while the application stays open."""
+        if (self._catalog_loaded and self.catalog_cache_enabled
+                and any(self.content_enabled.values())
+                and self._catalog_refresh_policy.due(self.active_account_id, self.catalog_cache_max_age_hours)):
+            self.refresh_provider_catalog()
+
     def refresh_provider_catalog(self):
-        """Fetch every enabled provider collection while retaining cache fallback."""
-        if not self.server or not self.username or not self.password:
-            self.show_info_msg("No account selected", "Select an IPTV account first.")
+        """Share manual and automatic refresh without interrupting the player."""
+        if not self.active_account_id or not self.server or not self.username or not self.password:
+            return
+        if self.active_account_id in self._catalog_refresh_policy.busy:
             return
         self.set_progress_bar(0, "Refreshing provider catalog...")
         self.fetch_data_thread(force_refresh=True)
@@ -4654,6 +4706,36 @@ class IPTVPlayerApp(QMainWindow):
         self._update_account_info_timer()
 
     def process_data(self, iptv_info, categories_per_stream_type, entries_per_stream_type):
+        """Replace lists atomically; queued clicks only see complete, valid rows."""
+        if not self._current_catalog_signal():
+            return
+        from PyQt5.QtCore import QSignalBlocker
+        view_state = capture_catalog_view(self) if self._catalog_loaded else None
+        widgets = (list(self.category_list_widgets.values())
+                   + list(self.streaming_list_widgets.values())
+                   + list(self.category_search_bars.values())
+                   + list(self.streaming_search_bars.values()))
+        enabled = [widget.isEnabled() for widget in widgets]
+        blockers = [QSignalBlocker(widget) for widget in widgets]
+        self._catalog_installing = True
+        try:
+            for widget in widgets:
+                widget.setEnabled(False)
+                widget.setUpdatesEnabled(False)
+            self._install_catalog_data(iptv_info, categories_per_stream_type,
+                                       entries_per_stream_type, view_state)
+            blockers.clear()
+            self._catalog_installing = False
+            if view_state:
+                restore_catalog_view(self, view_state)
+        finally:
+            blockers.clear()
+            self._catalog_installing = False
+            for widget, was_enabled in zip(widgets, enabled):
+                widget.setUpdatesEnabled(True)
+                widget.setEnabled(was_enabled)
+
+    def _install_catalog_data(self, iptv_info, categories_per_stream_type, entries_per_stream_type, view_state=None):
         """Install the current request's catalog and rebuild its visible lists.
 
         This GUI-thread transaction invalidates both data and Qt-item caches.
@@ -4662,6 +4744,8 @@ class IPTVPlayerApp(QMainWindow):
         if not self._current_catalog_signal():
             logging.debug("Ignoring catalog result from a previously selected account")
             return
+        if view_state:
+            self.series_navigation_level = 0
         print("Going to process IPTV data now")
 
         self.categories_per_stream_type = categories_per_stream_type
@@ -5422,6 +5506,8 @@ class IPTVPlayerApp(QMainWindow):
         The emitting list identifies the content type. Only complete root views
         can be cached; search results and nested Series rows are discarded.
         """
+        if getattr(self, '_catalog_installing', False):
+            return
         try:
             sender = self.sender()
             stream_type = {
@@ -5669,6 +5755,8 @@ class IPTVPlayerApp(QMainWindow):
 
     def streaming_item_clicked(self, clicked_item):
         """Refresh the selected title's information panel without starting playback."""
+        if getattr(self, '_catalog_installing', False):
+            return
         try:
 
             if not clicked_item:
@@ -5808,6 +5896,8 @@ class IPTVPlayerApp(QMainWindow):
 
     def streaming_item_double_clicked(self, clicked_item):
         """Play a channel/movie/episode or move through the Series hierarchy."""
+        if getattr(self, '_catalog_installing', False):
+            return
         try:
 
             if not clicked_item:

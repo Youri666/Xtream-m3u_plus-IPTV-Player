@@ -31,7 +31,7 @@ class AccountInfoSwitchTests(unittest.TestCase):
         for name in ("_reset_provider_view_state", "setWindowTitle", "_refresh_account_selectors",
                      "_load_hidden_categories", "_load_account_sort_preferences",
                      "_load_account_content_preferences", "_load_account_tab_preferences",
-                     "refresh_history_tab", "_update_account_info_timer", "refresh_account_info"):
+                     "refresh_history_tab", "_update_catalog_refresh_button", "_update_account_info_timer", "refresh_account_info"):
             setattr(window, name, Mock())
         return window
 

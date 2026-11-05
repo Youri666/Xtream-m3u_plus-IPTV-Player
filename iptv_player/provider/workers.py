@@ -189,6 +189,8 @@ class FetchDataWorker(QRunnable):
             )
             dedicated_cache_written = False
 
+            self.signals.catalog_fetch_complete = True
+            self.signals.catalog_fetched_at = metadata.get('fetched_at', 0)
             if cache_is_fresh:
                 self.signals.progress_bar.emit(0, 80, "Loading provider catalog from cache")
                 for stream_type in ('LIVE', 'Movies', 'Series'):
@@ -272,6 +274,9 @@ class FetchDataWorker(QRunnable):
                     except OSError as error:
                         # Cache persistence must not discard data already fetched.
                         print(f"Failed writing provider cache: {error}")
+            if not cache_is_fresh:
+                self.signals.catalog_fetch_complete = catalog_fetch_complete
+                self.signals.catalog_fetched_at = time.time() if catalog_fetch_complete else metadata.get('fetched_at', 0)
             if cache_file_to_load != dedicated_cache_file and cache_matches_account:
                 try:
                     if cache_is_fresh:
