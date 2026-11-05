@@ -318,7 +318,11 @@ The panel then closes automatically unless it is pinned open.
 
 Playback controls provide previous/next navigation, play/pause, seeking, playback speed, volume, audio track selection, subtitles when available, and fullscreen mode.
 
-Use **Ratio** to select **Auto**, **16:9**, **4:3**, **1:1**, **16:10**, **2.21:1**, **2.35:1**, **2.39:1** or **5:4**. Auto uses the stream’s original display proportions; forced formats can correct incorrectly signalled videos. The choice is remembered across streams and application restarts, and applies in both windowed and fullscreen modes. It changes the video proportions without resizing the window.
+Use **Ratio** to select **Auto**, **16:9**, **4:3**, **1:1**, **16:10**, **2.21:1**, **2.35:1**, **2.39:1** or **5:4**. Auto uses the stream’s original display proportions; forced formats can correct incorrectly signalled videos. The choice is remembered across streams and application restarts, and applies in both windowed and fullscreen modes. It changes the video proportions; window resizing is controlled separately by the lock button.
+
+The **lock button** beside Ratio keeps the window’s video area in the selected display proportions when resizing from an edge or corner. While dragging, playback pauses temporarily and the final proportions are applied when the mouse button is released. Playback resumes only if it was running before the resize. It is **enabled by default**, and its state is remembered. Auto uses the video’s display ratio, including non-square pixels when libVLC 3 reports them. If that information is unavailable, the window is left unchanged until a ratio is known.
+
+Changing streams or Ratio preserves a reference for the longest video dimension, avoiding progressive shrinking when switching back and forth between formats. The window is fitted to the available screen where layout minimums allow it. Opening or closing the playlist does not resize the window; black bars are allowed while the list is open. The lock is inactive in fullscreen or maximized mode, while Ratio still controls the video image. Unlocking permits free window resizing without stretching the image beyond the chosen video format.
 
 Click the playlist position counter (for example **13 / 34**) to show or hide the existing playlist, just like the top-left playlist button.
 
