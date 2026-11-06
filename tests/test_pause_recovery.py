@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from PyQt5.QtCore import QEvent
-from iptv_player.ui.player import EmbeddedPlayerWindow
+from iptv_player.ui.player import EmbeddedPlayerWindow, _resume_position_reached
 
 
 class PauseRecoveryTests(unittest.TestCase):
@@ -102,3 +102,42 @@ class PauseRecoveryTests(unittest.TestCase):
         EmbeddedPlayerWindow.changeEvent(window,event)
         self.assertEqual(window._resume_playback.call_count,1)
         window.deleteLater()
+
+    def test_recovery_accepts_playback_already_beyond_saved_position(self):
+        for position in (45760, 75000):
+            with self.subTest(position=position):
+                window = self.window()
+                window._recovering_after_pause = True
+                window._pause_recovery_target_ms = 45000
+                window._pause_recovery_deadline = 200
+                window._pending_resume_ms = 45000
+                window._pending_resume_attempts = 20
+                window.player.is_playing.return_value = True
+                with patch('iptv_player.ui.player.time.monotonic', return_value=201):
+                    EmbeddedPlayerWindow._check_pause_recovery(window, position)
+                self.assertFalse(window._recovering_after_pause)
+                self.assertEqual(window._pending_resume_ms, 0)
+                self.assertEqual(window._pending_resume_attempts, 0)
+                window.player.stop.assert_not_called()
+                window._show_track_osd.assert_not_called()
+
+    def test_shared_resume_criterion_rejects_unavailable_or_too_early_positions(self):
+        self.assertFalse(_resume_position_reached(-1, 100))
+        self.assertFalse(_resume_position_reached(0, 45000))
+        self.assertFalse(_resume_position_reached(44499, 45000))
+        self.assertTrue(_resume_position_reached(44500, 45000))
+        self.assertTrue(_resume_position_reached(45760, 45000))
+
+    def test_pending_recovery_diagnostics_are_bounded_and_include_positions(self):
+        window = self.window()
+        window._recovering_after_pause = True
+        window._pause_recovery_target_ms = 45000
+        window._pause_recovery_deadline = 200
+        window.player.is_playing.return_value = False
+        with self.assertLogs(level='DEBUG') as captured:
+            for now in (150, 151, 152, 156):
+                with patch('iptv_player.ui.player.time.monotonic', return_value=now):
+                    EmbeddedPlayerWindow._check_pause_recovery(window, 0)
+        self.assertEqual(len(captured.output), 2)
+        self.assertIn('target_ms=45000', captured.output[0])
+        self.assertIn('position_ms=0', captured.output[0])

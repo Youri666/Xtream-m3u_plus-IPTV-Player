@@ -5152,6 +5152,12 @@ class IPTVPlayerApp(QMainWindow):
         # Otherwise request came from single click to show only series info
         else:
             series_info = series_info_data['info']
+            if self.series_navigation_level > 0 and self.current_series_entry:
+                # Catalogue restoration can reset the entire details panel,
+                # including its favorite action, while keeping episode rows.
+                self.series_info_box.fav_button.setEnabled(True)
+                self.series_info_box.set_favorite(self._current_favorite_state(
+                    'Series', self.current_series_entry))
 
             series_img_url = series_info.get('cover', 0)
 
