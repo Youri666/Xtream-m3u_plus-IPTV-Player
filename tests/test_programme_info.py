@@ -107,3 +107,15 @@ class ProgrammeInformationTests(unittest.TestCase):
         service.request(self.request(account="missing"))
         pool.start.assert_not_called()
         self.assertIn("unavailable", deliver.call_args.args[0]["payload"]["message"])
+
+    def test_main_window_and_player_share_one_pending_epg_request(self):
+        service, pool, deliver = self.service()
+        local = Mock()
+        service.request(self.request('LIVE'), callback=local)
+        service.request(self.request('LIVE', token='player-request'))
+        pool.start.assert_called_once()
+        pool.start.call_args.args[0].signals.finished.emit([])
+        local.assert_called_once()
+        deliver.assert_called_once()
+        self.assertEqual(deliver.call_args.args[0]['payload'], local.call_args.args[0])
+        self.assertNotIn('_local_callback', deliver.call_args.args[0])

@@ -79,6 +79,45 @@ def programme_html(payload, now=None):
             f"<p>{escape(str(summary)).replace(chr(10), '<br>')}</p>")
 
 
+class EpgRefreshState:
+    """Refresh at programme end; retry empty or failed data at a bounded pace."""
+    def __init__(self):
+        self.ended = None
+        self.retry = False
+        self.last_request = None
+        self.pending = False
+
+    def begin(self, now=None):
+        self.pending = True
+        self.last_request = time.monotonic() if now is None else now
+
+    def received(self, payload, now=None):
+        self.pending = False
+        self.retry = bool(payload.get('message')) or not payload.get('entries')
+        if not payload.get('message'):
+            self.ended = self.marker(payload, now)
+
+    @staticmethod
+    def marker(payload, now=None):
+        now = time.time() if now is None else now
+        return sum(entry['end'] <= now for entry in payload.get('entries', []))
+
+    def due(self, payload, now=None, monotonic=None):
+        if self.pending:
+            return False
+        now = time.time() if now is None else now
+        monotonic = time.monotonic() if monotonic is None else monotonic
+        if self.retry and self.last_request is not None and monotonic - self.last_request < 60:
+            return False
+        ended = self.marker(payload or {}, now)
+        if self.ended is not None and ended != self.ended:
+            self.ended = ended
+            return True
+        no_future = not any(entry['end'] > now for entry in (payload or {}).get('entries', []))
+        return ((self.retry or no_future) and (self.last_request is None
+                or monotonic - self.last_request >= 60))
+
+
 class ProgrammeInfoService(QObject):
     """Reuse existing workers, coalesce requests and isolate account snapshots."""
     def __init__(self, threadpool, deliver, parent=None):
@@ -103,10 +142,16 @@ class ProgrammeInfoService(QObject):
             self.cache.popitem(last=False)
 
     def _reply(self, request, payload):
+        callback = request.get('_local_callback')
+        if callback is not None:
+            callback(payload)
+            return
         self.deliver({"command": "programme_info", "request_id": request.get("request_id"),
                       "generation": request.get("generation"), "payload": payload})
 
-    def request(self, request):
+    def request(self, request, callback=None):
+        if callback is not None:
+            request = dict(request, _local_callback=callback)
         history = request.get("history") or {}
         key = programme_key(history)
         context = self.accounts.get(key[0]) if key else None

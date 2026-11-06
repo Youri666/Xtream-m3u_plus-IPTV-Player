@@ -157,6 +157,8 @@ The **Info** tab displays information about the currently selected IPTV account.
 
 Its content is refreshed automatically when the tab is opened. A manual refresh can also be triggered with the **Refresh** button.
 
+**Catalog last updated** shows the date and local time of the active account's last successful catalogue update. It updates after manual or automatic catalogue refreshes. Loading the JSON cache preserves its original fetch date, and a failed refresh keeps the previous date. The account-status **Refresh** button does not change this catalogue timestamp.
+
 The refresh interval can be configured in **Advanced Settings**. To avoid unnecessary requests, the information is only refreshed while the **Info** tab is actually being viewed.
 
 ![Info tab showing account information and refresh controls](screenshots/info-tab.png)
@@ -320,7 +322,7 @@ Playback controls provide previous/next navigation, play/pause, seeking, playbac
 
 The **Programme information** button beside **Info** displays the current LIVE programme and its EPG description, or the synopsis of the film or episode being played. When an episode synopsis is unavailable, a series synopsis is shown with an explicit label if the provider supplies one. Missing information is indicated clearly.
 
-The programme panel follows changes made from the player's playlist, including automatic next-episode playback. LIVE programme selection updates while the panel is open, with provider EPG refreshes at most once per minute. Information already loaded in the main application is reused where available; this feature makes no additional TMDb requests. **Info** continues to show technical stream details. Both views share the same panel and work in windowed and fullscreen modes. The panel automatically fits its contents, growing up to the available video area; scrollbars appear only when needed. Selecting an episode in the main Series view also displays its synopsis, with the series synopsis used as a fallback.
+The programme panel follows changes made from the player's playlist, including automatic next-episode playback. LIVE programme selection updates locally each second while the panel is open. The main LIVE schedule also removes ended programmes automatically. Both views share EPG data and renew it when a programme ends; empty schedules or failed requests are retried no more than once per minute. Information already loaded in the main application is reused where available; this feature makes no additional TMDb requests. **Info** continues to show technical stream details. Both views share the same panel and work in windowed and fullscreen modes. The panel automatically fits its contents, growing up to the available video area; scrollbars appear only when needed. Selecting an episode in the main Series view also displays its synopsis, with the series synopsis used as a fallback.
 
 Use **Ratio** to select **Auto**, **16:9**, **4:3**, **1:1**, **16:10**, **2.21:1**, **2.35:1**, **2.39:1** or **5:4**. Auto uses the stream’s original display proportions; forced formats can correct incorrectly signalled videos. The choice is remembered across streams and application restarts, and applies in both windowed and fullscreen modes. It changes the video proportions; window resizing is controlled separately by the lock button.
 
@@ -356,6 +358,9 @@ The **Information** button displays technical details reported by VLC for the cu
 - **Mouse wheel over the volume control:** increase / decrease volume
 - **M:** mute / unmute
 - **I:** show / hide stream information
+- **P:** show / hide programme information and synopsis
+- **R:** cycle through video formats, including Auto (click Ratio to open the checked selection menu)
+- **K:** lock / unlock window proportions (inactive in fullscreen or maximized mode)
 - **A:** cycle through available audio tracks
 - **S:** cycle through available subtitles
 - **F:** toggle fullscreen

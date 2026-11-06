@@ -163,8 +163,8 @@ from iptv_player.storage import (
 from iptv_player.provider.cache import account_cache_key
 from iptv_player.provider.client import DEFAULT_USER_AGENT_HEADER
 from iptv_player.provider.credentials import parse_xtream_m3u_url
+from iptv_player.ui.live_epg import LiveEpgController
 from iptv_player.programme_info import ProgrammeInfoService, episode_summary
-from iptv_player.provider.epg import apply_epg_offset
 from iptv_player.player_process import run_embedded_player_process
 from iptv_player.external_player import (
     ExternalPlayerNotExecutableError,
@@ -183,7 +183,6 @@ from iptv_player.provider.network import (
 )
 from iptv_player.provider.workers import (
     AccountInfoWorker,
-    EPGWorker,
     FetchDataWorker,
     ImageFetcher,
     MovieInfoFetcher,
@@ -241,7 +240,7 @@ from iptv_player.ui.account_tooltips import account_tooltip, AccountSelector
 from iptv_player.provider.account_metadata import AccountMetadataLoader
 
 
-from iptv_player.provider.catalog_refresh import CatalogRefreshPolicy
+from iptv_player.provider.catalog_refresh import CatalogRefreshPolicy, catalog_last_updated_text
 from iptv_player.ui.catalog_state import capture_catalog_view, restore_catalog_view
 
 
@@ -2458,6 +2457,12 @@ class IPTVPlayerApp(QMainWindow):
         info_controls.addWidget(self.account_info_last_refresh_label)
         info_controls.addStretch()
         self.info_tab_layout.addLayout(info_controls)
+        self.catalog_last_refresh_label = QLabel(catalog_last_updated_text(None))
+        self.catalog_last_refresh_label.setWordWrap(True)
+        self.catalog_last_refresh_label.setToolTip(
+            "Last successful provider catalog update, including cached data. "
+            "Account status refreshes do not change this date.")
+        self.info_tab_layout.addWidget(self.catalog_last_refresh_label)
 
         self.iptv_info_text = QTextEdit()
         self.iptv_info_text.setReadOnly(True)
@@ -4556,6 +4561,11 @@ class IPTVPlayerApp(QMainWindow):
         if button is not None:
             button.setEnabled(bool(self.active_account_id) and self.active_account_id not in self._catalog_refresh_policy.busy)
 
+        label = getattr(self, 'catalog_last_refresh_label', None)
+        if label is not None:
+            label.setText(catalog_last_updated_text(
+                self._catalog_refresh_policy.fetched_at.get(self.active_account_id)))
+
     def _finish_catalog_refresh(self, account, successful, fetched_at=None):
         """Release an account even when its result no longer belongs to the active view."""
         self._catalog_refresh_policy.finish(account, successful, fetched_at)
@@ -5766,22 +5776,10 @@ class IPTVPlayerApp(QMainWindow):
         )
 
     def start_epg_worker(self, stream_id, generation=None):
-        epg_worker = EPGWorker(self.server, self.username, self.password, stream_id, self)
-
-        epg_worker.signals.finished.connect(
-            lambda epg_data, token=generation:
-            self.process_epg_data(epg_data, token)
-        )
-        epg_worker.signals.finished.connect(
-            lambda data, aid=self.active_account_id, item_id=stream_id:
-            self._get_programme_service().seed(aid, "LIVE", item_id, data)
-        )
-        epg_worker.signals.error.connect(
-            lambda error_msg, token=generation:
-            self.on_epg_fetch_error(error_msg, token)
-        )
-
-        self.threadpool.start(epg_worker)
+        """Share live EPG caching and refresh policy with the isolated player."""
+        if not hasattr(self, '_live_epg_controller'):
+            self._live_epg_controller = LiveEpgController(self)
+        self._live_epg_controller.select(stream_id, generation)
 
     def on_epg_fetch_error(self, error_msg, generation=None):
         if not self._is_current_info_request("LIVE", generation):
@@ -5791,60 +5789,6 @@ class IPTVPlayerApp(QMainWindow):
 
         item = QTreeWidgetItem(["--/--/----", "--:--", "--:--", "Failed loading EPG data..."])
         self.live_info_box.live_EPG_info.addTopLevelItem(item)
-
-    def process_epg_data(self, epg_data, generation=None):
-        if not self._is_current_info_request("LIVE", generation):
-            return
-        try:
-            self.live_info_box.live_EPG_info.clear()
-
-            if not epg_data:
-                item = QTreeWidgetItem(["--/--/----", "--:--", "--:--", "No EPG Data Available..."])
-
-                self.live_info_box.live_EPG_info.addTopLevelItem(item)
-
-                self.set_progress_bar(100, "No EPG data")
-                return
-
-            current_timestamp = time.mktime(datetime.now().timetuple())
-
-            items = []
-            descriptions = []
-
-            for epg_entry in apply_epg_offset(
-                epg_data, self.epg_offset_minutes
-            ):
-                start_timestamp = epg_entry['start_time']
-                stop_timestamp  = epg_entry['stop_time']
-                program_name    = epg_entry['program_name']
-                description     = epg_entry['description']
-                date = epg_entry['date']
-
-                # Convert timestamps to string in correct format
-                start_time = start_timestamp.strftime("%H:%M")
-                stop_time = stop_timestamp.strftime("%H:%M")
-
-                # Convert stop time to unix timebase so it can be used for calculating
-                unix_stop_time = time.mktime(stop_timestamp.timetuple())
-
-                # Compute time difference
-                time_diff = unix_stop_time - current_timestamp
-
-                if time_diff >= 0:
-                    item    = QTreeWidgetItem([date, start_time, stop_time, program_name])
-                    items.append(item)
-                    descriptions.append(description)
-
-            self.live_info_box.live_EPG_info.addTopLevelItems(items)
-            for item, description in zip(items, descriptions):
-                # Spanning works reliably only after the parent belongs to the tree.
-                self.live_info_box.add_epg_description(item, description)
-
-            self.set_progress_bar(100, "Loaded EPG data")
-
-        except Exception as e:
-            print(f"Failed processing EPG: {e}")
-            self.set_progress_bar(100, "Failed processing EPG data", "error")
 
     def _update_series_description(self, episode=None):
         """Show the selected episode plot, restoring the series plot on return."""
