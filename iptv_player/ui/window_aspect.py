@@ -3,6 +3,7 @@ import math
 import logging
 from PyQt5.QtCore import QObject, QEvent, QRect, QSize, QTimer, Qt
 from PyQt5.QtWidgets import QApplication
+from PyQt5.QtGui import QMouseEvent
 
 
 def aspect_size(ratio, reference, chrome, minimum, maximum):
@@ -194,8 +195,13 @@ class WindowAspectController(QObject):
         if self.adjusting:
             return False
         if event.type() in (QEvent.MouseButtonRelease, QEvent.NonClientAreaMouseButtonRelease):
-            if event.button() == Qt.LeftButton and not self.native_drag:
-                self._end_interactive_resize()
+            if isinstance(event, QMouseEvent):
+                if event.button() == Qt.LeftButton and not self.native_drag:
+                    self._end_interactive_resize()
+            else:
+                # Some native frame releases arrive as a base QEvent in PyQt.
+                # It has no button() accessor; use the existing release check.
+                self._check_release()
         elif event.type() == QEvent.Resize:
             if not self.enabled or self.suspended() or self.ratio is None:
                 if self.enabled and not self.suspended():

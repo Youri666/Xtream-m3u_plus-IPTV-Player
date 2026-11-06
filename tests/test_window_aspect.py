@@ -6,7 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-from PyQt5.QtCore import QSize, QRect, Qt
+from PyQt5.QtCore import QSize, QRect, Qt, QEvent, QPointF
+from PyQt5.QtGui import QMouseEvent
 from PyQt5.QtWidgets import QApplication
 from iptv_player.ui.player import EmbeddedPlayerWindow
 from iptv_player.ui.window_aspect import aspect_size
@@ -203,4 +204,36 @@ class WindowAspectTests(unittest.TestCase):
                 self.settle()
                 self.assert_ratio(window, next_ratio)
             self.assertEqual(window.size(), initial)
+            window.close()
+
+    def test_generic_release_events_do_not_assume_mouse_event_accessors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            window = self.make_window(str(Path(directory)/'userdata.ini'))
+            controller = window._aspect_controller
+            controller._end_interactive_resize = Mock()
+            for event_type in (QEvent.MouseButtonRelease, QEvent.NonClientAreaMouseButtonRelease):
+                with self.subTest(event_type=event_type), patch(
+                        'iptv_player.ui.window_aspect.QApplication.mouseButtons', return_value=Qt.NoButton):
+                    self.assertFalse(controller.eventFilter(window, QEvent(event_type)))
+            self.assertEqual(controller._end_interactive_resize.call_count, 2)
+            controller._end_interactive_resize.reset_mock()
+            with patch('iptv_player.ui.window_aspect.QApplication.mouseButtons', return_value=Qt.LeftButton):
+                controller.eventFilter(window, QEvent(QEvent.NonClientAreaMouseButtonRelease))
+            controller._end_interactive_resize.assert_not_called()
+            controller.native_drag = True
+            with patch('iptv_player.ui.window_aspect.QApplication.mouseButtons', return_value=Qt.NoButton):
+                controller.eventFilter(window, QEvent(QEvent.NonClientAreaMouseButtonRelease))
+            controller._end_interactive_resize.assert_not_called()
+            window.close()
+
+    def test_real_mouse_release_only_finishes_resize_for_left_button(self):
+        with tempfile.TemporaryDirectory() as directory:
+            window = self.make_window(str(Path(directory)/'userdata.ini'))
+            controller = window._aspect_controller
+            controller._end_interactive_resize = Mock()
+            for button in (Qt.RightButton, Qt.LeftButton):
+                event = QMouseEvent(QEvent.MouseButtonRelease, QPointF(0, 0), button,
+                                    Qt.NoButton, Qt.NoModifier)
+                controller.eventFilter(window, event)
+            controller._end_interactive_resize.assert_called_once()
             window.close()

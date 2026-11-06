@@ -53,11 +53,13 @@ def restore_catalog_view(window, state):
                 categories.setCurrentItem(item)
                 categories.itemClicked.emit(item)
                 break
+        restored_series = False
         if kind == 'Series' and state['series_level']:
             if any(str(entry.get('series_id', '')) == state['series_id']
                    for entry in window.entries_per_stream_type.get('Series', [])):
                 # Retain the already opened season/episode view; it is independent
                 # of root catalogue rows and will be fetched normally on reopening.
+                restored_series = True
                 window.series_navigation_level = state['series_level']
                 window.current_series_entry = state['series_entry']
                 window.current_series_season = state['series_season']
@@ -77,3 +79,8 @@ def restore_catalog_view(window, state):
                 break
         categories.verticalScrollBar().setValue(saved['category_scroll'])
         streams.verticalScrollBar().setValue(saved['stream_scroll'])
+        if restored_series:
+            # Restoring a category resets its details panel. Rebuild the series
+            # metadata too, while retaining the open season and episode selection.
+            generation = window._next_info_request_generation('Series')
+            window.fetch_series_info(state['series_id'], False, generation)

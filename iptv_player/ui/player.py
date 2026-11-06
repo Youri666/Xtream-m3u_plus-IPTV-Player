@@ -117,6 +117,11 @@ def set_macos_activation_policy(visible):
 VOD_PAUSE_RECONNECT_SECONDS = 30.0
 
 
+def _resume_position_reached(position_ms, target_ms):
+    """Allow normal playback to advance past the saved seek position."""
+    return position_ms >= 0 and position_ms >= max(0, target_ms - 500)
+
+
 def _pause_blocks_navigation(window):
     """Share the pause/recovery guard between end events and credits skipping."""
     return (getattr(window, '_pause_started_at', None) is not None
@@ -1239,6 +1244,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             self._recovering_after_pause = True
             self._pause_recovery_target_ms = position
             self._pause_recovery_deadline = time.monotonic() + 30.0
+            self._pause_recovery_last_log_at = None
             logging.debug("Reopening paused VOD at %d ms", position)
         else:
             self._pause_started_at = None
@@ -1246,16 +1252,34 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._set_standard_icon(self.btn_play, QStyle.SP_MediaPause)
 
     def _check_pause_recovery(self, position_ms):
-        """Unblock navigation only after playback reaches the saved position."""
+        """Confirm the shared seek criterion, including playback beyond the target."""
         if not self._recovering_after_pause:
             return
         target = self._pause_recovery_target_ms
-        if self.player.is_playing() and abs(position_ms - target) <= 500:
+        playing = bool(self.player.is_playing())
+        now = time.monotonic()
+        if playing and _resume_position_reached(position_ms, target):
             self._recovering_after_pause = False
             self._pending_resume_ms = 0
             self._pending_resume_attempts = 0
-            logging.debug("Paused VOD successfully resumed")
-        elif time.monotonic() >= self._pause_recovery_deadline:
+            logging.debug('Paused VOD successfully resumed: target_ms=%d; position_ms=%d; delta_ms=%d',
+                          target, position_ms, position_ms - target)
+            return
+        expired = now >= self._pause_recovery_deadline
+        previous_log = getattr(self, '_pause_recovery_last_log_at', None)
+        if expired or previous_log is None or now - previous_log >= 5:
+            self._pause_recovery_last_log_at = now
+            try:
+                state = self.player.get_state()
+            except (AttributeError, OSError, ValueError):
+                state = 'unavailable'
+            log = logging.warning if expired else logging.debug
+            log('VOD resume %s: target_ms=%d; position_ms=%d; delta_ms=%d; playing=%s; '
+                'state=%s; pending_seek_ms=%s; seek_attempts_left=%s',
+                'timed out' if expired else 'pending', target, position_ms,
+                position_ms - target, playing, state, getattr(self, '_pending_resume_ms', None),
+                getattr(self, '_pending_resume_attempts', None))
+        if expired:
             self._fail_pause_recovery()
 
     def _fail_pause_recovery(self):
@@ -2075,7 +2099,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             resume_completed = False
             if self._pending_resume_ms and length > 0 and self.player.is_playing():
                 target = min(self._pending_resume_ms, length)
-                if cur >= target - 500:
+                if _resume_position_reached(cur, target):
                     self._pending_resume_ms = 0
                     self._pending_resume_attempts = 0
                     resume_completed = True
@@ -2384,6 +2408,10 @@ class EmbeddedPlayerWindow(QMainWindow):
         return False
 
     def eventFilter(self, obj, event):
+        # QApplication filters also receive native QWindows and other QObjects.
+        # Widget ancestry and control routing apply only to QWidget receivers.
+        if not isinstance(obj, QWidget):
+            return False
         et = event.type()
 
         # Scrolling a description or the technical tree must not seek the video.
