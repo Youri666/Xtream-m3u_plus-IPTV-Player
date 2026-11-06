@@ -13,7 +13,7 @@ class PauseRecoveryTests(unittest.TestCase):
             _pause_position_ms=0, _recovering_after_pause=False, _pause_recovery_failed=False,
             _deferred_keep_topmost=False, _paused_by_minimize=False,
             _is_live_playback=lambda: live, _set_standard_icon=Mock(), _wake_controls=Mock(),
-            _store_current_playlist_progress=Mock(), _show_track_osd=Mock(),
+            _store_current_playlist_progress=Mock(), _show_track_osd=Mock(), _update_live_indicator=Mock(),
             play_url=Mock(), next=Mock(), isVisible=lambda: True,
             _auto_play_next=True, _auto_advance_triggered=False, _auto_advance_seconds=20,
             _current_idx=0, _playlist=[{}, {}], _current_history={"type": "LIVE" if live else "Series"})
