@@ -237,3 +237,36 @@ class WindowAspectTests(unittest.TestCase):
                 controller.eventFilter(window, event)
             controller._end_interactive_resize.assert_called_once()
             window.close()
+
+    def test_native_pointer_drag_defers_vertical_resize_when_qt_reports_no_buttons(self):
+        with tempfile.TemporaryDirectory() as directory:
+            window = self.make_window(str(Path(directory)/'userdata.ini'))
+            controller = window._aspect_controller
+            controller.ratio_provider = lambda: 16/9
+            controller.refresh_ratio()
+            window.resize(1800, 1100)
+            self.settle()
+            initial = window.size()
+            window.player.is_playing.return_value = True
+            window._current_url = 'test://video'
+            window._vlc.State = SimpleNamespace(Paused=4)
+            window.player.get_state.return_value = 4
+            window._pause_playback = Mock()
+            window._resume_playback = Mock()
+            with patch.object(controller.mouse_state, 'pressed', return_value=True), patch(
+                    'iptv_player.ui.window_aspect.QApplication.mouseButtons', return_value=Qt.NoButton):
+                for reduction in (30, 60, 90):
+                    window.resize(initial.width(), initial.height() - reduction)
+                    self.settle()
+                    controller._check_release()
+                    self.assertEqual(window.width(), initial.width())
+                    self.assertEqual(window.height(), initial.height() - reduction)
+                window._pause_playback.assert_called_once()
+                window._resume_playback.assert_not_called()
+            with patch.object(controller.mouse_state, 'pressed', return_value=False):
+                controller._check_release()
+            self.settle()
+            self.assert_ratio(window, 16/9)
+            self.assertLess(window.width(), initial.width())
+            window._resume_playback.assert_called_once()
+            window.close()
