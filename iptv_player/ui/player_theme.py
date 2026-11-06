@@ -1,5 +1,14 @@
 """Qt style sheets used by the embedded media player."""
 
+DARK_ACCENT_COLOR = "#7c3aed"
+LIGHT_ACCENT_COLOR = "#5b8def"
+
+# Center the visible lettering rather than the font's descender space. Values
+# are logical pixels, so Qt applies the same optical adjustment at every DPI.
+TEXT_BUTTON_ALIGNMENT_STYLE = """
+QPushButton { text-align: center; padding-top: 3px; padding-bottom: 5px; }
+"""
+
 DARK_BUTTON_STYLE = """
 QPushButton {
     background: rgba(45, 45, 48, 130);
@@ -14,104 +23,104 @@ QPushButton:checked { background: rgba(124, 58, 237, 220); }
 QPushButton:disabled { color: #888; background: rgba(45,45,48,80); }
 """
 
-DARK_OVERLAY_STYLE = """
-QWidget#playerOverlay {
+DARK_OVERLAY_STYLE = f"""
+QWidget#playerOverlay {{
     background: rgb(20, 20, 22);
-}
-QWidget#playerTopBar {
+}}
+QWidget#playerTopBar {{
     background: rgb(20, 20, 22);
-}
-QLabel#titleLabel { color: white; font-size: 13px; font-weight: bold; }
-QLabel#timeLabel  { color: #eee; font-size: 11px; }
-QSlider#seekSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,70); border-radius: 2px; }
-QSlider#seekSlider::handle:horizontal { background: #7c3aed; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }
-QSlider#seekSlider::handle:horizontal:hover { background: #9b6dff; }
-QSlider#seekSlider::sub-page:horizontal { background: #7c3aed; border-radius: 2px; }
-QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,60); border-radius: 2px; }
-QSlider::handle:horizontal { background: #7c3aed; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }
-QSlider::sub-page:horizontal { background: #7c3aed; border-radius: 2px; }
+}}
+QLabel#titleLabel {{ color: white; font-size: 13px; font-weight: bold; }}
+QLabel#timeLabel  {{ color: #eee; font-size: 11px; }}
+QSlider#seekSlider::groove:horizontal {{ height: 4px; background: rgba(255,255,255,70); border-radius: 2px; }}
+QSlider#seekSlider::handle:horizontal {{ background: {DARK_ACCENT_COLOR}; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }}
+QSlider#seekSlider::handle:horizontal:hover {{ background: #9b6dff; }}
+QSlider#seekSlider::sub-page:horizontal {{ background: {DARK_ACCENT_COLOR}; border-radius: 2px; }}
+QSlider::groove:horizontal {{ height: 4px; background: rgba(255,255,255,60); border-radius: 2px; }}
+QSlider::handle:horizontal {{ background: {DARK_ACCENT_COLOR}; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }}
+QSlider::sub-page:horizontal {{ background: {DARK_ACCENT_COLOR}; border-radius: 2px; }}
 """
 
-DARK_SIDEBAR_STYLE = """
-QWidget#sidebarRoot { background: rgba(20, 20, 22, 240); }
-QListWidget#playlistList {
+DARK_SIDEBAR_STYLE = f"""
+QWidget#sidebarRoot {{ background: rgba(20, 20, 22, 240); }}
+QListWidget#playlistList {{
     background: transparent;
     color: white;
     border: none;
     outline: 0;
     font-size: 13px;
-}
-QListWidget#playlistList::item { padding: 1px 10px; border-left: 3px solid transparent; }
-QListWidget#playlistList::item:hover { background: rgba(91,141,239,40); }
-QListWidget#playlistList::item:selected {
+}}
+QListWidget#playlistList::item {{ padding: 1px 10px; border-left: 3px solid transparent; }}
+QListWidget#playlistList::item:hover {{ background: rgba(91,141,239,40); }}
+QListWidget#playlistList::item:selected {{
     background: rgba(91,141,239,80);
-    border-left: 3px solid #7c3aed;
+    border-left: 3px solid {DARK_ACCENT_COLOR};
     color: white;
-}
-QLineEdit#sidebarSearch {
+}}
+QLineEdit#sidebarSearch {{
     background: rgba(255,255,255,15);
     color: white;
     border: 1px solid rgba(255,255,255,30);
     border-radius: 4px;
     padding: 6px 8px;
     font-size: 12px;
-}
+}}
 """
 
-LIGHT_BUTTON_STYLE = """
-QPushButton {
+LIGHT_BUTTON_STYLE = f"""
+QPushButton {{
     background: rgba(245, 245, 245, 220);
     color: #202020;
     border: 1px solid rgba(80, 80, 80, 90);
     border-radius: 6px;
     padding: 4px 6px;
     font-size: 13px;
-}
-QPushButton:hover { background: rgba(91, 141, 239, 210); color: white; }
-QPushButton:checked { background: #5b8def; color: white; }
-QPushButton:disabled { color: #999; background: rgba(225,225,225,180); }
+}}
+QPushButton:hover {{ background: rgba(91, 141, 239, 210); color: white; }}
+QPushButton:checked {{ background: {LIGHT_ACCENT_COLOR}; color: white; }}
+QPushButton:disabled {{ color: #999; background: rgba(225,225,225,180); }}
 """
 
-LIGHT_OVERLAY_STYLE = """
-QWidget#playerOverlay {
+LIGHT_OVERLAY_STYLE = f"""
+QWidget#playerOverlay {{
     background: rgb(245, 245, 245);
-}
-QWidget#playerTopBar {
+}}
+QWidget#playerTopBar {{
     background: rgb(245, 245, 245);
-}
-QLabel#titleLabel { color: #202020; font-size: 13px; font-weight: bold; }
-QLabel#timeLabel  { color: #303030; font-size: 11px; }
-QSlider#seekSlider::groove:horizontal { height: 4px; background: rgba(0,0,0,60); border-radius: 2px; }
-QSlider#seekSlider::handle:horizontal { background: #5b8def; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }
-QSlider#seekSlider::handle:horizontal:hover { background: #376fd3; }
-QSlider#seekSlider::sub-page:horizontal { background: #5b8def; border-radius: 2px; }
-QSlider::groove:horizontal { height: 4px; background: rgba(0,0,0,55); border-radius: 2px; }
-QSlider::handle:horizontal { background: #5b8def; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }
-QSlider::sub-page:horizontal { background: #5b8def; border-radius: 2px; }
+}}
+QLabel#titleLabel {{ color: #202020; font-size: 13px; font-weight: bold; }}
+QLabel#timeLabel  {{ color: #303030; font-size: 11px; }}
+QSlider#seekSlider::groove:horizontal {{ height: 4px; background: rgba(0,0,0,60); border-radius: 2px; }}
+QSlider#seekSlider::handle:horizontal {{ background: {LIGHT_ACCENT_COLOR}; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }}
+QSlider#seekSlider::handle:horizontal:hover {{ background: #376fd3; }}
+QSlider#seekSlider::sub-page:horizontal {{ background: {LIGHT_ACCENT_COLOR}; border-radius: 2px; }}
+QSlider::groove:horizontal {{ height: 4px; background: rgba(0,0,0,55); border-radius: 2px; }}
+QSlider::handle:horizontal {{ background: {LIGHT_ACCENT_COLOR}; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }}
+QSlider::sub-page:horizontal {{ background: {LIGHT_ACCENT_COLOR}; border-radius: 2px; }}
 """
 
-LIGHT_SIDEBAR_STYLE = """
-QWidget#sidebarRoot { background: rgba(248, 248, 248, 245); }
-QListWidget#playlistList {
+LIGHT_SIDEBAR_STYLE = f"""
+QWidget#sidebarRoot {{ background: rgba(248, 248, 248, 245); }}
+QListWidget#playlistList {{
     background: transparent;
     color: #202020;
     border: none;
     outline: 0;
     font-size: 13px;
-}
-QListWidget#playlistList::item { padding: 1px 10px; border-left: 3px solid transparent; }
-QListWidget#playlistList::item:hover { background: rgba(91,141,239,40); }
-QListWidget#playlistList::item:selected {
+}}
+QListWidget#playlistList::item {{ padding: 1px 10px; border-left: 3px solid transparent; }}
+QListWidget#playlistList::item:hover {{ background: rgba(91,141,239,40); }}
+QListWidget#playlistList::item:selected {{
     background: rgba(91,141,239,110);
-    border-left: 3px solid #5b8def;
+    border-left: 3px solid {LIGHT_ACCENT_COLOR};
     color: #101010;
-}
-QLineEdit#sidebarSearch {
+}}
+QLineEdit#sidebarSearch {{
     background: white;
     color: #202020;
     border: 1px solid rgba(80,80,80,90);
     border-radius: 4px;
     padding: 6px 8px;
     font-size: 12px;
-}
+}}
 """

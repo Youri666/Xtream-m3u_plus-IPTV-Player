@@ -7,7 +7,7 @@ from PyQt5.QtGui import QMouseEvent
 from iptv_player.ui.native_mouse import NativeMouseButton
 
 
-def aspect_size(ratio, reference, chrome, minimum, maximum):
+def aspect_size(ratio, reference, chrome, minimum, maximum, device_ratio=1.0):
     """Fit a display ratio while preserving its longest video dimension when possible."""
     if not ratio or not math.isfinite(ratio) or ratio <= 0:
         return None
@@ -25,7 +25,23 @@ def aspect_size(ratio, reference, chrome, minimum, maximum):
         return QSize(min(maximum.width(), max(minimum.width(), round(width + chrome.width()))),
                      min(maximum.height(), max(minimum.height(), round(height + chrome.height()))))
     height = max(lower, min(height, upper))
-    return QSize(round(height * ratio) + chrome.width(), round(height) + chrome.height())
+    width = height * ratio
+    # Independent rounding can add more than one pixel of letterboxing. Choose
+    # the closest nearby pair on the physical pixel grid without cropping video.
+    candidates = [(w, h) for w in range(round(width) - 1, round(width) + 2)
+                  for h in range(round(height) - 1, round(height) + 2)
+                  if min_width <= w <= max_width and min_height <= h <= max_height]
+    # VLC truncates its fitted width. Favor a container no wider than the
+    # picture's ideal width so any rounding margin is horizontal, not vertical.
+    horizontal_margin = [size for size in candidates
+                         if round(size[0] * device_ratio)
+                         <= ratio * round(size[1] * device_ratio) + 1e-8]
+    candidates = horizontal_margin or candidates
+    if candidates:
+        width, height = min(candidates, key=lambda size: (
+            abs(round(size[0] * device_ratio) - ratio * round(size[1] * device_ratio)),
+            abs(size[0] - width) + abs(size[1] - height)))
+    return QSize(round(width) + chrome.width(), round(height) + chrome.height())
 
 
 class WindowAspectController(QObject):
@@ -42,6 +58,7 @@ class WindowAspectController(QObject):
         self.native_drag = False
         self.interactive_resize = False
         self.resume_url = None
+        self.return_to_live_after_resize = False
         self.mouse_state = NativeMouseButton()
         window.destroyed.connect(self.mouse_state.close)
         self.release_timer = QTimer(self)
@@ -124,7 +141,8 @@ class WindowAspectController(QObject):
         area = screen.availableGeometry()
         frame = window.frameGeometry().size() - window.size()
         maximum = area.size() - frame
-        target = aspect_size(self.ratio, self.reference, chrome, minimum, maximum)
+        target = aspect_size(self.ratio, self.reference, chrome, minimum, maximum,
+                             window.devicePixelRatioF())
         if target is None:
             return
         rect = QRect(window.geometry() if requested is None else requested)
@@ -150,9 +168,20 @@ class WindowAspectController(QObject):
                               window.width(), window.height(), rect.width(), rect.height(),
                               self.ratio, self.reference)
                 window.setGeometry(rect)
+                QTimer.singleShot(0, self._log_video_geometry)
             self.previous = QRect(window.geometry())
         finally:
             self.adjusting = False
+
+    def _log_video_geometry(self):
+        if not logging.getLogger().isEnabledFor(logging.DEBUG) or self.ratio is None:
+            return
+        video = self.window.video_frame
+        scale = video.devicePixelRatioF()
+        error = round(video.width() * scale) - self.ratio * round(video.height() * scale)
+        logging.debug('Window aspect geometry: video=%sx%s; DPI_scale=%.3f; ratio=%.6f; '
+                      'physical_width_error_px=%.3f', video.width(), video.height(), scale,
+                      self.ratio, error)
 
     def native_size_move(self, entering):
         """Windows owns border drags and reports their end outside Qt mouse events."""
@@ -167,6 +196,9 @@ class WindowAspectController(QObject):
         # Use the shared pause/resume path, including recovery after long pauses.
         if self.window.player.is_playing():
             self.resume_url = self.window._current_url
+            # A technical pause must not turn direct LIVE playback into timeshift.
+            self.return_to_live_after_resize = (
+                self.window._is_live_playback() and not self.window._live_delayed)
             self.window._pause_playback()
         self.release_timer.start()
 
@@ -186,10 +218,15 @@ class WindowAspectController(QObject):
         self.interactive_resize = False
         self._finish_resize()
         url, self.resume_url = self.resume_url, None
+        return_to_live = self.return_to_live_after_resize
+        self.return_to_live_after_resize = False
         if (url is not None and url == self.window._current_url
                 and self.window.isVisible() and not self.window.isMinimized()
                 and self.window.player.get_state() == self.window._vlc.State.Paused):
-            self.window._resume_playback()
+            if return_to_live:
+                self.window._return_to_live()
+            else:
+                self.window._resume_playback()
 
     def _finish_resize(self):
         if self.interactive_resize:

@@ -54,6 +54,7 @@ from iptv_player.storage.history import resume_position
 from iptv_player.ui.info_panel_layout import information_panel_size
 from iptv_player.programme_info import programme_html, EpgRefreshState
 from iptv_player.stream_info import collect_stream_information
+from iptv_player.ui.live_reconnect import LiveReconnectController
 from iptv_player.ui.theme import (
     application_palette_is_dark,
     apply_windows_title_bar_theme,
@@ -62,6 +63,8 @@ from iptv_player.vlc_diagnostics import describe_vlc_load_failure
 from iptv_player.linux_vlc_runtime import configure_linux_vlc_plugins
 from iptv_player.ui.widgets import KeyboardNavigableListWidget
 from iptv_player.ui.player_theme import (
+    TEXT_BUTTON_ALIGNMENT_STYLE,
+    DARK_ACCENT_COLOR, LIGHT_ACCENT_COLOR,
     DARK_BUTTON_STYLE,
     DARK_OVERLAY_STYLE,
     DARK_SIDEBAR_STYLE,
@@ -263,10 +266,12 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._paused_by_minimize = False
         self._pause_started_at = None
         self._pause_position_ms = 0
+        self._live_delayed = False
         self._recovering_after_pause = False
         self._pause_recovery_failed = False
         self._pause_recovery_deadline = 0.0
         self._current_url = ""
+        self._live_reconnect = LiveReconnectController(self)
         self._seek_osd_total_ms = 0
         self._seek_target_ms = 0
         self._seek_sequence_origin_ms = 0
@@ -349,6 +354,8 @@ class EmbeddedPlayerWindow(QMainWindow):
 
         self.time_label = QLabel("00:00 / 00:00")
         self.time_label.setObjectName("timeLabel")
+        self.time_label.setOpenExternalLinks(False)
+        self.time_label.linkActivated.connect(self._return_to_live)
 
         # Native Qt media icons stay consistent across fonts and platforms.
         self.btn_prev   = QPushButton()
@@ -909,6 +916,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             + 0.114 * background.blue()
         )
         dark = luminance < 128
+        self._accent_color = DARK_ACCENT_COLOR if dark else LIGHT_ACCENT_COLOR
         self._icon_color = QColor("#f2f2f2" if dark else "#202020")
         self._disabled_icon_color = QColor("#707075" if dark else "#a0a0a0")
         self.btn_sidebar.setIcon(self._menu_icon(self._icon_color))
@@ -923,7 +931,9 @@ class EmbeddedPlayerWindow(QMainWindow):
             self.btn_mute, self.btn_audio, self.btn_subs, self.btn_fs,
             self.btn_sidebar, self.btn_format, self.btn_aspect_lock
         ):
-            button.setStyleSheet(button_style)
+            alignment = TEXT_BUTTON_ALIGNMENT_STYLE if button in (
+                self.btn_audio, self.btn_subs, self.btn_format) else ""
+            button.setStyleSheet(button_style + alignment)
         self.overlay.setStyleSheet(overlay_style)
         self.top_bar.setStyleSheet(overlay_style)
         self.sidebar.setStyleSheet(sidebar_style)
@@ -952,6 +962,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._apply_native_title_bar_theme(dark)
         self._refresh_standard_icons()
         self._info_layout_timer.start(0)
+        if self._is_live_playback():
+            self._update_live_indicator()
 
     def _apply_native_title_bar_theme(self, dark):
         """Ask Windows to draw this native title bar using the active theme."""
@@ -1019,7 +1031,11 @@ class EmbeddedPlayerWindow(QMainWindow):
         keep_above_main=False
     ):
         was_visible = self.isVisible()
+        reconnect = getattr(self, '_live_reconnect', None)
+        if reconnect is not None:
+            reconnect.media_requested()
         self._current_url = url
+        self._live_delayed = False
         controller = getattr(self, "_aspect_controller", None)
         if controller is not None:
             controller.reset_media()
@@ -1077,6 +1093,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             dict(self._playlist[self._current_idx].get("history") or {})
             if self._playlist else None
         )
+        self._update_live_indicator()
         self._update_playback_rate_controls()
         self._pending_playback_rate_attempts = 20
         self._auto_advance_triggered = False
@@ -1203,10 +1220,52 @@ class EmbeddedPlayerWindow(QMainWindow):
             pass
 
     # ---------- transport ----------
+    def _update_live_indicator(self):
+        """Offer an explicit return-to-live link without estimating buffer delay."""
+        live = self._is_live_playback()
+        reconnect = getattr(self, '_live_reconnect', None)
+        status = reconnect.status() if live and reconnect is not None else None
+        delayed = live and self._live_delayed and not status
+        self.time_label.setTextInteractionFlags(
+            Qt.LinksAccessibleByMouse | Qt.LinksAccessibleByKeyboard
+            if delayed else Qt.NoTextInteraction)
+        self.time_label.setFocusPolicy(Qt.StrongFocus if delayed else Qt.NoFocus)
+        self.time_label.setCursor(Qt.PointingHandCursor if delayed else Qt.ArrowCursor)
+        self.time_label.setToolTip(
+            "Delayed playback. Click to return to live." if delayed else
+            "Stream interrupted. Press Play to retry." if status == 'Interrupted' else "")
+        self.time_label.setAccessibleName("Return to live" if delayed else "Playback time")
+        if live:
+            self.time_label.setText(
+                status or (f'<a href="return-to-live" style="color: {self._accent_color}; '
+                'text-decoration: none; font-weight: bold;">DELAYED</a>' if delayed else "LIVE"))
+        else:
+            self.time_label.setText("Loading...")
+
+    def _return_to_live(self, _link=None):
+        """Discard the paused LIVE input and reopen the same channel from scratch."""
+        if not self._is_live_playback() or not self._live_delayed or not self._current_url:
+            return
+        try:
+            self.player.stop()
+            self.play_url(self._current_url, self.title_label.text(), resume_ms=0,
+                          keep_above_main=self._deferred_keep_topmost)
+        except Exception as error:
+            self._live_delayed = True
+            self._update_live_indicator()
+            logging.warning("Could not return to live: %s", type(error).__name__)
+            self._show_track_osd("Could not return to live. Click DELAYED to retry.")
+
     def _pause_playback(self):
         """Remember a VOD pause before VLC can lose the connection or timestamp."""
         self._recovering_after_pause = False
-        if not self._is_live_playback():
+        if self._is_live_playback():
+            reconnect = getattr(self, '_live_reconnect', None)
+            if reconnect is not None:
+                reconnect.pause()
+            self._live_delayed = True
+            self._update_live_indicator()
+        else:
             self._pause_started_at = time.monotonic()
             self._pause_position_ms = max(0, int(self.player.get_time()))
             self._store_current_playlist_progress()
@@ -1215,6 +1274,10 @@ class EmbeddedPlayerWindow(QMainWindow):
 
     def _resume_playback(self):
         """Reopen VOD after a prolonged pause without asking the resume question."""
+        reconnect = getattr(self, '_live_reconnect', None)
+        if self._is_live_playback() and reconnect is not None and reconnect.resume():
+            self._wake_controls()
+            return
         if self._recovering_after_pause:
             return
         started = self._pause_started_at
@@ -1302,6 +1365,9 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._wake_controls()
 
     def stop(self):
+        reconnect = getattr(self, '_live_reconnect', None)
+        if reconnect is not None:
+            reconnect.stop()
         self._pause_started_at = None
         self._recovering_after_pause = False
         self._pause_recovery_failed = False
@@ -1446,13 +1512,16 @@ class EmbeddedPlayerWindow(QMainWindow):
         """Start the next item after on-demand playback finishes naturally."""
         if media_generation != self._media_generation:
             return
+        if self._is_live_playback():
+            reconnect = getattr(self, '_live_reconnect', None)
+            if reconnect is not None:
+                reconnect.ended(media_generation)
+            return
         if _pause_blocks_navigation(self):
             return
         if not self._auto_play_next or self._auto_advance_triggered:
             return
         if not self.isVisible():
-            return
-        if (self._current_history or {}).get("type") == "LIVE":
             return
         self._auto_advance_triggered = True
         self.next()
@@ -2096,6 +2165,8 @@ class EmbeddedPlayerWindow(QMainWindow):
 
             length = self._playback_length()
             cur    = self.player.get_time()
+            if self._is_live_playback():
+                self._live_reconnect.poll(cur)
             resume_completed = False
             if self._pending_resume_ms and length > 0 and self.player.is_playing():
                 target = min(self._pending_resume_ms, length)
@@ -2124,7 +2195,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             if is_live:
                 self.seek_slider.setEnabled(False)
                 self.seek_slider.setValue(0)
-                self.time_label.setText("LIVE")
+                self._update_live_indicator()
             elif length > 0:
                 if self._maybe_auto_advance(cur, length):
                     return
@@ -2251,7 +2322,8 @@ class EmbeddedPlayerWindow(QMainWindow):
             self.player.set_rate(target_rate)
             self.rate_label.setText(f"{target_rate:.2f}x")
             self._pending_playback_rate_attempts -= 1
-            if abs(float(self.player.get_rate()) - target_rate) < 0.01:
+            actual_rate = float(self.player.get_rate())
+            if abs(actual_rate - target_rate) < 0.01:
                 self._pending_playback_rate_attempts = 0
         except (TypeError, ValueError):
             self._pending_playback_rate_attempts = 0
@@ -2558,6 +2630,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             self._resume_playback()
 
     def closeEvent(self, event):
+        self._live_reconnect.stop()
         self._programme_timer.stop()
         self._pause_started_at = None
         self._recovering_after_pause = False

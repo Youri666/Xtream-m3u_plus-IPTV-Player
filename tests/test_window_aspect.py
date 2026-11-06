@@ -270,3 +270,17 @@ class WindowAspectTests(unittest.TestCase):
             self.assertLess(window.width(), initial.width())
             window._resume_playback.assert_called_once()
             window.close()
+
+    def test_joint_rounding_reduces_physical_pixel_ratio_error(self):
+        ratio = 16/9
+        for scale in (1, 1.5, 2, 3):
+            for reference in (1000, 1080, 1111):
+                with self.subTest(scale=scale, reference=reference):
+                    chrome = QSize(0, 100)
+                    result = aspect_size(ratio, reference, chrome, QSize(100, 100),
+                                         QSize(2400, 1500), scale)
+                    old_width, old_height = round(reference), round(reference/ratio)
+                    old_error = abs(round(old_width*scale) - ratio*round(old_height*scale))
+                    error = abs(round(result.width()*scale) - ratio*round((result.height()-100)*scale))
+                    self.assertLessEqual(error, old_error + 1e-8)
+                    self.assertLessEqual(abs(result.width()-reference), 1)
