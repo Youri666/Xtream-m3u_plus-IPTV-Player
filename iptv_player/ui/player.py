@@ -23,7 +23,6 @@ from PyQt5.QtGui import (
 )
 from PyQt5.QtWidgets import (
     QAction,
-    QActionGroup,
     QApplication,
     QFrame,
     QHBoxLayout,
@@ -53,7 +52,7 @@ from iptv_player.config import write_config_file
 from iptv_player.constants import DEFAULT_RESUME_BEHAVIOR, RESUME_BEHAVIORS
 from iptv_player.storage.history import resume_position
 from iptv_player.ui.info_panel_layout import information_panel_size
-from iptv_player.programme_info import programme_html
+from iptv_player.programme_info import programme_html, EpgRefreshState
 from iptv_player.stream_info import collect_stream_information
 from iptv_player.ui.theme import (
     application_palette_is_dark,
@@ -361,12 +360,12 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_programme.setCheckable(True)
         self.btn_programme.setEnabled(False)
         self.btn_programme.setAccessibleName("Programme information")
-        self.btn_programme.setToolTip("Programme / movie / episode summary")
+        self.btn_programme.setToolTip("Programme / movie / episode summary (P)")
         self.btn_programme.clicked.connect(self._toggle_programme_information)
         self._programme_payload = None
         self._programme_request_id = 0
         self._programme_request_pending = False
-        self._programme_last_request = 0
+        self._programme_epg_refresh = EpgRefreshState()
         self._programme_last_html = None
         self._programme_timer = QTimer(self)
         self._programme_timer.setInterval(1000)
@@ -395,23 +394,20 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_aspect_lock.setCheckable(True)
         self.btn_aspect_lock.setChecked(self._window_aspect_locked)
         self.btn_aspect_lock.setAccessibleName("Lock window proportions")
-        self.btn_aspect_lock.setToolTip("Keep video proportions when resizing the window")
+        self.btn_aspect_lock.setToolTip("Keep video proportions when resizing the window (K)")
         self.btn_aspect_lock.toggled.connect(self._toggle_window_aspect_lock)
         self.btn_format = QPushButton("Ratio")
         self.btn_format.setAccessibleName("Video aspect ratio")
         self.format_menu = QMenu(self.btn_format)
         self.format_actions = {}
-        format_group = QActionGroup(self.format_menu)
-        format_group.setExclusive(True)
         for label in VIDEO_ASPECT_RATIOS:
             action = self.format_menu.addAction(label)
             action.setCheckable(True)
             action.setChecked(label == self._video_format)
-            format_group.addAction(action)
             action.triggered.connect(lambda _checked=False, value=label: self._select_video_format(value))
             self.format_actions[label] = action
-        self.btn_format.setMenu(self.format_menu)
-        self.btn_format.setToolTip(f"Video format: {self._video_format}")
+        self.btn_format.clicked.connect(self._show_video_format_menu)
+        self.btn_format.setToolTip(f"Video format: {self._video_format} (R cycles formats)")
 
         for b in (self.btn_prev, self.btn_rewind, self.btn_play, self.btn_ffwd,
                   self.btn_next, self.btn_slow, self.btn_fast, self.btn_info, self.btn_programme,
@@ -654,6 +650,12 @@ class EmbeddedPlayerWindow(QMainWindow):
         QShortcut(QKeySequence(Qt.Key_S),     self, activated=self._cycle_subs)
         QShortcut(QKeySequence(Qt.Key_M),     self, activated=self.toggle_mute)
         QShortcut(QKeySequence(Qt.Key_I),     self, activated=self._toggle_stream_information_shortcut)
+        # Route shortcuts through the buttons, preserving checked/disabled states.
+        for key, action in ((Qt.Key_P, self.btn_programme.click),
+                            (Qt.Key_R, self._cycle_video_format),
+                            (Qt.Key_K, self.btn_aspect_lock.click)):
+            shortcut = QShortcut(QKeySequence(key), self, activated=action)
+            shortcut.setAutoRepeat(False)
         QShortcut(QKeySequence(Qt.Key_PageUp), self, activated=self.previous)
         QShortcut(QKeySequence(Qt.Key_PageDown), self, activated=self.next)
         QShortcut(QKeySequence(Qt.Key_Left),  self, activated=lambda: self.seek_by(-self._seek_step_ms))
@@ -839,9 +841,9 @@ class EmbeddedPlayerWindow(QMainWindow):
         inactive = self._is_fullscreen or self.isMaximized()
         self.btn_aspect_lock.setEnabled(not inactive)
         self.btn_aspect_lock.setToolTip(
-            "Window proportions lock is inactive in fullscreen or maximized mode" if inactive
-            else "Unlock window proportions" if self._window_aspect_locked
-            else "Lock window proportions to the video format")
+            ("Window proportions lock is inactive in fullscreen or maximized mode" if inactive
+             else "Unlock window proportions" if self._window_aspect_locked
+             else "Lock window proportions to the video format") + " (K)")
 
     def _toggle_window_aspect_lock(self, enabled):
         self._window_aspect_locked = bool(enabled)
@@ -1026,6 +1028,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         programme_open = self.btn_programme.isChecked()
         self._hide_stream_information()
         self._programme_payload = None
+        self._programme_epg_refresh = EpgRefreshState()
         self._programme_request_pending = False
         self._programme_last_html = None
         self._report_progress(force=True)
@@ -1512,6 +1515,31 @@ class EmbeddedPlayerWindow(QMainWindow):
             logging.warning("Could not apply video aspect ratio")
             return False
 
+    def _show_selection_menu(self, menu, button):
+        """Use the same popup placement and dismissal state for all selectors."""
+        self._wake_controls()
+        try:
+            menu.exec_(button.mapToGlobal(button.rect().bottomLeft()))
+        finally:
+            button.setDown(False)
+            button.clearFocus()
+            button.update()
+
+    def _show_video_format_menu(self):
+        """Show every format and mark the current choice, like Audio and CC."""
+        self._show_selection_menu(self.format_menu, self.btn_format)
+
+    def _cycle_video_format(self):
+        """Select the next format through the shared persistent selection path."""
+        formats = list(VIDEO_ASPECT_RATIOS)
+        next_index = (formats.index(self._video_format) + 1) % len(formats)
+        self._select_video_format(formats[next_index])
+
+    def _update_video_format_actions(self):
+        """Keep one checked box without Qt's exclusive-group radio indicator."""
+        for label, action in self.format_actions.items():
+            action.setChecked(label == self._video_format)
+
     def _select_video_format(self, value):
         """Apply and remember a toolbar choice without reopening the current media."""
         if value not in VIDEO_ASPECT_RATIOS:
@@ -1520,11 +1548,11 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._video_format = value
         if not self._apply_video_format():
             self._video_format = previous
-            self.format_actions[previous].setChecked(True)
+            self._update_video_format_actions()
             self._show_track_osd("Could not change video format")
             return
-        self.format_actions[value].setChecked(True)
-        self.btn_format.setToolTip(f"Video format: {value}")
+        self._update_video_format_actions()
+        self.btn_format.setToolTip(f"Video format: {value} (R cycles formats)")
         try:
             save_video_format(self._settings_path(), value)
         except (OSError, configparser.Error, UnicodeDecodeError):
@@ -1591,19 +1619,15 @@ class EmbeddedPlayerWindow(QMainWindow):
         except Exception:
             current = -1
         for track_id, name in tracks:
-            action = QAction(name, self)
+            action = QAction(name, menu)
             action.setCheckable(True)
             action.setChecked(track_id == current)
             action.triggered.connect(
                 lambda _, selected_id=track_id: self._select_audio_track(selected_id)
             )
             menu.addAction(action)
-        menu.exec_(self.btn_audio.mapToGlobal(self.btn_audio.rect().bottomLeft()))
-        # A modal popup can leave its invoker focused after dismissal, which
-        # resembles a selected state even when the user chose no track.
-        self.btn_audio.setDown(False)
-        self.btn_audio.clearFocus()
-        self.btn_audio.update()
+        self._show_selection_menu(menu, self.btn_audio)
+        menu.deleteLater()
 
     def _select_audio_track(self, track_id):
         """Select one libVLC audio track from the popup menu."""
@@ -1637,15 +1661,13 @@ class EmbeddedPlayerWindow(QMainWindow):
         except Exception:
             current = -1
         for tid, name in tracks:
-            act = QAction(name, self)
+            act = QAction(name, menu)
             act.setCheckable(True)
             act.setChecked(tid == current)
             act.triggered.connect(lambda _, t=tid: self.player.video_set_spu(t))
             menu.addAction(act)
-        menu.exec_(self.btn_subs.mapToGlobal(self.btn_subs.rect().bottomLeft()))
-        self.btn_subs.setDown(False)
-        self.btn_subs.clearFocus()
-        self.btn_subs.update()
+        self._show_selection_menu(menu, self.btn_subs)
+        menu.deleteLater()
 
     def _cycle_subs(self):
         tracks = self._subs_tracks()
@@ -1759,14 +1781,15 @@ class EmbeddedPlayerWindow(QMainWindow):
     def _request_programme_information(self):
         if self._programme_request_pending:
             return
-        self._programme_last_request = time.monotonic()
         if not self._current_history or self._progress_callback is None:
             self._programme_payload = {"message": "Programme information unavailable."}
+            self._programme_epg_refresh.begin()
+            self._programme_epg_refresh.received(self._programme_payload)
             self._refresh_programme_information()
             return
         self._programme_request_id = uuid.uuid4().hex
-        self._programme_last_request = time.monotonic()
         self._programme_request_pending = True
+        self._programme_epg_refresh.begin()
         try:
             self._progress_callback({"event": "programme_request",
                 "generation": self._media_generation, "request_id": self._programme_request_id,
@@ -1774,6 +1797,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         except (EOFError, OSError):
             self._programme_request_pending = False
             self._programme_payload = {"message": "Unable to load programme information."}
+            self._programme_epg_refresh.received(self._programme_payload)
 
     def receive_programme_information(self, response):
         """Discard replies for an earlier stream or superseded request."""
@@ -1781,7 +1805,10 @@ class EmbeddedPlayerWindow(QMainWindow):
                 or response.get("request_id") != self._programme_request_id):
             return
         self._programme_request_pending = False
-        self._programme_payload = response.get("payload") or {}
+        payload = response.get("payload") or {}
+        self._programme_epg_refresh.received(payload)
+        if not payload.get('message') or self._programme_payload is None:
+            self._programme_payload = payload
         self._refresh_programme_information()
 
     def _refresh_programme_information(self):
@@ -1795,7 +1822,7 @@ class EmbeddedPlayerWindow(QMainWindow):
                 self._reposition_stream_info_panel()
                 self._info_layout_timer.start(0)
         if (self._is_live_playback() and not self._programme_request_pending
-                and time.monotonic() - self._programme_last_request >= 60):
+                and self._programme_epg_refresh.due(self._programme_payload)):
             self._request_programme_information()
 
     # ---------- fullscreen ----------

@@ -157,3 +157,23 @@ class ProgrammePanelTests(unittest.TestCase):
                 self.app.processEvents()
             self.assertLess(window.stream_info_panel.height(), expanded)
             window.close()
+
+    def test_live_panel_left_open_advances_and_renews_only_at_programme_end(self):
+        with tempfile.TemporaryDirectory() as directory:
+            window = self.window(str(Path(directory)/'settings.ini'))
+            window._current_history = {'account_id': 'A', 'type': 'LIVE', 'stream_id': '10'}
+            window._programme_payload = {'kind': 'LIVE', 'entries': [
+                {'start': 50, 'end': 100, 'title': 'First', 'summary': 'One'},
+                {'start': 100, 'end': 200, 'title': 'Second', 'summary': 'Two'}]}
+            window._programme_epg_refresh.received(window._programme_payload, 90)
+            with patch('iptv_player.programme_info.time.time', return_value=90):
+                window._toggle_programme_information(True)
+                self.assertIn('First', window.programme_text.toPlainText())
+                window._progress_callback.assert_not_called()
+            with patch('iptv_player.programme_info.time.time', return_value=100):
+                window._refresh_programme_information()
+                self.assertIn('Second', window.programme_text.toPlainText())
+                window._progress_callback.assert_called_once()
+                window._refresh_programme_information()
+                window._progress_callback.assert_called_once()
+            window.close()
