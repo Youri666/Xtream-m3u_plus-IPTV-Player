@@ -1,5 +1,6 @@
 """The Info date reflects actual successful catalogue fetches per account."""
 import ast
+import logging
 from datetime import datetime
 from pathlib import Path
 import unittest
@@ -12,7 +13,7 @@ def label_methods():
     cls = next(node for node in ast.parse(source.read_text(encoding='utf-8')).body
                if isinstance(node, ast.ClassDef) and node.name == 'IPTVPlayerApp')
     names = {'_update_catalog_refresh_button', '_finish_catalog_refresh'}
-    namespace = {'catalog_last_updated_text': catalog_last_updated_text}
+    namespace = {'catalog_last_updated_text': catalog_last_updated_text, 'logging': logging}
     exec(compile(ast.Module(body=[node for node in cls.body if isinstance(node, ast.FunctionDef)
                                  and node.name in names], type_ignores=[]), str(source), 'exec'), namespace)
     return {name: namespace[name] for name in names}

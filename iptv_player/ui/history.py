@@ -1,7 +1,7 @@
 """Present episode history as series groups without changing saved entries."""
 
 from PyQt5.QtCore import Qt, QSignalBlocker, pyqtSignal
-from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem, QStyledItemDelegate
+from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem, QStyledItemDelegate, QHeaderView
 
 
 GROUP_ROLE = Qt.UserRole + 1
@@ -40,7 +40,7 @@ class HistoryTreeWidget(QTreeWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.header().resizeSections()
+        self.header().resizeSections(QHeaderView.ResizeToContents)
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key_Return, Qt.Key_Enter) and self.currentItem() is not None:

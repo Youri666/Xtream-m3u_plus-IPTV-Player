@@ -1,9 +1,10 @@
-"""Qt-only window aspect locking with bounded geometry and a stable size reference."""
+"""Window aspect locking with bounded geometry and a stable size reference."""
 import math
 import logging
 from PyQt5.QtCore import QObject, QEvent, QRect, QSize, QTimer, Qt
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QMouseEvent
+from iptv_player.ui.native_mouse import NativeMouseButton
 
 
 def aspect_size(ratio, reference, chrome, minimum, maximum):
@@ -41,6 +42,8 @@ class WindowAspectController(QObject):
         self.native_drag = False
         self.interactive_resize = False
         self.resume_url = None
+        self.mouse_state = NativeMouseButton()
+        window.destroyed.connect(self.mouse_state.close)
         self.release_timer = QTimer(self)
         self.release_timer.setInterval(30)
         self.release_timer.timeout.connect(self._check_release)
@@ -167,14 +170,19 @@ class WindowAspectController(QObject):
             self.window._pause_playback()
         self.release_timer.start()
 
+    def _left_button_pressed(self):
+        native = self.mouse_state.pressed()
+        return bool(QApplication.mouseButtons() & Qt.LeftButton) if native is None else native
+
     def _check_release(self):
-        if not self.native_drag and not (QApplication.mouseButtons() & Qt.LeftButton):
+        if not self.native_drag and not self._left_button_pressed():
             self._end_interactive_resize()
 
     def _end_interactive_resize(self):
         if not self.interactive_resize:
             return
         self.release_timer.stop()
+        self.mouse_state.close()
         self.interactive_resize = False
         self._finish_resize()
         url, self.resume_url = self.resume_url, None
@@ -208,7 +216,7 @@ class WindowAspectController(QObject):
                     self.capture_reference()
                 self.previous = QRect(self.window.geometry())
                 return False
-            if self.native_drag or QApplication.mouseButtons() & Qt.LeftButton:
+            if self.native_drag or self._left_button_pressed():
                 self._begin_interactive_resize()
             chrome = self.chrome()
             requested = QRect(self.window.geometry())

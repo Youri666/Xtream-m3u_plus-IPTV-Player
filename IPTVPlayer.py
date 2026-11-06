@@ -4526,13 +4526,7 @@ class IPTVPlayerApp(QMainWindow):
         dataWorker.signals.progress_bar.connect(self._catalog_progress)
         dataWorker.signals.show_error_msg.connect(self._catalog_error_message)
         dataWorker.signals.show_info_msg.connect(self._catalog_info_message)
-        dataWorker.signals.finished.connect(
-            lambda *_args, account=self.active_account_id, signals=dataWorker.signals:
-            self._finish_catalog_refresh(account, signals.catalog_fetch_complete, signals.catalog_fetched_at)
-        )
-        dataWorker.signals.error.connect(
-            lambda _error, account=self.active_account_id: self._finish_catalog_refresh(account, False)
-        )
+        dataWorker.signals.completed.connect(self._finish_catalog_refresh)
         self.threadpool.start(dataWorker)
 
     def _current_catalog_signal(self):
@@ -4568,6 +4562,8 @@ class IPTVPlayerApp(QMainWindow):
 
     def _finish_catalog_refresh(self, account, successful, fetched_at=None):
         """Release an account even when its result no longer belongs to the active view."""
+        logging.debug('Catalog request completed: account_id=%s; success=%s; fetched_at=%s',
+                      account, successful, fetched_at)
         self._catalog_refresh_policy.finish(account, successful, fetched_at)
         self._update_catalog_refresh_button()
         pending = getattr(self, '_pending_playback_selection', None)

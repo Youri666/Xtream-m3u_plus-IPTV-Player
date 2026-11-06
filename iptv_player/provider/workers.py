@@ -63,6 +63,7 @@ class AccountInfoWorker(QRunnable):
             self.signals.error.emit(str(error))
 
 class FetchDataWorkerSignals(QObject):
+    completed       = pyqtSignal(str, bool, object)
     finished        = pyqtSignal(dict, dict, dict)
     error           = pyqtSignal(str)
     progress_bar    = pyqtSignal(int, int, str)
@@ -98,6 +99,7 @@ class FetchDataWorker(QRunnable):
             1, min(int(catalog_cache_max_age_hours), 720)
         )
         self.force_provider_refresh = bool(force_provider_refresh)
+        self.account_id = str(getattr(parent, "active_account_id", "") or "")
         self.signals           = FetchDataWorkerSignals()
         # Provider selection can change while this runnable is queued. Snapshot
         # every account-specific value so an older request cannot read or write the
@@ -121,6 +123,8 @@ class FetchDataWorker(QRunnable):
         # A fresh cache hit never creates a provider client. Initialize the handle
         # before branching so cleanup is safe for both cached and network loads.
         client = None
+        completed_successfully = False
+        catalog_fetched_at = 0
         try:
             categories_per_stream_type = {
                 'LIVE': [],
@@ -189,8 +193,8 @@ class FetchDataWorker(QRunnable):
             )
             dedicated_cache_written = False
 
-            self.signals.catalog_fetch_complete = True
-            self.signals.catalog_fetched_at = metadata.get('fetched_at', 0)
+            catalog_fetch_complete = True
+            catalog_fetched_at = metadata.get('fetched_at', 0)
             if cache_is_fresh:
                 self.signals.progress_bar.emit(0, 80, "Loading provider catalog from cache")
                 for stream_type in ('LIVE', 'Movies', 'Series'):
@@ -275,8 +279,7 @@ class FetchDataWorker(QRunnable):
                         # Cache persistence must not discard data already fetched.
                         print(f"Failed writing provider cache: {error}")
             if not cache_is_fresh:
-                self.signals.catalog_fetch_complete = catalog_fetch_complete
-                self.signals.catalog_fetched_at = time.time() if catalog_fetch_complete else metadata.get('fetched_at', 0)
+                catalog_fetched_at = time.time() if catalog_fetch_complete else metadata.get('fetched_at', 0)
             if cache_file_to_load != dedicated_cache_file and cache_matches_account:
                 try:
                     if cache_is_fresh:
@@ -300,6 +303,7 @@ class FetchDataWorker(QRunnable):
 
             #Send received data to processing function
             self.signals.finished.emit(iptv_info_data, categories_per_stream_type, entries_per_stream_type)
+            completed_successfully = catalog_fetch_complete
 
             print("Finished downloading IPTV data")
 
@@ -307,8 +311,12 @@ class FetchDataWorker(QRunnable):
             print(f"Exception! {e}")
             self.signals.error.emit(str(e))
         finally:
-            if client is not None:
-                client.close()
+            try:
+                if client is not None:
+                    client.close()
+            finally:
+                # Always settle the GUI busy state through a real Qt signal.
+                self.signals.completed.emit(self.account_id, completed_successfully, catalog_fetched_at)
 
     def generate_url(self, stream_type, stream_id, container_extension):
         """Keep the worker API while delegating URL formatting to the provider layer."""
