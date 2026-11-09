@@ -350,7 +350,7 @@ The **Information** button displays technical details reported by VLC for the cu
 - Use the mouse wheel over the playback-speed controls (`−  1.00x  +`) to decrease or increase the speed by the configured step.
 - During Live TV playback, **LIVE** is displayed instead of a playback position.
 - Minimizing the player automatically pauses playback; restoring the window resumes it.
-- For movies and episodes, resuming after a pause of at least **30 seconds** reopens the same stream and restores the paused position automatically, without a Resume/Restart dialog. This also applies to pauses caused by minimizing the player. LIVE playback is unchanged. If reconnection or position restoration fails, the player stays on the current item and displays a retry message instead of advancing to the next episode.
+- Movies and episodes resume normally after a pause, including when the player was minimized. If VLC reports an error or the stream ends before the known end of the video, the player shows **Reconnecting…**, reopens the same stream and restores the last playback position without a Resume/Restart dialog. A normal ending and the configured early-next-episode threshold retain their usual behaviour. Recovery is limited to 30 seconds; a repeated interruption before 30 seconds of playback progress displays **Stream interrupted. Press Play to retry.** instead of advancing. When the duration is unavailable, an end cannot be classified reliably: the player stays on the current item and offers a manual retry.
 
 ### Keyboard shortcuts
 

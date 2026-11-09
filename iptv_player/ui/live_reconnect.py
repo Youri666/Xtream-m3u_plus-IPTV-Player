@@ -6,6 +6,10 @@ from PyQt5.QtCore import QObject, QTimer
 from PyQt5.QtWidgets import QStyle
 
 
+RECONNECTING_MESSAGE = 'Reconnecting…'
+INTERRUPTED_MESSAGE = 'Stream interrupted. Press Play to retry.'
+
+
 class LiveReconnectController(QObject):
     RETRY_DELAY_MS = 1000
     START_TIMEOUT_SECONDS = 30
@@ -62,7 +66,7 @@ class LiveReconnectController(QObject):
 
     def status(self):
         if self.phase is not None:
-            return 'Reconnecting…'
+            return RECONNECTING_MESSAGE
         return 'Interrupted' if self.failed else None
 
     def _eligible(self):
@@ -88,7 +92,7 @@ class LiveReconnectController(QObject):
             self.generation = generation
             self.stable_since = None
             w._update_live_indicator()
-            w._show_track_osd('Reconnecting…')
+            w._show_track_osd(RECONNECTING_MESSAGE)
             logging.debug('LIVE reconnect scheduled: generation=%s', generation)
             self.timer.start(self.RETRY_DELAY_MS)
 
@@ -160,5 +164,5 @@ class LiveReconnectController(QObject):
             logging.debug('Could not stop interrupted LIVE input', exc_info=True)
         self.window._set_standard_icon(self.window.btn_play, QStyle.SP_MediaPlay)
         self.window._update_live_indicator()
-        self.window._show_track_osd('Stream interrupted. Press Play to retry.')
+        self.window._show_track_osd(INTERRUPTED_MESSAGE)
         logging.warning('LIVE reconnect failed: %s', reason)

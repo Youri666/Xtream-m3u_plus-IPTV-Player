@@ -54,7 +54,9 @@ from iptv_player.storage.history import resume_position
 from iptv_player.ui.info_panel_layout import information_panel_size
 from iptv_player.programme_info import programme_html, EpgRefreshState
 from iptv_player.stream_info import collect_stream_information
-from iptv_player.ui.live_reconnect import LiveReconnectController
+from iptv_player.ui.live_reconnect import (
+    LiveReconnectController, RECONNECTING_MESSAGE, INTERRUPTED_MESSAGE,
+)
 from iptv_player.ui.theme import (
     application_palette_is_dark,
     apply_windows_title_bar_theme,
@@ -117,7 +119,7 @@ def set_macos_activation_policy(visible):
         pass
 
 
-VOD_PAUSE_RECONNECT_SECONDS = 30.0
+VOD_END_TOLERANCE_MS = 2000
 
 
 def _resume_position_reached(position_ms, target_ms):
@@ -270,6 +272,10 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._recovering_after_pause = False
         self._pause_recovery_failed = False
         self._pause_recovery_deadline = 0.0
+        self._vod_position_ms = 0
+        self._vod_duration_ms = 0
+        self._vod_retry_used = False
+        self._vod_retry_target_ms = 0
         self._current_url = ""
         self._live_reconnect = LiveReconnectController(self)
         self._seek_osd_total_ms = 0
@@ -1035,6 +1041,10 @@ class EmbeddedPlayerWindow(QMainWindow):
         if reconnect is not None:
             reconnect.media_requested()
         self._current_url = url
+        self._vod_position_ms = 0
+        self._vod_duration_ms = 0
+        self._vod_retry_used = False
+        self._vod_retry_target_ms = 0
         self._live_delayed = False
         controller = getattr(self, "_aspect_controller", None)
         if controller is not None:
@@ -1257,7 +1267,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             self._show_track_osd("Could not return to live. Click DELAYED to retry.")
 
     def _pause_playback(self):
-        """Remember a VOD pause before VLC can lose the connection or timestamp."""
+        """Preserve the VOD position while leaving LIVE timeshift native."""
         self._recovering_after_pause = False
         if self._is_live_playback():
             reconnect = getattr(self, '_live_reconnect', None)
@@ -1268,51 +1278,79 @@ class EmbeddedPlayerWindow(QMainWindow):
         else:
             self._pause_started_at = time.monotonic()
             self._pause_position_ms = max(0, int(self.player.get_time()))
+            self._vod_position_ms = self._pause_position_ms
             self._store_current_playlist_progress()
         self.player.pause()
         self._set_standard_icon(self.btn_play, QStyle.SP_MediaPlay)
 
     def _resume_playback(self):
-        """Reopen VOD after a prolonged pause without asking the resume question."""
+        """Resume normally; reconnect only after an actual VOD interruption."""
         reconnect = getattr(self, '_live_reconnect', None)
         if self._is_live_playback() and reconnect is not None and reconnect.resume():
             self._wake_controls()
             return
         if self._recovering_after_pause:
             return
-        started = self._pause_started_at
-        pause_seconds = max(0.0, time.monotonic() - started) if started is not None else 0.0
-        recover = (
-            not self._is_live_playback()
-            and started is not None
-            and pause_seconds >= VOD_PAUSE_RECONNECT_SECONDS
-            and bool(self._current_url)
-        )
-        if started is not None:
-            logging.debug("VOD resume after %.1f seconds paused; reconnect=%s", pause_seconds, recover)
-        if recover:
-            position = self._pause_position_ms
-            url = self._current_url
-            # Block both end-event navigation and credits skipping while replacing
-            # the input. play_url bypasses the interactive playlist resume prompt.
-            self._recovering_after_pause = True
-            self.player.stop()
-            try:
-                self.play_url(url, self.title_label.text(), resume_ms=position,
-                              keep_above_main=self._deferred_keep_topmost)
-            except Exception:
-                self._recovering_after_pause = True
-                self._fail_pause_recovery()
-                return
-            self._recovering_after_pause = True
-            self._pause_recovery_target_ms = position
-            self._pause_recovery_deadline = time.monotonic() + 30.0
-            self._pause_recovery_last_log_at = None
-            logging.debug("Reopening paused VOD at %d ms", position)
-        else:
-            self._pause_started_at = None
-            self.player.play()
+        if self._pause_recovery_failed:
+            self._reconnect_vod(self._pause_recovery_target_ms)
+            return
+        self._pause_started_at = None
+        self.player.play()
         self._set_standard_icon(self.btn_play, QStyle.SP_MediaPause)
+
+    def _reconnect_vod(self, position_ms):
+        """Reuse position restoration and the shared OSD after an interrupted VOD."""
+        self._recovering_after_pause = True
+        self._pause_recovery_target_ms = position_ms
+        self._vod_retry_used = True
+        url = self._current_url
+        try:
+            self.player.stop()
+            self.play_url(url, self.title_label.text(), resume_ms=position_ms,
+                          keep_above_main=self._deferred_keep_topmost)
+        except Exception:
+            self._recovering_after_pause = True
+            self._fail_pause_recovery()
+            return
+        self._recovering_after_pause = True
+        self._pause_recovery_failed = False
+        self._pause_recovery_target_ms = position_ms
+        self._vod_position_ms = position_ms
+        self._vod_retry_used = True
+        self._vod_retry_target_ms = position_ms
+        self._pause_recovery_deadline = time.monotonic() + 30.0
+        self._pause_recovery_last_log_at = None
+        self._show_track_osd(RECONNECTING_MESSAGE)
+        self._set_standard_icon(self.btn_play, QStyle.SP_MediaPause)
+        logging.debug('VOD reconnect opening: position_ms=%d', position_ms)
+
+    def _handle_vod_end(self):
+        """Return true when an error or premature end must prevent navigation."""
+        state = str(self.player.get_state())
+        if state not in ('State.Ended', 'State.Error'):
+            return True  # Ignore a queued end callback from a replaced input.
+        if _pause_blocks_navigation(self):
+            return True
+        position = max(0, int(getattr(self, '_vod_position_ms', 0)))
+        duration = max(0, int(getattr(self, '_vod_duration_ms', 0)))
+        history = self._current_history or {}
+        if duration <= 0:
+            duration = max(0, int(history.get('duration_ms', 0) or 0))
+        # The credits-skip setting owns its normal early-navigation path.
+        threshold = max(VOD_END_TOLERANCE_MS,
+                        self._auto_advance_seconds * 1000 if self._auto_play_next else 0)
+        if state == 'State.Ended' and duration > 0 and position >= max(0, duration - threshold):
+            return False
+        if not self.isVisible() or not self._current_url:
+            return True
+        logging.debug('VOD interrupted: state=%s; position_ms=%d; duration_ms=%d; retry_used=%s',
+                      state, position, duration, getattr(self, '_vod_retry_used', False))
+        self._pause_recovery_target_ms = position
+        if duration <= 0 or getattr(self, '_vod_retry_used', False):
+            self._fail_pause_recovery()
+        else:
+            self._reconnect_vod(position)
+        return True
 
     def _check_pause_recovery(self, position_ms):
         """Confirm the shared seek criterion, including playback beyond the target."""
@@ -1325,7 +1363,8 @@ class EmbeddedPlayerWindow(QMainWindow):
             self._recovering_after_pause = False
             self._pending_resume_ms = 0
             self._pending_resume_attempts = 0
-            logging.debug('Paused VOD successfully resumed: target_ms=%d; position_ms=%d; delta_ms=%d',
+            self._show_track_osd('Playback resumed')
+            logging.debug('VOD reconnect restored: target_ms=%d; position_ms=%d; delta_ms=%d',
                           target, position_ms, position_ms - target)
             return
         expired = now >= self._pause_recovery_deadline
@@ -1337,7 +1376,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             except (AttributeError, OSError, ValueError):
                 state = 'unavailable'
             log = logging.warning if expired else logging.debug
-            log('VOD resume %s: target_ms=%d; position_ms=%d; delta_ms=%d; playing=%s; '
+            log('VOD reconnect %s: target_ms=%d; position_ms=%d; delta_ms=%d; playing=%s; '
                 'state=%s; pending_seek_ms=%s; seek_attempts_left=%s',
                 'timed out' if expired else 'pending', target, position_ms,
                 position_ms - target, playing, state, getattr(self, '_pending_resume_ms', None),
@@ -1351,11 +1390,11 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._recovering_after_pause = False
         self._pending_resume_ms = 0
         self._pending_resume_attempts = 0
-        self._pause_started_at = time.monotonic() - VOD_PAUSE_RECONNECT_SECONDS
+        self._pause_started_at = None
         self.player.stop()
         self._set_standard_icon(self.btn_play, QStyle.SP_MediaPlay)
-        self._show_track_osd("Could not resume playback. Press Play to retry.")
-        logging.warning("Could not restore paused VOD playback position")
+        self._show_track_osd(INTERRUPTED_MESSAGE)
+        logging.warning("Could not restore interrupted VOD playback position")
 
     def toggle_play_pause(self):
         if self.player.is_playing():
@@ -1509,7 +1548,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.media_ended.emit(self._media_generation)
 
     def _advance_after_media_end(self, media_generation):
-        """Start the next item after on-demand playback finishes naturally."""
+        """Recover interrupted inputs or navigate after a normal media ending."""
         if media_generation != self._media_generation:
             return
         if self._is_live_playback():
@@ -1518,6 +1557,8 @@ class EmbeddedPlayerWindow(QMainWindow):
                 reconnect.ended(media_generation)
             return
         if _pause_blocks_navigation(self):
+            return
+        if self._handle_vod_end():
             return
         if not self._auto_play_next or self._auto_advance_triggered:
             return
@@ -2167,6 +2208,18 @@ class EmbeddedPlayerWindow(QMainWindow):
             cur    = self.player.get_time()
             if self._is_live_playback():
                 self._live_reconnect.poll(cur)
+            if not self._is_live_playback() and not _pause_blocks_navigation(self):
+                state = str(self.player.get_state())
+                if self.player.is_playing() and cur >= 0 and state not in ('State.Ended', 'State.Error'):
+                    self._vod_position_ms = cur
+                    if length > 0:
+                        self._vod_duration_ms = length
+                    if (self._vod_retry_used
+                            and cur >= self._vod_retry_target_ms + 30000):
+                        self._vod_retry_used = False
+                if state in ('State.Ended', 'State.Error'):
+                    self._advance_after_media_end(self._media_generation)
+                    return
             resume_completed = False
             if self._pending_resume_ms and length > 0 and self.player.is_playing():
                 target = min(self._pending_resume_ms, length)
