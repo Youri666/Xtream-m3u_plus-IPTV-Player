@@ -3,7 +3,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets
 
 from iptv_player.ui.widgets import (
     KeyboardNavigableListWidget,
@@ -32,6 +32,29 @@ class KeyboardNavigableListWidgetTests(unittest.TestCase):
             [widget.item(row).text() for row in range(widget.count())],
             ["Three", "Two", "One"],
         )
+
+    def test_compact_rows_follow_font_changes_and_preserve_separator_height(self):
+        widget = KeyboardNavigableListWidget()
+        widget.addItems(['Channel', 'Separator'])
+        widget.item(1).setSizeHint(QtCore.QSize(0, 9))
+        for pixels in (14, 28):
+            font = widget.font()
+            font.setPixelSize(pixels)
+            widget.setFont(font)
+            widget.doItemsLayout()
+            self.assertEqual(widget.sizeHintForRow(0), QtGui.QFontMetrics(font).height() + 2)
+            self.assertEqual(widget.sizeHintForRow(1), 9)
+
+    def test_compact_rows_keep_real_navigation_icons_visible(self):
+        widget = KeyboardNavigableListWidget()
+        widget.setIconSize(QtCore.QSize(24, 24))
+        item = QtWidgets.QListWidgetItem('Go back')
+        pixmap = QtGui.QPixmap(24, 24)
+        pixmap.fill(QtCore.Qt.black)
+        item.setIcon(QtGui.QIcon(pixmap))
+        widget.addItem(item)
+        widget.doItemsLayout()
+        self.assertGreaterEqual(widget.sizeHintForRow(0), 26)
 
     def test_context_menu_preserves_existing_multi_selection(self):
         widget = KeyboardNavigableListWidget()

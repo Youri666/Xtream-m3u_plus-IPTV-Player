@@ -1,4 +1,4 @@
-"""VOD pause recovery is shared by manual and minimize paths; LIVE stays native."""
+"""VOD reconnects only after interruption and preserves normal episode endings."""
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -19,24 +19,62 @@ class PauseRecoveryTests(unittest.TestCase):
             _current_idx=0, _playlist=[{}, {}], _current_history={"type": "LIVE" if live else "Series"})
         window.player.get_time.return_value=45000
         window.title_label.text.return_value="Episode"
+        window._vod_position_ms = 45000
+        window._vod_duration_ms = 120000
+        window._vod_retry_used = False
+        window._vod_retry_target_ms = 0
+        window._handle_vod_end=lambda: EmbeddedPlayerWindow._handle_vod_end(window)
+        window._reconnect_vod=lambda position: EmbeddedPlayerWindow._reconnect_vod(window, position)
         window._pause_playback=lambda: EmbeddedPlayerWindow._pause_playback(window)
         window._resume_playback=lambda: EmbeddedPlayerWindow._resume_playback(window)
         window._fail_pause_recovery=lambda: EmbeddedPlayerWindow._fail_pause_recovery(window)
         return window
 
-    def test_long_pause_reopens_same_url_at_exact_position_without_prompt(self):
-        window=self.window()
-        with patch("iptv_player.ui.player.time.monotonic", return_value=100):
-            window._pause_playback()
-        with patch("iptv_player.ui.player.time.monotonic", return_value=130):
-            window._resume_playback()
+    def test_interrupted_vod_reopens_same_url_at_last_position_without_prompt(self):
+        window = self.window()
+        window.player.get_state.return_value = 'State.Ended'
+        window._media_generation = 3
+        EmbeddedPlayerWindow._advance_after_media_end(window, 3)
         window.player.stop.assert_called_once()
-        window.play_url.assert_called_once_with("https://example.test/movie", "Episode", resume_ms=45000, keep_above_main=False)
+        window.play_url.assert_called_once_with('https://example.test/movie', 'Episode',
+                                               resume_ms=45000, keep_above_main=False)
         self.assertTrue(window._recovering_after_pause)
-        self.assertEqual(window._pause_recovery_target_ms,45000)
+        window._show_track_osd.assert_called_with('Reconnecting…')
+        window.next.assert_not_called()
+
+    def test_natural_end_and_credits_threshold_keep_normal_navigation(self):
+        for position in (119500, 105000):
+            window = self.window()
+            window._vod_position_ms = position
+            window.player.get_state.return_value = 'State.Ended'
+            window._media_generation = 3
+            EmbeddedPlayerWindow._advance_after_media_end(window, 3)
+            window.next.assert_called_once()
+            window.play_url.assert_not_called()
+
+    def test_error_near_end_is_not_a_natural_end(self):
+        window = self.window()
+        window._vod_position_ms = 119500
+        window.player.get_state.return_value = 'State.Error'
+        self.assertTrue(window._handle_vod_end())
+        window.play_url.assert_called_once()
+        window.next.assert_not_called()
+
+    def test_unknown_duration_and_repeated_failure_do_not_advance(self):
+        for duration, used in ((0, False), (120000, True)):
+            window = self.window()
+            window._vod_duration_ms = duration
+            window._vod_retry_used = used
+            window.player.get_state.return_value = 'State.Ended'
+            self.assertTrue(window._handle_vod_end())
+            self.assertTrue(window._pause_recovery_failed)
+            window.play_url.assert_not_called()
+            window.next.assert_not_called()
+            window._resume_playback()
+            window.play_url.assert_called_once()
 
     def test_short_pause_and_live_never_reopen_media(self):
-        for live, elapsed in ((False,10),(False,29.9),(True,600)):
+        for live, elapsed in ((False,10),(False,29.9),(False,1800),(True,600)):
             window=self.window(live)
             with patch("iptv_player.ui.player.time.monotonic",return_value=100):
                 window._pause_playback()
@@ -73,7 +111,7 @@ class PauseRecoveryTests(unittest.TestCase):
             EmbeddedPlayerWindow._check_pause_recovery(window,0)
         self.assertTrue(window._pause_recovery_failed)
         window.next.assert_not_called()
-        window._show_track_osd.assert_called_once()
+        self.assertIn('Stream interrupted', window._show_track_osd.call_args.args[0])
 
     def test_minimize_and_restore_use_the_shared_pause_and_resume_functions(self):
         from PyQt5.QtWidgets import QApplication, QMainWindow
@@ -119,7 +157,7 @@ class PauseRecoveryTests(unittest.TestCase):
                 self.assertEqual(window._pending_resume_ms, 0)
                 self.assertEqual(window._pending_resume_attempts, 0)
                 window.player.stop.assert_not_called()
-                window._show_track_osd.assert_not_called()
+                window._show_track_osd.assert_called_with('Playback resumed')
 
     def test_shared_resume_criterion_rejects_unavailable_or_too_early_positions(self):
         self.assertFalse(_resume_position_reached(-1, 100))

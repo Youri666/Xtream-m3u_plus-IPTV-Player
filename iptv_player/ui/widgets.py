@@ -4,7 +4,27 @@ import math
 
 from PyQt5.QtCore import Qt, QPointF, QItemSelectionModel, pyqtSignal
 from PyQt5.QtGui import QPainter, QPen, QPalette
-from PyQt5.QtWidgets import QListWidget, QListWidgetItem, QWidget
+from PyQt5.QtWidgets import (
+    QListWidget, QListWidgetItem, QWidget, QStyledItemDelegate, QStyleOptionViewItem,
+)
+
+
+class CompactListDelegate(QStyledItemDelegate):
+    """Keep single-line rows compact regardless of the platform's item padding."""
+
+    def sizeHint(self, option, index):
+        explicit_size = index.data(Qt.SizeHintRole)
+        if explicit_size is not None:
+            return explicit_size  # Preserve category separators and custom rows.
+        size = super().sizeHint(option, index)
+        item_option = QStyleOptionViewItem(option)
+        self.initStyleOption(item_option, index)
+        height = item_option.fontMetrics.height()
+        if not item_option.icon.isNull():
+            height = max(height, item_option.icon.actualSize(item_option.decorationSize).height())
+        # Qt font metrics are logical pixels: do not multiply by the screen DPR.
+        size.setHeight(height + 2)
+        return size
 
 
 class CategorySeparator(QWidget):
@@ -46,6 +66,8 @@ class KeyboardNavigableListWidget(QListWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setItemDelegate(CompactListDelegate(self))
+        self.setSpacing(0)
         self._tab_target = None
         # QAbstractItemModel provides the authoritative notification for an
         # internal row move. Comparing temporary PyQt wrapper identities in
