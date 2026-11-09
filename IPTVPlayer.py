@@ -4930,6 +4930,11 @@ class IPTVPlayerApp(QMainWindow):
             self.active_category_view_key[stream_type] = self._category_view_key(
                 stream_type, self.all_categories_text
             )
+            # The root stream view already contains All. Reflect that selection
+            # without emitting itemClicked or rebuilding the prepared catalogue.
+            category_list = self.category_list_widgets[stream_type]
+            category_list.setCurrentRow(0)
+            self.prev_clicked_category_item[stream_type] = category_list.currentItem()
 
         if hidden_categories_changed:
             self._save_hidden_categories()
