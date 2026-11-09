@@ -21,15 +21,20 @@ class CompactListDelegate(QStyledItemDelegate):
         return option.fontMetrics.tightBoundingRect('AgÉgjÀÇ')
 
     def _ink_bounds(self, option):
-        metrics = option.fontMetrics
         widget = option.widget or self.parent()
-        key = (option.font.key(), widget.logicalDpiY(), metrics.height(),
+        return self.reference_bounds(option, widget.logicalDpiY())
+
+    @classmethod
+    def reference_bounds(cls, option, dpi):
+        """Share one glyph reference with item views and metadata text layouts."""
+        metrics = option.fontMetrics
+        key = (option.font.key(), dpi, metrics.height(),
                metrics.ascent(), metrics.descent())
-        if key not in self._font_bounds:
-            if len(self._font_bounds) >= 32:
-                self._font_bounds.clear()
-            self._font_bounds[key] = self._measure_reference_bounds(option)
-        return self._font_bounds[key]
+        if key not in cls._font_bounds:
+            if len(cls._font_bounds) >= 32:
+                cls._font_bounds.clear()
+            cls._font_bounds[key] = cls._measure_reference_bounds(option)
+        return cls._font_bounds[key]
 
     def sizeHint(self, option, index):
         explicit_size = index.data(Qt.SizeHintRole)

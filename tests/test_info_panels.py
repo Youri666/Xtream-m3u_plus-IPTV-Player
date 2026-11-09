@@ -10,6 +10,7 @@ from PyQt5.QtTest import QTest
 
 from iptv_player.ui.info_panels import LiveInfoBox, MovieInfoBox, SeriesInfoBox
 from iptv_player.ui.widgets import KeyboardNavigableListWidget
+from iptv_player.ui.info_panels import _DescriptionView, _text_bounds
 
 
 class _PanelParent:
@@ -53,6 +54,40 @@ class InfoPanelResetTests(unittest.TestCase):
         panel = LiveInfoBox(self.parent)
 
         self.assertTrue(panel.autoFillBackground())
+
+    def test_description_line_spacing_follows_font_without_changing_plain_text(self):
+        text = 'Été, Noël et garçon.\n\nSecond paragraphe.'
+        view = _DescriptionView(text)
+        try:
+            for pixels in (14, 28):
+                font = view.font()
+                font.setPixelSize(pixels)
+                view.setFont(font)
+                self.assertEqual(view.text(), text)
+                expected = _text_bounds(view).height() + 2
+                block = view.document().begin()
+                while block.isValid():
+                    self.assertEqual(block.blockFormat().lineHeight(), expected)
+                    block = block.next()
+        finally:
+            view.deleteLater()
+
+    def test_metadata_fields_stay_grouped_beside_tall_poster(self):
+        for panel_type in (MovieInfoBox, SeriesInfoBox):
+            panel = panel_type(self.parent)
+            poster = QPixmap(200, 500)
+            poster.fill(Qt.black)
+            panel.cover.set_artwork(poster, width=200)
+            panel.resize(600, 800)
+            panel.show()
+            self.app.processEvents()
+            fields = [panel.release_date, panel.genre, panel.duration,
+                      panel.rating, panel.director, panel.cast]
+            for previous, following in zip(fields, fields[1:]):
+                # Some panels have an additional field between these labels.
+                self.assertLess(following.y() - previous.y(), 3 * (previous.height() + 6))
+            panel.close()
+            panel.deleteLater()
 
     def test_epg_program_toggles_with_single_click(self):
         panel = LiveInfoBox(self.parent)
@@ -203,7 +238,7 @@ class InfoPanelResetTests(unittest.TestCase):
             panel.layout.indexOf(panel.description)
         )
 
-        self.assertEqual(position, (10, 0, 1, 2))
+        self.assertEqual(position[1:], (0, 1, 2))
         self.assertEqual(panel.description_title.text(), "Description:")
         self.assertEqual(
             panel.verticalScrollBarPolicy(), Qt.ScrollBarAlwaysOff
@@ -211,7 +246,7 @@ class InfoPanelResetTests(unittest.TestCase):
         self.assertEqual(
             panel.description.verticalScrollBarPolicy(), Qt.ScrollBarAsNeeded
         )
-        self.assertEqual(panel.layout.rowStretch(10), 1)
+        self.assertEqual(panel.layout.rowStretch(position[0]), 1)
 
     def test_series_reset_clears_stale_selection(self):
         panel = SeriesInfoBox(self.parent)
@@ -243,7 +278,7 @@ class InfoPanelResetTests(unittest.TestCase):
             panel.layout.indexOf(panel.description)
         )
 
-        self.assertEqual(position, (10, 0, 1, 2))
+        self.assertEqual(position[1:], (0, 1, 2))
         self.assertEqual(panel.description_title.text(), "Description:")
         self.assertEqual(
             panel.verticalScrollBarPolicy(), Qt.ScrollBarAlwaysOff
@@ -251,7 +286,7 @@ class InfoPanelResetTests(unittest.TestCase):
         self.assertEqual(
             panel.description.verticalScrollBarPolicy(), Qt.ScrollBarAsNeeded
         )
-        self.assertEqual(panel.layout.rowStretch(10), 1)
+        self.assertEqual(panel.layout.rowStretch(position[0]), 1)
 
 
 if __name__ == "__main__":
