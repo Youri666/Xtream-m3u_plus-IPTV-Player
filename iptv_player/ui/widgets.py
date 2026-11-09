@@ -7,11 +7,20 @@ from PyQt5.QtCore import Qt, QPointF, QItemSelectionModel, QTimer, pyqtSignal
 from PyQt5.QtGui import QPainter, QPen, QPalette
 from PyQt5.QtWidgets import (
     QListWidget, QListWidgetItem, QWidget, QStyledItemDelegate, QStyleOptionViewItem,
+    QApplication, QStyle,
 )
 
 
 class CompactListDelegate(QStyledItemDelegate):
     """Keep single-line rows compact regardless of the platform's item padding."""
+
+    @staticmethod
+    def _ink_bounds(option):
+        # Include common accents and descenders for stable Latin row heights,
+        # then extend for taller glyphs in the actual title (including fallback fonts).
+        metrics = option.fontMetrics
+        return metrics.tightBoundingRect('AgÉgjÀÇ').united(
+            metrics.tightBoundingRect(option.text))
 
     def sizeHint(self, option, index):
         explicit_size = index.data(Qt.SizeHintRole)
@@ -20,12 +29,43 @@ class CompactListDelegate(QStyledItemDelegate):
         size = super().sizeHint(option, index)
         item_option = QStyleOptionViewItem(option)
         self.initStyleOption(item_option, index)
-        height = item_option.fontMetrics.height()
+        height = self._ink_bounds(item_option).height()
         if not item_option.icon.isNull():
             height = max(height, item_option.icon.actualSize(item_option.decorationSize).height())
         # Qt font metrics are logical pixels: do not multiply by the screen DPR.
         size.setHeight(height + 2)
         return size
+
+    def paint(self, painter, option, index):
+        if index.data(Qt.SizeHintRole) is not None:
+            return super().paint(painter, option, index)
+        item_option = QStyleOptionViewItem(option)
+        self.initStyleOption(item_option, index)
+        style = item_option.widget.style() if item_option.widget else QApplication.style()
+        text_rect = style.subElementRect(QStyle.SE_ItemViewItemText, item_option,
+                                        item_option.widget)
+        text = item_option.fontMetrics.elidedText(
+            item_option.text, item_option.textElideMode, max(0, text_rect.width() - 4))
+        bounds = self._ink_bounds(item_option)
+        item_option.text = ''
+        # Let Qt retain native selection, focus, checkboxes and icon rendering.
+        style.drawControl(QStyle.CE_ItemViewItem, item_option, painter, item_option.widget)
+        painter.save()
+        painter.setClipRect(option.rect, Qt.IntersectClip)
+        painter.setFont(item_option.font)
+        group = (QPalette.Disabled if not item_option.state & QStyle.State_Enabled
+                 else QPalette.Normal if item_option.state & QStyle.State_Active
+                 else QPalette.Inactive)
+        role = (QPalette.HighlightedText if item_option.state & QStyle.State_Selected
+                else QPalette.Text)
+        painter.setPen(item_option.palette.color(group, role))
+        x = text_rect.left() + 2
+        if item_option.direction == Qt.RightToLeft:
+            x = text_rect.right() - 2 - item_option.fontMetrics.horizontalAdvance(text)
+        # Center the ink rather than the font's potentially oversized ascent/descent.
+        baseline = option.rect.y() + (option.rect.height() - bounds.height()) / 2 - bounds.y()
+        painter.drawText(QPointF(x, baseline), text)
+        painter.restore()
 
 
 class CategorySeparator(QWidget):
