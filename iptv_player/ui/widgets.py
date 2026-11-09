@@ -1,8 +1,9 @@
 """Reusable Qt widgets shared by the application screens."""
 
 import math
+import logging
 
-from PyQt5.QtCore import Qt, QPointF, QItemSelectionModel, pyqtSignal
+from PyQt5.QtCore import Qt, QPointF, QItemSelectionModel, QTimer, pyqtSignal
 from PyQt5.QtGui import QPainter, QPen, QPalette
 from PyQt5.QtWidgets import (
     QListWidget, QListWidgetItem, QWidget, QStyledItemDelegate, QStyleOptionViewItem,
@@ -69,6 +70,7 @@ class KeyboardNavigableListWidget(QListWidget):
         self.setItemDelegate(CompactListDelegate(self))
         self.setSpacing(0)
         self._tab_target = None
+        self._last_spacing_diagnostic = None
         # QAbstractItemModel provides the authoritative notification for an
         # internal row move. Comparing temporary PyQt wrapper identities in
         # dropEvent is unreliable because their memory addresses are reused.
@@ -78,6 +80,37 @@ class KeyboardNavigableListWidget(QListWidget):
 
     def set_tab_target(self, target):
         self._tab_target = target
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            QTimer.singleShot(0, self._log_row_geometry)
+
+    def _log_row_geometry(self):
+        """Log actual list geometry once per configuration, without item text."""
+        if not logging.getLogger().isEnabledFor(logging.DEBUG):
+            return
+        # Skip separators and special rows so the sample represents plain text.
+        item = next((self.item(row) for row in range(min(self.count(), 30))
+                     if self.item(row).sizeHint().isEmpty()
+                     and self.item(row).icon().isNull()), None)
+        if item is None:
+            return
+        option = QStyleOptionViewItem()
+        option.initFrom(self)
+        self.itemDelegate().initStyleOption(option, self.indexFromItem(item))
+        metrics = option.fontMetrics
+        geometry = (option.font.toString(), self.logicalDpiY(), self.devicePixelRatioF(),
+                    metrics.height(), metrics.ascent(), metrics.descent(), metrics.leading(),
+                    metrics.tightBoundingRect('AgÉgj').height(),
+                    self.itemDelegate().sizeHint(option, self.indexFromItem(item)).height(),
+                    self.visualItemRect(item).height(), self.spacing())
+        if geometry == self._last_spacing_diagnostic:
+            return
+        self._last_spacing_diagnostic = geometry
+        logging.debug('List row geometry: font=%r; dpi_y=%s; dpr=%s; font_height=%s; '
+                      'ascent=%s; descent=%s; leading=%s; glyph_height=%s; '
+                      'delegate_height=%s; actual_height=%s; spacing=%s', *geometry)
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
