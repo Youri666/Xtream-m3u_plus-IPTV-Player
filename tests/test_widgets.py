@@ -1,5 +1,6 @@
 import os
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -43,7 +44,7 @@ class KeyboardNavigableListWidgetTests(unittest.TestCase):
             widget.setFont(font)
             widget.doItemsLayout()
             metrics = QtGui.QFontMetrics(font)
-            bounds = metrics.tightBoundingRect('AgÉgjÀÇ').united(metrics.tightBoundingRect('Channel'))
+            bounds = metrics.tightBoundingRect('AgÉgjÀÇ')
             self.assertEqual(widget.sizeHintForRow(0), bounds.height() + 2)
             self.assertEqual(widget.sizeHintForRow(1), 9)
 
@@ -57,6 +58,47 @@ class KeyboardNavigableListWidgetTests(unittest.TestCase):
         widget.addItem(item)
         widget.doItemsLayout()
         self.assertGreaterEqual(widget.sizeHintForRow(0), 26)
+
+    def test_large_lists_share_one_reference_measurement_per_font(self):
+        widgets = [KeyboardNavigableListWidget(), KeyboardNavigableListWidget()]
+        delegate = widgets[0].itemDelegate()
+        delegate._font_bounds.clear()
+        with patch.object(type(delegate), '_measure_reference_bounds',
+                          wraps=delegate._measure_reference_bounds) as measure:
+            for widget in widgets:
+                widget.addItems([f'Film {row}' for row in range(1000)])
+                for _ in range(2):
+                    for row in range(widget.count()):
+                        widget.sizeHintForRow(row)
+            self.assertEqual(measure.call_count, 1)
+            widgets[0].item(5).setText('Updated title')
+            widgets[0].sizeHintForRow(5)
+            self.assertEqual(measure.call_count, 1)
+            font = widgets[0].font()
+            font.setPixelSize(30)
+            widgets[0].setFont(font)
+            widgets[0].sizeHintForRow(0)
+            self.assertEqual(measure.call_count, 2)
+
+    def test_colour_only_theme_changes_reuse_font_measurements(self):
+        from iptv_player.ui.theme import apply_application_theme
+        apply_application_theme(self.app, 'Light')
+        widget = KeyboardNavigableListWidget()
+        sheet = 'QListWidget::item { padding: 1px 0; }'
+        widget.setStyleSheet(sheet)
+        widget.addItems(['One', 'Édition complète', 'Three'])
+        delegate = widget.itemDelegate()
+        delegate._font_bounds.clear()
+        with patch.object(type(delegate), '_measure_reference_bounds',
+                          wraps=delegate._measure_reference_bounds) as measure:
+            initial = [widget.sizeHintForRow(row) for row in range(widget.count())]
+            for theme in ('Dark', 'Light'):
+                apply_application_theme(self.app, theme)
+                widget.setStyleSheet('')
+                widget.setPalette(self.app.palette())
+                widget.setStyleSheet(sheet)
+                self.assertEqual([widget.sizeHintForRow(row) for row in range(widget.count())], initial)
+            self.assertEqual(measure.call_count, 1)
 
     def test_context_menu_preserves_existing_multi_selection(self):
         widget = KeyboardNavigableListWidget()

@@ -13,13 +13,23 @@ from PyQt5.QtWidgets import (
 class CompactListDelegate(QStyledItemDelegate):
     """Keep single-line rows compact regardless of the platform's item padding."""
 
+    _font_bounds = {}
+
     @staticmethod
-    def _ink_bounds(option):
-        # Include common accents and descenders for stable Latin row heights,
-        # then extend for taller glyphs in the actual title (including fallback fonts).
+    def _measure_reference_bounds(option):
+        # One reference covers common accents, capitals and descenders.
+        return option.fontMetrics.tightBoundingRect('AgÉgjÀÇ')
+
+    def _ink_bounds(self, option):
         metrics = option.fontMetrics
-        return metrics.tightBoundingRect('AgÉgjÀÇ').united(
-            metrics.tightBoundingRect(option.text))
+        widget = option.widget or self.parent()
+        key = (option.font.key(), widget.logicalDpiY(), metrics.height(),
+               metrics.ascent(), metrics.descent())
+        if key not in self._font_bounds:
+            if len(self._font_bounds) >= 32:
+                self._font_bounds.clear()
+            self._font_bounds[key] = self._measure_reference_bounds(option)
+        return self._font_bounds[key]
 
     def sizeHint(self, option, index):
         explicit_size = index.data(Qt.SizeHintRole)
