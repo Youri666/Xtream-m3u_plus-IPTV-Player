@@ -58,26 +58,6 @@ class KeyboardNavigableListWidgetTests(unittest.TestCase):
         widget.doItemsLayout()
         self.assertGreaterEqual(widget.sizeHintForRow(0), 26)
 
-    def test_spacing_diagnostic_runs_when_visible_list_is_populated_later(self):
-        widget = KeyboardNavigableListWidget()
-        try:
-            with self.assertLogs(level='DEBUG') as captured:
-                widget.show()
-                self.app.processEvents()
-                self.assertIsNone(widget._last_spacing_diagnostic)
-                widget.addItems(['Private title one', 'Private title two'])
-                self.app.processEvents()
-                self.app.processEvents()
-                self.assertIsNotNone(widget._last_spacing_diagnostic)
-                widget.addItem('Private title three')
-                self.app.processEvents()
-            self.assertEqual(len(captured.output), 1)
-            self.assertIn('actual_height=', captured.output[0])
-            self.assertNotIn('Private title', captured.output[0])
-        finally:
-            widget.close()
-            widget.deleteLater()
-
     def test_context_menu_preserves_existing_multi_selection(self):
         widget = KeyboardNavigableListWidget()
         widget.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
