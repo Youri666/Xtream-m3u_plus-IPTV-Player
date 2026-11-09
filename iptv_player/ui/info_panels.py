@@ -13,11 +13,11 @@ from PyQt5.QtCore import (
 from PyQt5.QtWidgets import (
     QVBoxLayout, QLabel, QPushButton, QWidget, QHBoxLayout, QGridLayout,
     QTreeWidget, QTreeWidgetItem, QScrollArea, QTextBrowser, QFrame,
-    QStyledItemDelegate
 )
 
 
 from iptv_player.ui.image_labels import ArtworkLabel
+from iptv_player.ui.widgets import CompactListDelegate
 
 def _set_link_available(widget, available):
     """Keep a link icon's enabled state and cursor consistent."""
@@ -93,8 +93,8 @@ class _EpgDescriptionLabel(QLabel):
         return QSize(0, 0)
 
 
-class _EpgDescriptionDelegate(QStyledItemDelegate):
-    """Size embedded descriptions for the available spanned row width."""
+class _EpgDescriptionDelegate(CompactListDelegate):
+    """Share compact programme rows while sizing wrapped descriptions separately."""
 
     def sizeHint(self, option, index):
         size = super().sizeHint(option, index)

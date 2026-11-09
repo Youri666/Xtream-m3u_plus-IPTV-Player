@@ -9,6 +9,7 @@ from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtTest import QTest
 
 from iptv_player.ui.info_panels import LiveInfoBox, MovieInfoBox, SeriesInfoBox
+from iptv_player.ui.widgets import KeyboardNavigableListWidget
 
 
 class _PanelParent:
@@ -70,6 +71,29 @@ class InfoPanelResetTests(unittest.TestCase):
         self.assertFalse(program.isExpanded())
         self.assertFalse(tree.expandsOnDoubleClick())
         tree.close()
+
+    def test_epg_program_rows_share_catalogue_height_across_font_sizes(self):
+        panel = LiveInfoBox(self.parent)
+        tree = panel.live_EPG_info
+        tree.setParent(None)
+        program = QtWidgets.QTreeWidgetItem(['09-11-2026', '16:00', '17:30', 'Émission intégrale'])
+        tree.addTopLevelItem(program)
+        catalogue = KeyboardNavigableListWidget()
+        catalogue.addItem('Émission intégrale')
+        try:
+            for pixels in (14, 28):
+                font = tree.font()
+                font.setPixelSize(pixels)
+                tree.setFont(font)
+                catalogue.setFont(font)
+                tree.show()
+                tree.doItemsLayout()
+                self.app.processEvents()
+                self.assertEqual(tree.visualItemRect(program).height(), catalogue.sizeHintForRow(0))
+        finally:
+            tree.close()
+            tree.deleteLater()
+            catalogue.deleteLater()
 
     def test_movie_reset_clears_stale_selection(self):
         panel = MovieInfoBox(self.parent)
