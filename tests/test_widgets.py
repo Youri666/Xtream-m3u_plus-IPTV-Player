@@ -42,7 +42,9 @@ class KeyboardNavigableListWidgetTests(unittest.TestCase):
             font.setPixelSize(pixels)
             widget.setFont(font)
             widget.doItemsLayout()
-            self.assertEqual(widget.sizeHintForRow(0), QtGui.QFontMetrics(font).height() + 2)
+            metrics = QtGui.QFontMetrics(font)
+            bounds = metrics.tightBoundingRect('AgÉgjÀÇ').united(metrics.tightBoundingRect('Channel'))
+            self.assertEqual(widget.sizeHintForRow(0), bounds.height() + 2)
             self.assertEqual(widget.sizeHintForRow(1), 9)
 
     def test_compact_rows_keep_real_navigation_icons_visible(self):
