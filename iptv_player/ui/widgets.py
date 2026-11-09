@@ -71,6 +71,14 @@ class KeyboardNavigableListWidget(QListWidget):
         self.setSpacing(0)
         self._tab_target = None
         self._last_spacing_diagnostic = None
+        self._spacing_diagnostic_timer = QTimer(self)
+        self._spacing_diagnostic_timer.setSingleShot(True)
+        self._spacing_diagnostic_timer.timeout.connect(self._log_row_geometry)
+        # Lists often become visible before asynchronous catalogue loading ends.
+        # Coalesce insertion bursts and measure after Qt has laid out the rows.
+        for signal in (self.model().rowsInserted, self.model().modelReset,
+                       self.model().layoutChanged, self.model().dataChanged):
+            signal.connect(self._schedule_spacing_diagnostic)
         # QAbstractItemModel provides the authoritative notification for an
         # internal row move. Comparing temporary PyQt wrapper identities in
         # dropEvent is unreliable because their memory addresses are reused.
@@ -83,8 +91,11 @@ class KeyboardNavigableListWidget(QListWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._schedule_spacing_diagnostic()
+
+    def _schedule_spacing_diagnostic(self, *_args):
         if logging.getLogger().isEnabledFor(logging.DEBUG):
-            QTimer.singleShot(0, self._log_row_geometry)
+            self._spacing_diagnostic_timer.start(0)
 
     def _log_row_geometry(self):
         """Log actual list geometry once per configuration, without item text."""
