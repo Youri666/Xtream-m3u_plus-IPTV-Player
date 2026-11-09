@@ -5,19 +5,47 @@ import math
 
 from PyQt5.QtGui import (
     QFont, QPixmap, QDesktopServices, QTextDocument, QPainter,
-    QAbstractTextDocumentLayout
+    QAbstractTextDocumentLayout, QTextCursor, QTextBlockFormat
 )
 from PyQt5.QtCore import (
-    Qt, QSize, QUrl
+    Qt, QSize, QUrl, QEvent
 )
 from PyQt5.QtWidgets import (
     QVBoxLayout, QLabel, QPushButton, QWidget, QHBoxLayout, QGridLayout,
-    QTreeWidget, QTreeWidgetItem, QScrollArea, QTextBrowser, QFrame,
+    QTreeWidget, QTreeWidgetItem, QScrollArea, QTextBrowser, QFrame, QStyleOptionViewItem,
 )
 
 
 from iptv_player.ui.image_labels import ArtworkLabel
 from iptv_player.ui.widgets import CompactListDelegate
+
+
+def _text_bounds(widget):
+    option = QStyleOptionViewItem()
+    option.initFrom(widget)
+    return CompactListDelegate.reference_bounds(option, widget.logicalDpiY())
+
+
+def _compact_document_spacing(document, widget):
+    """Use the shared font reference, without measuring individual text lines."""
+    cursor = QTextCursor(document)
+    cursor.select(QTextCursor.Document)
+    block_format = QTextBlockFormat()
+    block_format.setLineHeight(_text_bounds(widget).height() + 2,
+                               QTextBlockFormat.FixedHeight)
+    cursor.mergeBlockFormat(block_format)
+
+
+def _document_text_offset(document, widget):
+    """Centre visible glyphs when Qt compresses a font's oversized line box."""
+    document.size()  # Complete layout before reading the first baseline.
+    layout = document.begin().layout()
+    if not layout.lineCount():
+        return 0
+    line = layout.lineAt(0)
+    bounds = _text_bounds(widget)
+    target_baseline = 1 - bounds.y()
+    return target_baseline - line.position().y() - line.ascent()
 
 def _set_link_available(widget, available):
     """Keep a link icon's enabled state and cursor consistent."""
@@ -51,6 +79,28 @@ class _DescriptionView(QTextBrowser):
         """Preserve QLabel-like callers while treating provider text as plain text."""
         self.setPlainText(str(text or ""))
 
+    def setPlainText(self, text):
+        super().setPlainText(text)
+        self._refresh_spacing()
+
+    def _refresh_spacing(self):
+        document = self.document()
+        document.setDefaultFont(self.font())
+        frame = document.rootFrame()
+        frame_format = frame.frameFormat()
+        frame_format.setTopMargin(0)
+        frame.setFrameFormat(frame_format)
+        _compact_document_spacing(document, self)
+        # Text browsers need room above the first baseline; otherwise a font
+        # with unusually large descent can clip its first line after compression.
+        frame_format.setTopMargin(max(0, _document_text_offset(document, self)))
+        frame.setFrameFormat(frame_format)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.FontChange, QEvent.ApplicationFontChange):
+            self._refresh_spacing()
+
     def text(self):
         """Return plain text for compatibility with the former QLabel."""
         return self.toPlainText()
@@ -65,6 +115,7 @@ class _EpgDescriptionLabel(QLabel):
         document.setPlainText(self.text())
         margins = self.contentsMargins()
         document.setTextWidth(max(1, width - margins.left() - margins.right()))
+        _compact_document_spacing(document, self)
         return document
 
     def heightForWidth(self, width):
@@ -81,6 +132,7 @@ class _EpgDescriptionLabel(QLabel):
         context = QAbstractTextDocumentLayout.PaintContext()
         context.palette = self.palette()
         document = self._text_document(self.width())
+        painter.translate(0, _document_text_offset(document, self))
         document.documentLayout().draw(painter, context)
         painter.end()
 
@@ -91,6 +143,16 @@ class _EpgDescriptionLabel(QLabel):
 
     def minimumSizeHint(self):
         return QSize(0, 0)
+
+
+class _CompactInfoLabel(_EpgDescriptionLabel):
+    """Keep metadata wrapping compact without forcing a minimum text width."""
+
+    def sizeHint(self):
+        return QSize(0, self.heightForWidth(400))
+
+    def minimumSizeHint(self):
+        return QSize(0, _text_bounds(self).height() + 2)
 
 
 class _EpgDescriptionDelegate(CompactListDelegate):
@@ -262,7 +324,7 @@ class MovieInfoBox(QScrollArea):
 
         self.layout = QGridLayout(self.widget)
         self.layout.setColumnStretch(1, 1)
-        self.layout.setRowStretch(10, 1)
+        self.layout.setRowStretch(3, 1)
 
         self.maxCoverWidth = 200
 
@@ -286,14 +348,14 @@ class MovieInfoBox(QScrollArea):
 
         #Create information labels
         self.name           = QLabel("No movie selected...")
-        self.release_date   = QLabel("Release date: —")
-        self.country        = QLabel("Country: —")
-        self.genre          = QLabel("Genre: —")
-        self.duration       = QLabel("Duration: —")
-        self.rating         = QLabel("Rating: —")
-        self.director       = QLabel("Director: —")
-        self.cast           = QLabel("Cast: —")
-        self.description_title = QLabel("Description:")
+        self.release_date   = _CompactInfoLabel("Release date: —")
+        self.country        = _CompactInfoLabel("Country: —")
+        self.genre          = _CompactInfoLabel("Genre: —")
+        self.duration       = _CompactInfoLabel("Duration: —")
+        self.rating         = _CompactInfoLabel("Rating: —")
+        self.director       = _CompactInfoLabel("Director: —")
+        self.cast           = _CompactInfoLabel("Cast: —")
+        self.description_title = _CompactInfoLabel("Description:")
         self.description    = _DescriptionView("—")
 
         self.trailer = ArtworkLabel()
@@ -341,17 +403,21 @@ class MovieInfoBox(QScrollArea):
 
         #Add widgets
         self.layout.addLayout(self.title_layout,    0, 0, 1, 2)
-        self.layout.addWidget(self.cover,           1, 0, 8, 1)
-        self.layout.addLayout(self.links_layout,    1, 1)
-        self.layout.addWidget(self.release_date,    2, 1)
-        self.layout.addWidget(self.country,         3, 1)
-        self.layout.addWidget(self.genre,           4, 1)
-        self.layout.addWidget(self.duration,        5, 1)
-        self.layout.addWidget(self.rating,          6, 1)
-        self.layout.addWidget(self.director,        7, 1)
-        self.layout.addWidget(self.cast,            8, 1)
-        self.layout.addWidget(self.description_title, 9, 0, 1, 2)
-        self.layout.addWidget(self.description,    10, 0, 1, 2)
+        self.layout.addWidget(self.cover,           1, 0)
+        # Keep metadata together instead of distributing rows across the poster height.
+        self.metadata_layout = QVBoxLayout()
+        self.metadata_layout.addLayout(self.links_layout)
+        self.metadata_layout.addWidget(self.release_date)
+        self.metadata_layout.addWidget(self.country)
+        self.metadata_layout.addWidget(self.genre)
+        self.metadata_layout.addWidget(self.duration)
+        self.metadata_layout.addWidget(self.rating)
+        self.metadata_layout.addWidget(self.director)
+        self.metadata_layout.addWidget(self.cast)
+        self.metadata_layout.addStretch(1)
+        self.layout.addLayout(self.metadata_layout, 1, 1)
+        self.layout.addWidget(self.description_title, 2, 0, 1, 2)
+        self.layout.addWidget(self.description,       3, 0, 1, 2)
 
         self.setWidget(self.widget)
 
@@ -425,7 +491,7 @@ class SeriesInfoBox(QScrollArea):
 
         self.layout = QGridLayout(self.widget)
         self.layout.setColumnStretch(1, 1)
-        self.layout.setRowStretch(10, 1)
+        self.layout.setRowStretch(3, 1)
 
         self.maxCoverWidth = 200
 
@@ -449,14 +515,14 @@ class SeriesInfoBox(QScrollArea):
 
         #Create information labels
         self.name           = QLabel("No series selected...")
-        self.release_date   = QLabel("Release date: —")
-        self.genre          = QLabel("Genre: —")
-        self.num_seasons    = QLabel("Seasons: —")
-        self.duration       = QLabel("Episode duration: —")
-        self.rating         = QLabel("Rating: —")
-        self.director       = QLabel("Director: —")
-        self.cast           = QLabel("Cast: —")
-        self.description_title = QLabel("Description:")
+        self.release_date   = _CompactInfoLabel("Release date: —")
+        self.genre          = _CompactInfoLabel("Genre: —")
+        self.num_seasons    = _CompactInfoLabel("Seasons: —")
+        self.duration       = _CompactInfoLabel("Episode duration: —")
+        self.rating         = _CompactInfoLabel("Rating: —")
+        self.director       = _CompactInfoLabel("Director: —")
+        self.cast           = _CompactInfoLabel("Cast: —")
+        self.description_title = _CompactInfoLabel("Description:")
         self.description    = _DescriptionView("—")
 
         self.trailer = ArtworkLabel()
@@ -505,17 +571,21 @@ class SeriesInfoBox(QScrollArea):
 
         #Add widgets
         self.layout.addLayout(self.title_layout,    0, 0, 1, 2)
-        self.layout.addWidget(self.cover,           1, 0, 8, 1)
-        self.layout.addLayout(self.links_layout,    1, 1)
-        self.layout.addWidget(self.release_date,    2, 1)
-        self.layout.addWidget(self.genre,           3, 1)
-        self.layout.addWidget(self.num_seasons,     4, 1)
-        self.layout.addWidget(self.duration,        5, 1)
-        self.layout.addWidget(self.rating,          6, 1)
-        self.layout.addWidget(self.director,        7, 1)
-        self.layout.addWidget(self.cast,            8, 1)
-        self.layout.addWidget(self.description_title, 9, 0, 1, 2)
-        self.layout.addWidget(self.description,    10, 0, 1, 2)
+        self.layout.addWidget(self.cover,           1, 0)
+        # Keep metadata together instead of distributing rows across the poster height.
+        self.metadata_layout = QVBoxLayout()
+        self.metadata_layout.addLayout(self.links_layout)
+        self.metadata_layout.addWidget(self.release_date)
+        self.metadata_layout.addWidget(self.genre)
+        self.metadata_layout.addWidget(self.num_seasons)
+        self.metadata_layout.addWidget(self.duration)
+        self.metadata_layout.addWidget(self.rating)
+        self.metadata_layout.addWidget(self.director)
+        self.metadata_layout.addWidget(self.cast)
+        self.metadata_layout.addStretch(1)
+        self.layout.addLayout(self.metadata_layout, 1, 1)
+        self.layout.addWidget(self.description_title, 2, 0, 1, 2)
+        self.layout.addWidget(self.description,       3, 0, 1, 2)
 
         #Add widget with all items to the scrollarea (self)
         self.setWidget(self.widget)
