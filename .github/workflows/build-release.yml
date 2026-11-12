@@ -54,7 +54,8 @@ jobs:
             rockylinux:9 bash -euc '
               dnf install -y python3.12 python3.12-pip binutils tar gzip glib2 fontconfig \
                 mesa-libGL libX11 libXext libXrender libXi libxcb libxkbcommon-x11 \
-                libXcursor libXcomposite libXdamage libXfixes libXrandr libXtst libSM
+                libXcursor libXcomposite libXdamage libXfixes libXrandr libXtst libSM \
+                dbus-libs xcb-util-wm xcb-util-image xcb-util-keysyms xcb-util-renderutil
               python3.12 -m venv .venv
               bash build_IPTV_Player_Linux.sh
               test -x dist/IPTV_Player
