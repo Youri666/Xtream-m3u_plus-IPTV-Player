@@ -12,7 +12,7 @@ IF NOT DEFINED PYTHON_BIN (
 )
 IF NOT DEFINED PYTHON_BIN (
   echo ERROR: Python 3 was not found. Install it and try again.
-  pause
+  if not defined CI pause
   exit /b 1
 )
 
@@ -22,7 +22,7 @@ IF NOT EXIST "%VENV_PYTHON%" (
   %PYTHON_BIN% -m venv "%VENV_PATH%"
   IF ERRORLEVEL 1 (
     echo ERROR: Could not create the local Python environment.
-    pause
+    if not defined CI pause
     exit /b 1
   )
 )
@@ -43,7 +43,7 @@ echo PyInstaller version:
 IF ERRORLEVEL 1 (
   echo.
   echo ERROR: PyInstaller is unavailable in the local Python environment.
-  pause
+  if not defined CI pause
   exit /b 1
 )
 
@@ -52,7 +52,7 @@ REM Confirm all modules can be collected before deleting previous builds.
 IF ERRORLEVEL 1 (
   echo.
   echo ERROR: Required Python modules are still unavailable. Build cancelled.
-  pause
+  if not defined CI pause
   exit /b 1
 )
 
@@ -125,19 +125,19 @@ IF ERRORLEVEL 1 GOTO build_failed
 IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
 echo.
 echo Build complete. Executable saved in %DIST_PATH%.
-pause
+if not defined CI pause
 exit /b 0
 
 :build_failed
 IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
 echo.
 echo ERROR: The build failed. Review the messages above for details.
-pause
+if not defined CI pause
 exit /b 1
 
 :dependency_failed
 echo.
 echo ERROR: Build dependencies could not be installed in %VENV_PATH%.
 echo Check your Internet connection and Python installation, then try again.
-pause
+if not defined CI pause
 exit /b 1

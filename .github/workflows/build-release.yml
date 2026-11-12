@@ -1,0 +1,111 @@
+name: Build release binaries
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/build-release.yml'
+      - 'build_IPTV_Player_*'
+      - 'requirements*.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Build Windows executable
+        shell: cmd
+        run: |
+          python -m venv .venv || exit /b 1
+          call build_IPTV_Player_Win.bat || exit /b 1
+          move "dist\IPTV Player.exe" "dist\IPTV.Player.exe" || exit /b 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IPTV-Player-Windows-x64
+          path: dist/IPTV.Player.exe
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  linux:
+    name: Rocky Linux 9 x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Build Linux executable in Rocky Linux 9
+        shell: bash
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" --workdir /workspace \
+            rockylinux:9 bash -euc '
+              dnf install -y python3.12 python3.12-pip binutils tar gzip glib2 fontconfig \
+                mesa-libGL libX11 libXext libXrender libXi libxcb libxkbcommon-x11 \
+                libXcursor libXcomposite libXdamage libXfixes libXrandr libXtst libSM
+              python3.12 -m venv .venv
+              bash build_IPTV_Player_Linux.sh
+              test -x dist/IPTV_Player
+              # Archive the executable to preserve its permission bits.
+              tar -czf dist/IPTV-Player-Rocky9-x64.tar.gz -C dist IPTV_Player
+            '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IPTV-Player-Rocky9-x64
+          path: dist/IPTV-Player-Rocky9-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  macos:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x86_64
+            python-arch: x64
+          - runner: macos-15
+            arch: arm64
+            python-arch: arm64
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          architecture: ${{ matrix.python-arch }}
+      - name: Build and verify native DMG
+        shell: bash
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          test "$(python -c 'import platform; print(platform.machine())')" = "$TARGET_ARCH"
+          python -m venv .venv
+          bash build_IPTV_Player_macOS.sh
+          test "$(lipo -archs 'dist/IPTV Player.app/Contents/MacOS/IPTV Player')" = "$TARGET_ARCH"
+          version=$(python -c 'from iptv_player.constants import CURRENT_VERSION; print(CURRENT_VERSION)')
+          mv "dist/IPTV Player $version.dmg" "dist/IPTV.Player.$version.$TARGET_ARCH.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IPTV-Player-macOS-${{ matrix.arch }}
+          path: dist/IPTV.Player.*.${{ matrix.arch }}.dmg
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
