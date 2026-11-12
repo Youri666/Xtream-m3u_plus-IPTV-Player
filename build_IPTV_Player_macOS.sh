@@ -41,7 +41,7 @@ echo "Installing build dependencies in $VENV_PATH..."
 "$PYTHON_BIN" -m pip install --upgrade --upgrade-strategy only-if-needed -r requirements-build.txt
 "$PYTHON_BIN" -m pip check
 
-if ! "$PYTHON_BIN" -c "import PyQt5, requests, lxml, dateutil, vlc" >/dev/null 2>&1; then
+if ! "$PYTHON_BIN" -c "from importlib.util import find_spec; from PyQt5 import QtCore; from lxml import etree; import requests, dateutil; assert find_spec('vlc'), 'python-vlc is missing'"; then
   echo "ERROR: Required Python modules are still unavailable. Build cancelled."
   exit 1
 fi
