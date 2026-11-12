@@ -5,6 +5,7 @@ import ctypes
 import ctypes.util
 import logging
 from os import path
+import re
 import sys
 import time
 import uuid
@@ -292,6 +293,9 @@ class EmbeddedPlayerWindow(QMainWindow):
         self._subtitle_language = ""
         self._progress_callback = progress_callback
         self._current_history = None
+        self._track_choices = {}
+        self._pending_track_restore = set()
+        self._track_restore_attempts = 0
         self._current_stream_protocol = ""
         self._pending_resume_ms = 0
         self._pending_resume_attempts = 0
@@ -1040,7 +1044,6 @@ class EmbeddedPlayerWindow(QMainWindow):
         reconnect = getattr(self, '_live_reconnect', None)
         if reconnect is not None:
             reconnect.media_requested()
-        self._current_url = url
         self._vod_position_ms = 0
         self._vod_duration_ms = 0
         self._vod_retry_used = False
@@ -1072,6 +1075,12 @@ class EmbeddedPlayerWindow(QMainWindow):
             self._playlist = [{'name': title or url, 'url': url}]
             self._current_idx = 0
 
+        history = (
+            dict(self._playlist[self._current_idx].get("history") or {})
+            if self._playlist else None
+        )
+        restore_subtitles = self._prepare_track_restore(url, history)
+        self._current_url = url
         title = title or (self._playlist[self._current_idx].get('name') if self._playlist else url)
         # Keep the native title concise; the complete media title is shown below it.
         self.setWindowTitle("Internal Player")
@@ -1089,7 +1098,8 @@ class EmbeddedPlayerWindow(QMainWindow):
         if self._audio_language:
             media.add_option(f":audio-language={self._audio_language}")
         if self._subtitle_language == "disabled":
-            media.add_option(":no-spu")
+            if not restore_subtitles:
+                media.add_option(":no-spu")
         elif self._subtitle_language:
             media.add_option(f":sub-language={self._subtitle_language}")
         if resume_ms:
@@ -1099,10 +1109,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.player.set_media(media)
         self._apply_video_format()
         self._media_generation += 1
-        self._current_history = (
-            dict(self._playlist[self._current_idx].get("history") or {})
-            if self._playlist else None
-        )
+        self._current_history = history
         self._update_live_indicator()
         self._update_playback_rate_controls()
         self._pending_playback_rate_attempts = 20
@@ -1708,6 +1715,70 @@ class EmbeddedPlayerWindow(QMainWindow):
         self.btn_next.setEnabled(self._current_idx + 1 < n)
 
     # ---------- subtitles ----------
+    def _prepare_track_restore(self, url, history):
+        previous = self._current_history or {}
+        current = history or {}
+        same_account = previous.get("account_id") == current.get("account_id")
+        same_season = (
+            previous.get("type") == current.get("type") == "Series"
+            and bool(previous.get("series_id"))
+            and previous["series_id"] == current.get("series_id")
+            and bool(previous.get("season"))
+            and previous["season"] == current.get("season")
+        )
+        same_media = (
+            url == self._current_url
+            and previous.get("type") == current.get("type")
+            and previous.get("key") == current.get("key")
+        )
+        if not (same_account and (same_media or same_season)):
+            self._track_choices.clear()
+        self._pending_track_restore = set(self._track_choices)
+        self._track_restore_attempts = 20 if self._pending_track_restore else 0
+        subtitle_choice = self._track_choices.get("subtitles")
+        return subtitle_choice is not None and subtitle_choice[0] >= 0
+
+    @staticmethod
+    def _track_label(name):
+        # VLC can prefix a language or track name with a stream-specific number.
+        return re.sub(r"^track\s+\d+\s*[-:]\s*", "", " ".join(name.casefold().split()))
+
+    def _set_selected_track(self, kind, track_id):
+        if kind == "audio":
+            tracks, setter = self._audio_tracks(), self.player.audio_set_track
+        else:
+            tracks, setter = self._subs_tracks(), self.player.video_set_spu
+        if setter(track_id) == 0:
+            label = next((name for tid, name in tracks if tid == track_id), "")
+            self._track_choices[kind] = (track_id, label, self._current_url)
+            self._pending_track_restore.discard(kind)
+
+    def _restore_selected_tracks(self):
+        if not self._pending_track_restore or not self.player.is_playing():
+            return
+        self._track_restore_attempts -= 1
+        for kind in tuple(self._pending_track_restore):
+            old_id, old_name, old_url = self._track_choices[kind]
+            if kind == "audio":
+                tracks, setter = self._audio_tracks(), self.player.audio_set_track
+            else:
+                tracks, setter = self._subs_tracks(), self.player.video_set_spu
+            label = self._track_label(old_name)
+            matches = [tid for tid, name in tracks if tid >= 0 and self._track_label(name) == label]
+            target = None
+            if old_id == -1 and tracks:
+                target = -1
+            elif old_url == self._current_url and old_id in matches:
+                target = old_id
+            elif label and not re.fullmatch(r"track\s+\d+", label) and len(matches) == 1:
+                target = matches[0]
+            if target is not None and setter(target) == 0:
+                self._pending_track_restore.discard(kind)
+            elif self._track_restore_attempts <= 0:
+                if kind == "subtitles" and self._subtitle_language == "disabled":
+                    setter(-1)
+                self._pending_track_restore.discard(kind)
+
     def _subs_tracks(self):
         try:
             descs = self.player.video_get_spu_description() or []
@@ -1765,7 +1836,7 @@ class EmbeddedPlayerWindow(QMainWindow):
 
     def _select_audio_track(self, track_id):
         """Select one libVLC audio track from the popup menu."""
-        self.player.audio_set_track(track_id)
+        self._set_selected_track("audio", track_id)
         self._wake_controls()
 
     def _cycle_audio(self):
@@ -1781,7 +1852,7 @@ class EmbeddedPlayerWindow(QMainWindow):
         except ValueError:
             next_index = 0
         track_id, name = tracks[next_index]
-        self.player.audio_set_track(track_id)
+        self._set_selected_track("audio", track_id)
         self._show_track_osd(f"Audio: {name}")
         self._wake_controls()
 
@@ -1798,7 +1869,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             act = QAction(name, menu)
             act.setCheckable(True)
             act.setChecked(tid == current)
-            act.triggered.connect(lambda _, t=tid: self.player.video_set_spu(t))
+            act.triggered.connect(lambda _, t=tid: self._set_selected_track("subtitles", t))
             menu.addAction(act)
         self._show_selection_menu(menu, self.btn_subs)
         menu.deleteLater()
@@ -1817,7 +1888,7 @@ class EmbeddedPlayerWindow(QMainWindow):
             nxt = ids[(i + 1) % len(ids)]
         except ValueError:
             nxt = ids[0]
-        self.player.video_set_spu(nxt)
+        self._set_selected_track("subtitles", nxt)
         selected_name = next(
             (name for track_id, name in tracks if track_id == nxt),
             "Unknown"
@@ -2263,6 +2334,7 @@ class EmbeddedPlayerWindow(QMainWindow):
                 self.seek_slider.setEnabled(False)
                 self.seek_slider.setValue(0)
                 self.time_label.setText("Loading...")
+            self._restore_selected_tracks()
             self._update_subs_button()
             self._update_audio_button()
             self._apply_pending_playback_rate()
@@ -2683,6 +2755,8 @@ class EmbeddedPlayerWindow(QMainWindow):
             self._resume_playback()
 
     def closeEvent(self, event):
+        self._track_choices.clear()
+        self._pending_track_restore.clear()
         self._live_reconnect.stop()
         self._programme_timer.stop()
         self._pause_started_at = None
