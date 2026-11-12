@@ -121,7 +121,12 @@ class AccountManager(QtWidgets.QDialog):
                         if editing_active_account:
                             # Reapply changed URLs and credentials immediately so
                             # the in-memory catalog never keeps stale stream links.
-                            self.parent.activate_saved_account(updated_name)
+                            self.parent.activate_saved_account(
+                                updated_name,
+                                force_refresh=(
+                                    updated_method != method or updated_credentials != credentials
+                                ),
+                            )
 
     def add_account(self):
         dialog = AccountDialog(self, AccountDialog.MODE_ADD)

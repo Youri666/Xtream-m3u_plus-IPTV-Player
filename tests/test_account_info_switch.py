@@ -5,17 +5,19 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
+from iptv_player.provider.cache import account_cache_key
 
 
-def account_activation():
+def account_activation(method_name="set_active_account", **overrides):
     tree = ast.parse((Path(__file__).resolve().parents[1] / "IPTVPlayer.py").read_text(encoding="utf-8"))
     cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "IPTVPlayerApp")
-    method = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == "set_active_account")
+    method = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == method_name)
     namespace = dict(logging=logging, CURRENT_VERSION="test", load_account_user_agent=lambda *args: "new agent",
                      load_account_id=lambda *args: "new-id", load_account_epg_offset=lambda *args: 0,
                      provider_preferences_file=lambda *args: "new-preferences", account_history_file=lambda *args: "new-history")
+    namespace.update(overrides)
     exec(compile(ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[])), "activation", "exec"), namespace)
-    return namespace["set_active_account"]
+    return namespace[method_name]
 
 
 class AccountInfoSwitchTests(unittest.TestCase):
@@ -51,3 +53,28 @@ class AccountInfoSwitchTests(unittest.TestCase):
         account_activation()(window, "New")
         window.refresh_account_info.assert_not_called()
         window.iptv_info_text.clear.assert_called_once()
+
+    def test_credential_edit_forces_refresh_and_preserves_only_the_same_provider_view(self):
+        for new_server, preserve in (("https://provider.test", True), ("https://other.test", False)):
+            with self.subTest(new_server=new_server):
+                window = SimpleNamespace(
+                    server="https://provider.test", username="user", _catalog_loaded=True,
+                    active_account_id="new-id", user_data_file="unused.ini",
+                    set_active_account=Mock(), login=Mock(),
+                )
+                activate = account_activation(
+                    "activate_saved_account", account_cache_key=account_cache_key,
+                    load_account=lambda *_: "account",
+                    parse_account=lambda _: ("manual", (new_server, "user", "updated", "", "", "")),
+                )
+                self.assertTrue(activate(window, "Active", force_refresh=True))
+                window.set_active_account.assert_called_once_with("Active", preserve_catalog=preserve)
+                window.login.assert_called_once_with(force_refresh=True, preserve_catalog=preserve)
+
+    def test_preserved_view_still_invalidates_old_requests(self):
+        window = self.make_window(False)
+        window._catalog_loaded = True
+        account_activation()(window, "New", preserve_catalog=True)
+        self.assertTrue(window._catalog_loaded)
+        window._reset_provider_view_state.assert_not_called()
+        self.assertEqual(window._catalog_request_generation, 2)
