@@ -520,7 +520,7 @@ class IPTVPlayerApp(QMainWindow):
         except Exception as error:
             logging.debug("Could not prewarm internal VLC: %s", error)
 
-    def set_active_account(self, name):
+    def set_active_account(self, name, *, preserve_catalog=False):
         """Store the active account and load its isolated preferences."""
         previous_tab_key = None
         if self.active_account_name:
@@ -532,10 +532,11 @@ class IPTVPlayerApp(QMainWindow):
                 ),
                 None,
             )
-        self._reset_provider_view_state()
-        self._catalog_loaded = False
-        self._last_synced_playback_selection = None
-        self._pending_history_series = None
+        if not preserve_catalog:
+            self._reset_provider_view_state()
+            self._catalog_loaded = False
+            self._last_synced_playback_selection = None
+            self._pending_history_series = None
         self._catalog_request_generation += 1
         # Results from the previous account must not update the new account's UI.
         self._account_info_generation = getattr(self, '_account_info_generation', 0) + 1
@@ -583,12 +584,13 @@ class IPTVPlayerApp(QMainWindow):
         if self._is_info_tab_visible():
             self.refresh_account_info()
 
-    def activate_saved_account(self, name):
+    def activate_saved_account(self, name, *, force_refresh=False):
         """Load one saved account and refresh its provider catalog."""
         parsed_account = parse_account(load_account(self.user_data_file, name))
         if parsed_account is None:
             return False
 
+        previous_provider = account_cache_key(self.server, self.username)
         method, fields = parsed_account
         if method == "manual":
             (
@@ -611,8 +613,15 @@ class IPTVPlayerApp(QMainWindow):
         else:
             return False
 
-        self.set_active_account(name)
-        self.login()
+        # Keep visible rows only when the edited account still represents the
+        # same provider and user. A server or username change opens a new view.
+        preserve_catalog = (
+            force_refresh and self._catalog_loaded and self.active_account_id
+            and self.active_account_id == load_account_id(self.user_data_file, name)
+            and previous_provider == account_cache_key(self.server, self.username)
+        )
+        self.set_active_account(name, preserve_catalog=preserve_catalog)
+        self.login(force_refresh=force_refresh, preserve_catalog=preserve_catalog)
         return True
 
     def delete_saved_account(self, name):
@@ -4401,6 +4410,7 @@ class IPTVPlayerApp(QMainWindow):
         colors = {
             "busy": "#2d8fd5",
             "success": "#2ea44f",
+            "warning": "#a87500",
             "error": "#d64545"
         }
         if state not in colors:
@@ -4457,14 +4467,14 @@ class IPTVPlayerApp(QMainWindow):
         """Apply the success or failure color selected by animate_progress()."""
         self.set_progress_state(self._progress_animation_final_state)
 
-    def login(self):
+    def login(self, *, force_refresh=False, preserve_catalog=False):
         self.set_progress_bar(0, "Logging in...")
 
-        for tab_name, list_widget in self.streaming_list_widgets.items():
-            list_widget.clear()
-
-        for tab_name, list_widget in self.category_list_widgets.items():
-            list_widget.clear()
+        if not preserve_catalog:
+            for list_widget in self.streaming_list_widgets.values():
+                list_widget.clear()
+            for list_widget in self.category_list_widgets.values():
+                list_widget.clear()
 
         if not self.server or not self.username or not self.password:
             dlg = QMessageBox(self)
@@ -4491,9 +4501,8 @@ class IPTVPlayerApp(QMainWindow):
             favorites_migration_source, dedicated_favorites_file
         ))
 
-        self.fetch_data_thread()
-
         self.set_progress_bar(0, "Going to fetch data...")
+        self.fetch_data_thread(force_refresh=force_refresh)
 
     def fetch_data_thread(self, force_refresh=False):
         if not self._catalog_refresh_policy.begin(self.active_account_id):
@@ -4523,6 +4532,7 @@ class IPTVPlayerApp(QMainWindow):
         dataWorker.signals.request_generation = self._catalog_request_generation
         dataWorker.signals.finished.connect(self.process_data)
         dataWorker.signals.error.connect(self.on_fetch_data_error)
+        dataWorker.signals.outcome.connect(self._catalog_outcome)
         dataWorker.signals.progress_bar.connect(self._catalog_progress)
         dataWorker.signals.show_error_msg.connect(self._catalog_error_message)
         dataWorker.signals.show_info_msg.connect(self._catalog_info_message)
@@ -4536,6 +4546,21 @@ class IPTVPlayerApp(QMainWindow):
             generation is None
             or generation == self._catalog_request_generation
         )
+
+    def _catalog_outcome(self, message, state):
+        if self._current_catalog_signal():
+            self.playlist_progress_animation.stop()
+            self.set_progress_bar(100, message, state)
+            if state == "error":
+                account = self.active_account_id
+                generation = self._catalog_request_generation
+                answer = QMessageBox.warning(
+                    self, "Provider catalog", message,
+                    QMessageBox.Retry | QMessageBox.Close, QMessageBox.Close,
+                )
+                if (answer == QMessageBox.Retry and account == self.active_account_id
+                        and generation == self._catalog_request_generation):
+                    self.refresh_provider_catalog()
 
     def _catalog_progress(self, start, end, text):
         if self._current_catalog_signal():

@@ -63,6 +63,7 @@ class AccountInfoWorker(QRunnable):
             self.signals.error.emit(str(error))
 
 class FetchDataWorkerSignals(QObject):
+    outcome         = pyqtSignal(str, str)
     completed       = pyqtSignal(str, bool, object)
     finished        = pyqtSignal(dict, dict, dict)
     error           = pyqtSignal(str)
@@ -113,6 +114,7 @@ class FetchDataWorker(QRunnable):
             getattr(parent, 'active_account_id', '') or self._cache_account_key()
         )
         self.favorites_file = parent.favorites_file
+        self.has_displayed_catalog = bool(getattr(parent, "_catalog_loaded", False))
 
     def _cache_account_key(self):
         """Identify a provider account without writing credentials to the cache."""
@@ -125,6 +127,7 @@ class FetchDataWorker(QRunnable):
         client = None
         completed_successfully = False
         catalog_fetched_at = 0
+        outcome = None
         try:
             categories_per_stream_type = {
                 'LIVE': [],
@@ -194,7 +197,7 @@ class FetchDataWorker(QRunnable):
             dedicated_cache_written = False
 
             catalog_fetch_complete = True
-            catalog_fetched_at = metadata.get('fetched_at', 0)
+            catalog_fetched_at = metadata.get('fetched_at', 0) if cache_matches_account else 0
             if cache_is_fresh:
                 self.signals.progress_bar.emit(0, 80, "Loading provider catalog from cache")
                 for stream_type in ('LIVE', 'Movies', 'Series'):
@@ -215,10 +218,32 @@ class FetchDataWorker(QRunnable):
                 # Account metadata stays out of the catalog cache because provider
                 # responses can contain credentials. The Info tab can refresh it later.
                 self.signals.progress_bar.emit(0, 5, "Fetching IPTV info")
+                account_failure = None
                 try:
                     iptv_info_data = client.get_json()
-                except Exception as e:
-                    print(f"failed fetching IPTV data: {e}")
+                    if not isinstance(iptv_info_data, dict):
+                        raise ValueError("Invalid account information")
+                    user_info = iptv_info_data.get("user_info")
+                    if not isinstance(user_info, dict) or not user_info:
+                        raise ValueError("Invalid account information")
+                    if str(user_info.get("auth")).strip().lower() in ("0", "false"):
+                        account_failure = "Provider rejected the account credentials. Check the account settings."
+                except requests.HTTPError as error:
+                    if error.response is not None and error.response.status_code == 401:
+                        account_failure = "Provider rejected the account credentials. Check the account settings."
+                    else:
+                        account_failure = "Provider account request failed."
+                except (requests.Timeout, requests.ConnectionError):
+                    account_failure = "Provider is unreachable."
+                except (requests.RequestException, ValueError):
+                    account_failure = "Provider account verification failed."
+
+                if account_failure:
+                    iptv_info_data = {}
+                    print(account_failure)
+                    if self.has_displayed_catalog:
+                        outcome = (account_failure + " Keeping the displayed catalog.", "warning")
+                        return
 
                 # Describe the six provider collections in one table so each content
                 # toggle controls both its category and stream requests consistently.
@@ -230,7 +255,10 @@ class FetchDataWorker(QRunnable):
                     ('Movies', 'streams', 'get_vod_streams', 'Movies', 40, 60),
                     ('Series', 'streams', 'get_series', 'Series', 60, 80),
                 )
-                catalog_fetch_complete = True
+                catalog_fetch_complete = not account_failure
+                cached_sections = []
+                missing_sections = []
+                successful_sections = 0
 
                 for stream_type, collection, action, cache_key, start, end in request_plan:
                     if not self.enabled_stream_types[stream_type]:
@@ -238,19 +266,27 @@ class FetchDataWorker(QRunnable):
                         continue
 
                     label = f"{stream_type} {collection}"
-                    print(f"Fetching {label}")
-                    self.signals.progress_bar.emit(start, end, f"Fetching {label}")
-                    try:
-                        result = client.get_json(action)
-                    except Exception as e:
+                    result = None
+                    if not account_failure:
+                        self.signals.progress_bar.emit(start, end, f"Fetching {label}")
+                        try:
+                            result = client.get_json(action)
+                            if not isinstance(result, list) or any(not isinstance(row, dict) for row in result):
+                                raise ValueError("Invalid catalog collection")
+                        except (requests.RequestException, ValueError) as error:
+                            print(f"Failed fetching {label}: {type(error).__name__}")
+                            result = None
+                    if result is None:
                         catalog_fetch_complete = False
-                        print(f"Failed fetching {label}: {e}")
-                        result = (
-                            cached_data.get(cache_key, [])
-                            if cache_matches_account else []
-                        )
-                        if result:
-                            print(f"Loaded {label} from cache")
+                        fallback = cached_data.get(cache_key) if cache_matches_account else None
+                        if isinstance(fallback, list):
+                            cached_sections.append(label)
+                            result = fallback
+                        else:
+                            missing_sections.append(label)
+                            result = []
+                    else:
+                        successful_sections += 1
 
                     destination = (
                         categories_per_stream_type
@@ -259,11 +295,23 @@ class FetchDataWorker(QRunnable):
                     )
                     destination[stream_type] = result
 
-                print("going to create cached data")
+                if not catalog_fetch_complete:
+                    message = account_failure or "Catalog update incomplete."
+                    if not successful_sections and self.has_displayed_catalog:
+                        outcome = (message + " Keeping the displayed catalog.", "warning")
+                        return
+                    if not successful_sections and not cached_sections:
+                        outcome = (message + " No cached catalog available. Use Refresh to retry.", "error")
+                        return
+                    if cached_sections:
+                        message += " Cached: " + ", ".join(cached_sections) + "."
+                    if missing_sections:
+                        message += " Missing: " + ", ".join(missing_sections) + "."
+                    outcome = (message, "warning")
 
                 # Preserve cached collections for disabled content. Disabling Movies,
                 # for example, must not erase its useful fallback data from disk.
-                if self.catalog_cache_enabled:
+                if self.catalog_cache_enabled and catalog_fetch_complete:
                     cache_to_write = build_catalog_cache(
                         cached_data,
                         cache_account_key,
@@ -278,8 +326,6 @@ class FetchDataWorker(QRunnable):
                     except OSError as error:
                         # Cache persistence must not discard data already fetched.
                         print(f"Failed writing provider cache: {error}")
-            if not cache_is_fresh:
-                catalog_fetched_at = time.time() if catalog_fetch_complete else metadata.get('fetched_at', 0)
             if cache_file_to_load != dedicated_cache_file and cache_matches_account:
                 try:
                     if cache_is_fresh:
@@ -300,6 +346,8 @@ class FetchDataWorker(QRunnable):
                 read_json_mapping(self.favorites_file),
                 self.generate_url,
             )
+            if not cache_is_fresh and catalog_fetch_complete:
+                catalog_fetched_at = time.time()
 
             #Send received data to processing function
             self.signals.finished.emit(iptv_info_data, categories_per_stream_type, entries_per_stream_type)
@@ -308,8 +356,9 @@ class FetchDataWorker(QRunnable):
             print("Finished downloading IPTV data")
 
         except Exception as e:
-            print(f"Exception! {e}")
-            self.signals.error.emit(str(e))
+            print(f"Catalog loading failed: {type(e).__name__}")
+            outcome = None
+            self.signals.error.emit("Catalog loading failed")
         finally:
             try:
                 if client is not None:
@@ -317,6 +366,8 @@ class FetchDataWorker(QRunnable):
             finally:
                 # Always settle the GUI busy state through a real Qt signal.
                 self.signals.completed.emit(self.account_id, completed_successfully, catalog_fetched_at)
+                if outcome is not None:
+                    self.signals.outcome.emit(*outcome)
 
     def generate_url(self, stream_type, stream_id, container_extension):
         """Keep the worker API while delegating URL formatting to the provider layer."""
