@@ -102,10 +102,9 @@ jobs:
           test "$(lipo -archs 'dist/IPTV Player.app/Contents/MacOS/IPTV Player')" = "$TARGET_ARCH"
           version=$(python -c 'from iptv_player.constants import CURRENT_VERSION; print(CURRENT_VERSION)')
           mv "dist/IPTV Player $version.dmg" "dist/IPTV.Player.$version.$TARGET_ARCH.dmg"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
-          name: IPTV-Player-macOS-${{ matrix.arch }}
           path: dist/IPTV.Player.*.${{ matrix.arch }}.dmg
           if-no-files-found: error
           retention-days: 7
-          compression-level: 0
+          archive: false
