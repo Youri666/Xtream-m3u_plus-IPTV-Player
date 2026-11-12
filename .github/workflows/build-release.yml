@@ -30,7 +30,7 @@ jobs:
           python -m venv .venv || exit /b 1
           call build_IPTV_Player_Win.bat || exit /b 1
           move "dist\IPTV Player.exe" "dist\IPTV.Player.exe" || exit /b 1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: IPTV-Player-Windows-x64
           path: dist/IPTV.Player.exe
@@ -62,7 +62,7 @@ jobs:
               # Archive the executable to preserve its permission bits.
               tar -czf dist/IPTV-Player-Rocky9-x64.tar.gz -C dist IPTV_Player
             '
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: IPTV-Player-Rocky9-x64
           path: dist/IPTV-Player-Rocky9-x64.tar.gz
@@ -103,7 +103,7 @@ jobs:
           test "$(lipo -archs 'dist/IPTV Player.app/Contents/MacOS/IPTV Player')" = "$TARGET_ARCH"
           version=$(python -c 'from iptv_player.constants import CURRENT_VERSION; print(CURRENT_VERSION)')
           mv "dist/IPTV Player $version.dmg" "dist/IPTV.Player.$version.$TARGET_ARCH.dmg"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: IPTV-Player-macOS-${{ matrix.arch }}
           path: dist/IPTV.Player.*.${{ matrix.arch }}.dmg
