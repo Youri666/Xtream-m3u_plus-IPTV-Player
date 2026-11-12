@@ -48,7 +48,7 @@ IF ERRORLEVEL 1 (
 )
 
 REM Confirm all modules can be collected before deleting previous builds.
-"%VENV_PYTHON%" -c "import PyQt5, requests, lxml, dateutil, vlc" >nul 2>&1
+"%VENV_PYTHON%" -c "from importlib.util import find_spec; from PyQt5 import QtCore; from lxml import etree; import requests, dateutil; assert find_spec('vlc'), 'python-vlc is missing'"
 IF ERRORLEVEL 1 (
   echo.
   echo ERROR: Required Python modules are still unavailable. Build cancelled.

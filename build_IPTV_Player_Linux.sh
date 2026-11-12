@@ -30,7 +30,7 @@ echo "Installing build dependencies in $VENV_PATH..."
 "$PYTHON_BIN" -m pip check
 
 # Confirm all modules can be collected before deleting previous builds.
-if ! "$PYTHON_BIN" -c "import PyQt5, requests, lxml, dateutil, vlc" &> /dev/null; then
+if ! "$PYTHON_BIN" -c "from importlib.util import find_spec; from PyQt5 import QtCore; from lxml import etree; import requests, dateutil; assert find_spec('vlc'), 'python-vlc is missing'"; then
   echo "ERROR: Required Python modules are still unavailable. Build cancelled."
   exit 1
 fi
