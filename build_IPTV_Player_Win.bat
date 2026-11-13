@@ -78,7 +78,7 @@ IF EXIST %DIST_PATH% (
 )
 
 REM PyInstaller writes specification files beside the script; remove stale variants.
-IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
+IF EXIST "IPTV.Player.spec" del /q "IPTV.Player.spec"
 
 REM Modern PyQt5 uses PyQt5.sip; exclude only the obsolete top-level name.
 REM python-vlc is imported lazily, so PyInstaller cannot discover it automatically.
@@ -90,7 +90,7 @@ REM Run PyInstaller directly with all necessary options and added data files
   --hidden-import vlc ^
   --exclude-module sip ^
   --icon "images/TV_icon.ico" ^
-  --name "IPTV Player" ^
+  --name "IPTV.Player" ^
   --workpath %BUILD_PATH% ^
   --distpath %DIST_PATH% ^
   --add-data "images/TV_icon.ico;images" ^
@@ -122,14 +122,14 @@ REM Run PyInstaller directly with all necessary options and added data files
   %MAIN_SCRIPT%
 IF ERRORLEVEL 1 GOTO build_failed
 
-IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
+IF EXIST "IPTV.Player.spec" del /q "IPTV.Player.spec"
 echo.
 echo Build complete. Executable saved in %DIST_PATH%.
 if not defined CI pause
 exit /b 0
 
 :build_failed
-IF EXIST "IPTV Player.spec" del /q "IPTV Player.spec"
+IF EXIST "IPTV.Player.spec" del /q "IPTV.Player.spec"
 echo.
 echo ERROR: The build failed. Review the messages above for details.
 if not defined CI pause

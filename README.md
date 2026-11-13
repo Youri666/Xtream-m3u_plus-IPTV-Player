@@ -184,9 +184,11 @@ Two account input methods are available:
 
 ![M3U_plus account configuration](screenshots/add-account-m3u-plus.png)
 
-Stream URL formats are fully editable because IPTV providers do not always use the same URL structure. Use the settings button beside **Live URL format** to select a common format, or enter a custom format required by the provider.
+New Xtream accounts start with **Auto-detect** for **Live URL format**. Click **Test connection** or **OK** to check your credentials and try the built-in formats on a small sample of live channels. The first confirmed format fills the editable field. If no format can be confirmed, use the settings button to choose a preset or enter a custom format.
 
-![Common Live URL format presets](screenshots/live-url-format-presets.png)
+![Live URL format menu with automatic detection and manual presets](screenshots/live-url-format-presets.png)
+
+Use **Test Live URL format** to check the selected preset or a custom format against a small sample of live channels. If the field is set to **Auto-detect**, the button tries the built-in formats and fills in the first one it confirms.
 
 Each account can use its own **EPG time offset** to correct schedule times by up to 12 hours in either direction. Use **Test connection** to validate the credentials and account status before saving, without downloading the full provider catalog.
 
@@ -197,7 +199,7 @@ The **Startup account** selects which account should be loaded when the applicat
 **My Live TV doesn't work, but Movies and Series do. How can I fix this?**
 
 Some IPTV providers require a different URL format for LIVE streams.
-Edit the affected account and use the settings button beside **Live URL format** to try one of the common presets. The field remains editable if the provider requires a different format.
+Existing accounts keep their saved format. If live channels stop working after your provider changes its URL format, edit the account, select **Auto-detect** from the settings menu beside **Live URL format**, and click **Test connection**. You can also choose a preset or enter a custom format directly.
 
 If none of these formats work, please open an issue on the v3 repository: [Issues](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/issues)
 

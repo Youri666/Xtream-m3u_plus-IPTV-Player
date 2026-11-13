@@ -2452,8 +2452,8 @@ class IPTVPlayerApp(QMainWindow):
             list_widget.viewport().update()
 
     def init_iptv_info(self):
-        info_controls = QHBoxLayout()
-        self.refresh_account_info_button = QPushButton("Refresh")
+        info_controls = QGridLayout()
+        self.refresh_account_info_button = QPushButton("Refresh Info")
         self.refresh_account_info_button.setIcon(
             self.style().standardIcon(QtWidgets.QStyle.SP_BrowserReload)
         )
@@ -2462,16 +2462,21 @@ class IPTVPlayerApp(QMainWindow):
         )
         self.refresh_account_info_button.clicked.connect(self.refresh_account_info)
         self.account_info_last_refresh_label = QLabel("Not refreshed yet")
-        info_controls.addWidget(self.refresh_account_info_button)
-        info_controls.addWidget(self.account_info_last_refresh_label)
-        info_controls.addStretch()
-        self.info_tab_layout.addLayout(info_controls)
+        self.info_refresh_catalog_button = self._create_catalog_refresh_button("Refresh Catalog")
+        for button in (self.refresh_account_info_button, self.info_refresh_catalog_button):
+            button.setStyleSheet("QPushButton { text-align: left; padding: 3px 6px; }")
         self.catalog_last_refresh_label = QLabel(catalog_last_updated_text(None))
         self.catalog_last_refresh_label.setWordWrap(True)
         self.catalog_last_refresh_label.setToolTip(
             "Last successful provider catalog update, including cached data. "
             "Account status refreshes do not change this date.")
-        self.info_tab_layout.addWidget(self.catalog_last_refresh_label)
+        info_controls.addWidget(self.refresh_account_info_button, 0, 0)
+        info_controls.addWidget(self.account_info_last_refresh_label, 0, 1)
+        info_controls.addWidget(self.info_refresh_catalog_button, 1, 0)
+        info_controls.addWidget(self.catalog_last_refresh_label, 1, 1)
+        info_controls.setColumnStretch(1, 1)
+        self.info_tab_layout.addLayout(info_controls)
+        self._update_catalog_refresh_button()
 
         self.iptv_info_text = QTextEdit()
         self.iptv_info_text.setReadOnly(True)
@@ -3663,11 +3668,7 @@ class IPTVPlayerApp(QMainWindow):
         account_controls_layout.addWidget(self.startup_account_selector)
         account_controls_layout.addWidget(QLabel("Active account:"))
         account_controls_layout.addWidget(self.account_selector)
-        self.refresh_catalog_button = QPushButton()
-        self.refresh_catalog_button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_BrowserReload))
-        self.refresh_catalog_button.setToolTip("Refresh active account catalog")
-        self.refresh_catalog_button.setAccessibleName("Refresh active account catalog")
-        self.refresh_catalog_button.clicked.connect(lambda: self.refresh_provider_catalog())
+        self.refresh_catalog_button = self._create_catalog_refresh_button()
         account_controls_layout.addWidget(self.refresh_catalog_button)
         self._update_catalog_refresh_button()
 
@@ -4574,11 +4575,21 @@ class IPTVPlayerApp(QMainWindow):
         if self._current_catalog_signal():
             self.show_info_msg(title, message)
 
+    def _create_catalog_refresh_button(self, text=""):
+        button = QPushButton(text)
+        button.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_BrowserReload))
+        button.setToolTip("Refresh active account catalog")
+        button.setAccessibleName("Refresh active account catalog")
+        button.clicked.connect(self.refresh_provider_catalog)
+        return button
+
     def _update_catalog_refresh_button(self):
         """Expose the same busy state for all catalogue entry points."""
-        button = getattr(self, 'refresh_catalog_button', None)
-        if button is not None:
-            button.setEnabled(bool(self.active_account_id) and self.active_account_id not in self._catalog_refresh_policy.busy)
+        enabled = bool(self.active_account_id) and self.active_account_id not in self._catalog_refresh_policy.busy
+        for name in ('refresh_catalog_button', 'info_refresh_catalog_button'):
+            button = getattr(self, name, None)
+            if button is not None:
+                button.setEnabled(enabled)
 
         label = getattr(self, 'catalog_last_refresh_label', None)
         if label is not None:

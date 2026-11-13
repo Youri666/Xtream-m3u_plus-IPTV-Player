@@ -2,6 +2,7 @@ from PyQt5 import QtWidgets
 from PyQt5.QtCore import QSize, Qt
 from PyQt5.QtWidgets import (
     QFormLayout,
+    QGridLayout,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -24,6 +25,7 @@ from iptv_player.provider.workers import AccountInfoWorker
 from iptv_player.ui.theme import application_palette_is_dark, grayscale_icon
 
 
+AUTO_DETECT_LIVE_FORMAT = "Auto-detect"
 LIVE_URL_FORMAT_PRESETS = (
     "{server}/{username}/{password}/{stream_id}",
     "{server}/{username}/{password}/{stream_id}.ts",
@@ -210,7 +212,11 @@ class AccountDialog(QtWidgets.QDialog):
         self.username_entry     = QLineEdit()
         self.password_entry     = QLineEdit()
 
-        self.live_url_format_entry = QLineEdit(self.default_url_formats['live'])
+        initial_live_format = (
+            AUTO_DETECT_LIVE_FORMAT if self.mode == self.MODE_ADD
+            else self.default_url_formats["live"]
+        )
+        self.live_url_format_entry = QLineEdit(initial_live_format)
         self.movie_url_format_entry = QLineEdit(self.default_url_formats['movie'])
         self.series_url_format_entry = QLineEdit(self.default_url_formats['series'])
 
@@ -245,7 +251,7 @@ class AccountDialog(QtWidgets.QDialog):
         self.name_entry_m3u = QLineEdit()
         self.m3u_url_entry  = QLineEdit()
 
-        self.m3u_live_url_format_entry = QLineEdit(self.default_url_formats['live'])
+        self.m3u_live_url_format_entry = QLineEdit(initial_live_format)
         self.m3u_movie_url_format_entry = QLineEdit(self.default_url_formats['movie'])
         self.m3u_series_url_format_entry = QLineEdit(self.default_url_formats['series'])
         self.m3u_live_url_format_entry.setToolTip(live_format_tooltip)
@@ -315,13 +321,22 @@ class AccountDialog(QtWidgets.QDialog):
 
         self.method_selector.currentIndexChanged.connect(self._method_changed)
 
-        test_layout = QtWidgets.QHBoxLayout()
+        test_layout = QGridLayout()
+        self.test_live_format_button = QPushButton("Test Live URL format")
+        self.test_live_format_button.clicked.connect(self.test_live_format)
+        self.test_live_format_status = QLabel()
+        self.test_live_format_status.setWordWrap(True)
         self.test_connection_button = QPushButton("Test connection")
+        for button in (self.test_live_format_button, self.test_connection_button):
+            button.setStyleSheet("QPushButton { text-align: left; padding: 3px 6px; }")
         self.test_connection_button.clicked.connect(self.test_connection)
         self.test_connection_status = QLabel()
         self.test_connection_status.setWordWrap(True)
-        test_layout.addWidget(self.test_connection_button)
-        test_layout.addWidget(self.test_connection_status, 1)
+        test_layout.addWidget(self.test_live_format_button, 0, 0)
+        test_layout.addWidget(self.test_live_format_status, 0, 1)
+        test_layout.addWidget(self.test_connection_button, 1, 0)
+        test_layout.addWidget(self.test_connection_status, 1, 1)
+        test_layout.setColumnStretch(1, 1)
         layout.addLayout(test_layout)
 
         buttons = QtWidgets.QDialogButtonBox(
@@ -329,6 +344,7 @@ class AccountDialog(QtWidgets.QDialog):
             Qt.Horizontal, self)
         buttons.accepted.connect(self.validate_and_accept)
         buttons.rejected.connect(self.reject)
+        self.save_button = buttons.button(QtWidgets.QDialogButtonBox.Ok)
 
         layout.addWidget(buttons)
 
@@ -369,7 +385,8 @@ class AccountDialog(QtWidgets.QDialog):
         """Build an aligned label with a menu of common Live URL formats."""
         return self._preset_field_label(
             "Live URL format", target, tooltip,
-            tuple((value, value) for value in LIVE_URL_FORMAT_PRESETS),
+            ((AUTO_DETECT_LIVE_FORMAT, AUTO_DETECT_LIVE_FORMAT), None)
+            + tuple((value, value) for value in LIVE_URL_FORMAT_PRESETS),
         )
 
     def _preset_field_label(self, text, target, tooltip, presets):
@@ -394,7 +411,11 @@ class AccountDialog(QtWidgets.QDialog):
         button.setAccessibleName(f"Choose a {text} preset")
         button.setPopupMode(QToolButton.InstantPopup)
         menu = QtWidgets.QMenu(button)
-        for title, value in presets:
+        for preset in presets:
+            if preset is None:
+                menu.addSeparator()
+                continue
+            title, value = preset
             action = menu.addAction(title)
             action.triggered.connect(
                 lambda _checked=False, value=value: target.setText(value)
@@ -443,16 +464,42 @@ class AccountDialog(QtWidgets.QDialog):
     def _connection_credentials(self):
         """Return the currently entered server credentials without saving them."""
         if self.method_selector.currentText() == self.manual_entry_name:
-            server = self.server_entry.text().strip()
-            username = self.username_entry.text().strip()
-            password = self.password_entry.text().strip()
-            if server and username and password:
-                return server, username, password
-            return None
+            credentials = self._manual_connection_credentials(update_fields=True)
+            return credentials if all(credentials) else None
         return parse_xtream_m3u_url(self.m3u_url_entry.text().strip())
 
+    def _manual_connection_credentials(self, update_fields=False):
+        fields = (self.server_entry, self.username_entry, self.password_entry)
+        credentials = tuple("".join(field.text().split()) for field in fields)
+        if update_fields:
+            for field, value in zip(fields, credentials):
+                if field.text() != value:
+                    field.setText(value)
+        return credentials
+
+    def _live_format_entry(self):
+        if self.method_selector.currentText() == self.manual_entry_name:
+            return self.live_url_format_entry
+        return self.m3u_live_url_format_entry
+
     def test_connection(self):
-        """Check account metadata without downloading any provider catalog."""
+        self._start_connection_test(save_after=False)
+
+    def test_live_format(self):
+        self._start_connection_test(save_after=False, live_only=True)
+
+    def _start_connection_test(self, save_after, live_only=False):
+        """Verify credentials and detect the live format when requested."""
+        self._test_status = (
+            self.test_live_format_status if live_only else self.test_connection_status
+        )
+        self._tested_live_format_entry = self._live_format_entry()
+        live_format = self._tested_live_format_entry.text().strip()
+        if live_only and not live_format:
+            self._show_connection_result(
+                False, "Select or enter a live URL format first.", title="Missing live URL format",
+            )
+            return
         credentials = self._connection_credentials()
         if credentials is None:
             self._show_connection_result(
@@ -463,24 +510,40 @@ class AccountDialog(QtWidgets.QDialog):
             return
 
         server, username, password = credentials
-        self.test_connection_button.setEnabled(False)
-        self.test_connection_status.setText("Testing…")
+        self._detecting_live_format = live_format == AUTO_DETECT_LIVE_FORMAT
+        self._testing_live_only = live_only
+        live_formats = LIVE_URL_FORMAT_PRESETS if self._detecting_live_format else ()
+        if live_only and not self._detecting_live_format:
+            live_formats = (live_format,)
+        self._save_after_connection_test = save_after
+        self._set_connection_test_busy(True)
+        self._test_status.setText(
+            "Detecting live URL format…" if self._detecting_live_format else "Testing…"
+        )
         main_window = self.parent.parent
         worker = AccountInfoWorker(
             server,
             username,
             password,
             self.selected_user_agent(),
+            live_formats,
         )
         worker.signals.finished.connect(self._connection_test_finished)
         worker.signals.error.connect(self._connection_test_failed)
         self._connection_test_worker = worker
         main_window.account_info_threadpool.start(worker)
 
+    def _set_connection_test_busy(self, busy):
+        for widget in (
+            self.method_selector, self.stack, self.user_agent_entry,
+            self.test_connection_button, self.test_live_format_button, self.save_button,
+        ):
+            widget.setEnabled(not busy)
+
     def _connection_test_finished(self, account_info):
         """Display authentication and account status returned by the provider."""
         self._connection_test_worker = None
-        self.test_connection_button.setEnabled(True)
+        self._set_connection_test_busy(False)
         user_info = account_info.get("user_info", {})
         if not isinstance(user_info, dict):
             user_info = {}
@@ -492,6 +555,28 @@ class AccountDialog(QtWidgets.QDialog):
                 "The provider responded, but the credentials were not accepted.",
             )
             return
+        if self._detecting_live_format or self._testing_live_only:
+            detected = account_info.get("detected_live_url_format")
+            self._set_test_result(self.test_live_format_status, bool(detected))
+            if not detected:
+                self._show_connection_result(
+                    False,
+                    "The credentials are valid, but no live URL format could be confirmed. "
+                    "Select a format from the settings menu or enter one manually.",
+                    title="Live URL format could not be confirmed",
+                )
+                return
+            if self._detecting_live_format:
+                self._tested_live_format_entry.setText(detected)
+            if self._save_after_connection_test:
+                self.validate_and_accept()
+                return
+            if self._testing_live_only:
+                self._show_connection_result(
+                    True, "The live URL format returned a valid stream.",
+                    title="Live URL format confirmed",
+                )
+                return
         self._show_connection_result(
             True,
             f"The credentials are valid. Account status: {status}.",
@@ -500,20 +585,22 @@ class AccountDialog(QtWidgets.QDialog):
     def _connection_test_failed(self, _error):
         """Report a network or invalid-response failure without exposing secrets."""
         self._connection_test_worker = None
-        self.test_connection_button.setEnabled(True)
+        self._set_connection_test_busy(False)
         self._show_connection_result(
             False,
             "Could not retrieve account information. Check the server URL and "
             "your network connection, then try again.",
         )
 
-    def _show_connection_result(self, success, message, title=""):
-        """Show a detailed themed dialog and a compact inline status."""
+    @staticmethod
+    def _set_test_result(label, success):
         word = "OK" if success else "Failed"
         color = "#2ea44f" if success else "#d64545"
-        self.test_connection_status.setText(
-            f'<span style="color:{color}">●</span> {word}'
-        )
+        label.setText(f'<span style="color:{color}">●</span> {word}')
+
+    def _show_connection_result(self, success, message, title=""):
+        """Show a detailed themed dialog and a compact inline status."""
+        self._set_test_result(self._test_status, success)
 
         dialog = QtWidgets.QMessageBox(self)
         dialog.setWindowTitle(
@@ -536,9 +623,7 @@ class AccountDialog(QtWidgets.QDialog):
 
         if method == self.manual_entry_name:
             name        = self.name_entry_manual.text().strip()
-            server      = self.server_entry.text().strip()
-            username    = self.username_entry.text().strip()
-            password    = self.password_entry.text().strip()
+            server, username, password = self._manual_connection_credentials(update_fields=True)
 
             if not name or not server or not username or not password:
                 QtWidgets.QMessageBox.warning(self, "Input Error", "Please fill all fields for Manual Entry.")
@@ -582,6 +667,9 @@ class AccountDialog(QtWidgets.QDialog):
             )
             return
 
+        if self._live_format_entry().text().strip() == AUTO_DETECT_LIVE_FORMAT:
+            self._start_connection_test(save_after=True)
+            return
         self.accept()
 
     def get_credentials(self):
@@ -589,9 +677,7 @@ class AccountDialog(QtWidgets.QDialog):
 
         if method == self.manual_entry_name:
             name              = self.name_entry_manual.text().strip()
-            server            = self.server_entry.text().strip()
-            username          = self.username_entry.text().strip()
-            password          = self.password_entry.text().strip()
+            server, username, password = self._manual_connection_credentials()
             live_url_format   = self.live_url_format_entry.text().strip()
             movie_url_format  = self.movie_url_format_entry.text().strip()
             series_url_format = self.series_url_format_entry.text().strip()
