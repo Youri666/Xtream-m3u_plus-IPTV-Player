@@ -155,9 +155,9 @@ History entries can be removed individually or in groups. Use **Ctrl** on Window
 
 The **Info** tab displays information about the currently selected IPTV account.
 
-Its content is refreshed automatically when the tab is opened. A manual refresh can also be triggered with the **Refresh** button.
+Account information is refreshed automatically when the tab is opened. Use **Refresh Info** to update it manually or **Refresh Catalog** to reload the active account's catalogue. **Refresh Catalog** performs the same action as the refresh button next to **Active account** in **Settings**.
 
-**Catalog last updated** shows the date and local time of the active account's last successful catalogue update. It updates after manual or automatic catalogue refreshes. Loading the JSON cache preserves its original fetch date, and a failed refresh keeps the previous date. The account-status **Refresh** button does not change this catalogue timestamp.
+**Last refreshed** shows when the account information was last retrieved. **Catalog last updated** shows the date and local time of the active account's last successful catalogue update. Loading the JSON cache preserves its original fetch date, and a failed catalogue refresh keeps the previous date.
 
 The refresh interval can be configured in **Advanced Settings**. To avoid unnecessary requests, the information is only refreshed while the **Info** tab is actually being viewed.
 
