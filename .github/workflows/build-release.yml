@@ -135,6 +135,7 @@ jobs:
         with:
           path: release-assets
           merge-multiple: true
+          skip-decompress: true
       - name: Verify and attach release assets
         shell: bash
         env:
