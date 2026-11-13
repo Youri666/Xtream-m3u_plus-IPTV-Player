@@ -2,6 +2,11 @@ name: Build release binaries
 
 on:
   workflow_dispatch:
+    inputs:
+      attach_to_draft:
+        description: Attach builds to the draft release for the selected tag
+        type: boolean
+        default: false
   pull_request:
     paths:
       - '.github/workflows/build-release.yml'
@@ -29,14 +34,18 @@ jobs:
         run: |
           python -m venv .venv || exit /b 1
           call build_IPTV_Player_Win.bat || exit /b 1
-          move "dist\IPTV Player.exe" "dist\IPTV.Player.exe" || exit /b 1
-      - uses: actions/upload-artifact@v6
+      - name: Package Windows executable
+        shell: pwsh
+        run: |
+          $version = python -c 'from iptv_player.constants import CURRENT_VERSION; print(CURRENT_VERSION)'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -LiteralPath dist/IPTV.Player.exe -DestinationPath "dist/IPTV-Player-Windows-x64.$version.zip" -Force
+      - uses: actions/upload-artifact@v7
         with:
-          name: IPTV-Player-Windows-x64
-          path: dist/IPTV.Player.exe
+          path: dist/IPTV-Player-Windows-x64.*.zip
           if-no-files-found: error
           retention-days: 7
-          compression-level: 0
+          archive: false
 
   linux:
     name: Rocky Linux 9 x64
@@ -60,11 +69,12 @@ jobs:
               bash build_IPTV_Player_Linux.sh
               test -x dist/IPTV_Player
               # Archive the executable to preserve its permission bits.
-              tar -czf dist/IPTV-Player-Rocky9-x64.tar.gz -C dist IPTV_Player
+              version=$(python3.12 -c "from iptv_player.constants import CURRENT_VERSION; print(CURRENT_VERSION)")
+              tar -czf "dist/IPTV-Player-Rocky9-x64.$version.tar.gz" -C dist IPTV_Player
             '
       - uses: actions/upload-artifact@v7
         with:
-          path: dist/IPTV-Player-Rocky9-x64.tar.gz
+          path: dist/IPTV-Player-Rocky9-x64.*.tar.gz
           if-no-files-found: error
           retention-days: 7
           archive: false
@@ -108,3 +118,44 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           archive: false
+
+  attach-to-draft:
+    name: Attach binaries to draft release
+    if: github.event_name == 'workflow_dispatch' && inputs.attach_to_draft && github.ref_type == 'tag'
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: release-assets-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Verify and attach release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          assets=(
+            "release-assets/IPTV-Player-Windows-x64.$RELEASE_TAG.zip"
+            "release-assets/IPTV-Player-Rocky9-x64.$RELEASE_TAG.tar.gz"
+            "release-assets/IPTV.Player.$RELEASE_TAG.x86_64.dmg"
+            "release-assets/IPTV.Player.$RELEASE_TAG.arm64.dmg"
+          )
+          for asset in "${assets[@]}"; do
+            if [[ ! -s "$asset" ]]; then
+              echo "Missing or empty asset: $asset" >&2
+              exit 1
+            fi
+          done
+          draft=$(gh release view --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' -- "$RELEASE_TAG")
+          if [[ "$draft" != true ]]; then
+            echo "The release for $RELEASE_TAG must be a draft." >&2
+            exit 1
+          fi
+          gh release upload --repo "$GITHUB_REPOSITORY" -- "$RELEASE_TAG" "${assets[@]}"

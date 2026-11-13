@@ -25,7 +25,7 @@ from iptv_player.provider.network import (
     MAX_LIVE_STATUS_RETRIES,
     NETWORK_SETTINGS,
 )
-from iptv_player.provider.streams import generate_stream_url
+from iptv_player.provider.streams import detect_live_url_format, generate_stream_url
 from iptv_player.provider.tmdb import TmdbClient
 from iptv_player.storage import read_json_mapping
 
@@ -35,14 +35,15 @@ class AccountInfoWorkerSignals(QObject):
 
 
 class AccountInfoWorker(QRunnable):
-    """Fetch only account/server metadata from the Xtream player API."""
+    """Fetch account metadata and optionally confirm a live URL format."""
 
-    def __init__(self, server, username, password, user_agent):
+    def __init__(self, server, username, password, user_agent, live_formats=()):
         super().__init__()
         self.server = server
         self.username = username
         self.password = password
         self.user_agent = user_agent
+        self.live_formats = live_formats
         self.signals = AccountInfoWorkerSignals()
 
     @pyqtSlot()
@@ -56,8 +57,15 @@ class AccountInfoWorker(QRunnable):
                 (NETWORK_SETTINGS.connection_timeout, NETWORK_SETTINGS.read_timeout),
             ) as client:
                 data = client.get_json()
-            if not isinstance(data, dict):
-                raise ValueError("The provider returned invalid account information")
+                if not isinstance(data, dict):
+                    raise ValueError("The provider returned invalid account information")
+                user_info = data.get("user_info")
+                if self.live_formats and isinstance(user_info, dict) and str(user_info.get("auth")) == "1":
+                    try:
+                        detected = detect_live_url_format(client, self.server, self.live_formats)
+                    except (requests.RequestException, ValueError):
+                        detected = None
+                    data["detected_live_url_format"] = detected
             self.signals.finished.emit(data)
         except Exception as error:
             self.signals.error.emit(str(error))
