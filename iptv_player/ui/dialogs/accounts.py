@@ -1,3 +1,5 @@
+import logging
+
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QSize, Qt
 from PyQt5.QtWidgets import (
@@ -515,6 +517,15 @@ class AccountDialog(QtWidgets.QDialog):
         live_formats = LIVE_URL_FORMAT_PRESETS if self._detecting_live_format else ()
         if live_only and not self._detecting_live_format:
             live_formats = (live_format,)
+        if live_formats:
+            logging.debug(
+                "Live URL test: mode=%s",
+                "auto-detect" if self._detecting_live_format else "manual",
+            )
+        for candidate, template in enumerate(live_formats, 1):
+            # A custom template may contain literal credentials.
+            label = template if template in LIVE_URL_FORMAT_PRESETS else "custom format"
+            logging.debug("Live URL test: candidate=%d format=%s", candidate, label)
         self._save_after_connection_test = save_after
         self._set_connection_test_busy(True)
         self._test_status.setText(

@@ -1,3 +1,4 @@
+import logging
 import os
 from os import path
 import time
@@ -63,7 +64,12 @@ class AccountInfoWorker(QRunnable):
                 if self.live_formats and isinstance(user_info, dict) and str(user_info.get("auth")) == "1":
                     try:
                         detected = detect_live_url_format(client, self.server, self.live_formats)
-                    except (requests.RequestException, ValueError):
+                    except (requests.RequestException, ValueError) as error:
+                        response = getattr(error, "response", None)
+                        logging.debug(
+                            "Live URL test: channel list request failed; HTTP=%s error=%s",
+                            getattr(response, "status_code", None), type(error).__name__,
+                        )
                         detected = None
                     data["detected_live_url_format"] = detected
             self.signals.finished.emit(data)
