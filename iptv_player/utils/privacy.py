@@ -13,7 +13,7 @@ _LABELED_CREDENTIAL = re.compile(
     r"(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)"
 )
 _XTREAM_PATH_CREDENTIALS = re.compile(
-    r"(?i)(/(?:live|movie|series)/)[^/\s]+/[^/\s]+(?=/)"
+    r"(?i)(/(?:live|movie|series)/)(?!\{username\}/\{password\}/)[^/\s]+/[^/\s]+(?=/)"
 )
 _URL_AUTHORITY = re.compile(r"(?i)(https?://)[^/\s\"'<>]+")
 _CONNECTION_TARGET = re.compile(
