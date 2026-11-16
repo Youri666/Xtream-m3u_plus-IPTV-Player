@@ -456,11 +456,19 @@ The `.app` bundle can be used for local testing. The versioned `.dmg` package is
 
 #### 3. Install the application
 
-Open the generated `.dmg` file and drag `IPTV Player.app` onto the `Applications` shortcut.
+Open the `.dmg` you built or downloaded from [GitHub Releases](https://github.com/Youri666/Xtream-m3u_plus-IPTV-Player/releases). Drag `IPTV Player.app` onto the `Applications` shortcut, then open **IPTV Player** from **Applications**.
 
 The build script removes PyInstaller's duplicate executable folder after the `.app` bundle has been created.
 
-Because the application is not currently code-signed, MacOS may require you to Control-click the application and choose **Open** on first launch.
+#### If macOS blocks the first launch
+
+Release builds are distributed without a Developer ID signature or Apple notarization. If macOS blocks IPTV Player from opening and you trust the copy you downloaded:
+
+1. Dismiss the alert after trying to open **IPTV Player** from **Applications**.
+2. Open **System Settings**, choose **Privacy & Security**, and scroll down to **Security**.
+3. Click **Open Anyway** for IPTV Player and confirm the prompt. Authenticate if macOS asks you to.
+
+**Open Anyway** is available for about an hour after the blocked launch. macOS saves an exception for this app. See [Apple's first-launch instructions](https://support.apple.com/en-us/102445).
 
 </details>
 
